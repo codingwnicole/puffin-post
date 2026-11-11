@@ -1,4 +1,8 @@
 import { Hono } from 'hono'
+import { HTTPException } from 'hono/http-exception'
+import { resendMailSender, type MailSender } from './auth/magic-links'
+import { authRoutes } from './routes/auth'
+import { inviteRoutes } from './routes/invites'
 
 export interface Env {
   DB: D1Database
@@ -12,8 +16,25 @@ export interface Env {
   MAIL_FROM: string
 }
 
-export function createApp(_env: Env): Hono<{ Bindings: Env }> {
-  return new Hono<{ Bindings: Env }>()
+export function createApp(env: Env, options: { mailSender?: MailSender } = {}): Hono<{ Bindings: Env }> {
+  const app = new Hono<{ Bindings: Env }>()
+  app.use('/api/*', async (c, next) => {
+    c.header('Cache-Control', 'no-store')
+    c.header('Referrer-Policy', 'no-referrer')
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) && c.req.header('origin') !== env.APP_ORIGIN) {
+      throw new HTTPException(403, { message: 'Invalid request origin' })
+    }
+    await next()
+  })
+  app.onError((error, c) => {
+    if (error instanceof HTTPException) return error.getResponse()
+    if (error instanceof SyntaxError) return c.json({ error: 'Invalid request body' }, 400)
+    return c.json({ error: 'Request failed' }, 500)
+  })
+  const sender = options.mailSender ?? resendMailSender(env)
+  app.route('/api/auth', authRoutes(env, sender))
+  app.route('/api/workspaces', inviteRoutes(env, sender))
+  return app
 }
 
 export default {
