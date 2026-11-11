@@ -10,7 +10,7 @@ The first launch is private/invite-only for testing with Liz's Tumblr blogs, whi
 
 - A responsive, accessible thread inbox that treats “what do I owe?” as the primary task.
 - Tumblr-only thread tracking through Tumblr's supported API and OAuth flow.
-- Accounts, workspaces, user-owned characters/blogs, partners, tags, threads, statuses, and activity history.
+- Accounts, workspaces, user-owned characters/blogs, partners, tags, starter posts, reply branches, statuses, and activity history.
 - Thread status lanes: your turn, their turn, queued, archived.
 - Optional character icons: uploaded portrait/icon when supplied, initials fallback otherwise.
 - Light/dark themes with three paired palettes (rose, violet, ocean); respect system preference on first visit.
@@ -30,6 +30,8 @@ The first launch is private/invite-only for testing with Liz's Tumblr blogs, whi
 The signed-in landing screen is an Inbox, not a giant legacy table. It starts with an answer: count of threads that need the user's reply. Each row shows the character icon or initials, title, partner, Tumblr source, last activity, and status. On desktop it has a focused sidebar; on mobile it becomes a bottom navigation bar and compact rows.
 
 Threadums never requires character art. A character can be named and connected to one Tumblr blog; an optional cropped image may be uploaded to private object storage. Deleting an icon only falls back to initials and never deletes the character or thread data.
+
+An open starter can have more than one participant. Threadums models that honestly: the starter owns the original post, character, shared tags, and shared description; every person who takes it gets a separate reply branch. A branch has its own partner, latest post, status, notes, activity history, and archive state. The inbox counts branches—not starters—so three people owed replies appear as three actionable items without making the user duplicate their starter three times.
 
 ## Architecture
 
@@ -65,19 +67,21 @@ All user-owned rows include `workspace_id`; every database query must scope thro
 | Character blog | character ID, Tumblr connection ID, canonical blog identifier, display label |
 | Partner | workspace ID, canonical Tumblr blog identifier, display label |
 | Tag | workspace ID, normalized label, display label/color |
-| Thread | workspace ID, character ID, optional partner ID, title, source (`tumblr`), root post ID, root blog ID, status, description, last poster, last activity timestamp, last refresh timestamp, archived timestamp |
-| Thread tag | thread ID, tag ID |
-| Activity | workspace ID, thread ID, type, actor/source, metadata JSON, timestamp |
+| Starter | workspace ID, character ID, title, source (`tumblr`), root post ID, root blog ID, shared description, created timestamp |
+| Reply branch | workspace ID, starter ID, optional partner ID, status, branch notes, latest Tumblr post ID, last poster, last activity timestamp, last refresh timestamp, archived timestamp |
+| Starter tag | starter ID, tag ID |
+| Activity | workspace ID, starter ID, optional reply branch ID, type, actor/source, metadata JSON, timestamp |
 | Refresh cursor | character blog ID, newest scanned post timestamp/ID, last successful refresh, error state |
 
 ## Tumblr behavior
 
 1. A user connects Tumblr using three-legged OAuth on the server.
 2. Threadums lists the blogs exposed by that connection; the user assigns a blog to one or more characters (multi-muse is supported).
-3. A user adds a thread by choosing a character/blog and supplying a Tumblr root post URL or post ID. The Worker validates that the post belongs to that selected blog before saving it.
-4. A scheduled worker scans only connected, active character blogs in fair batches. It uses stored cursors and indexes rather than fetching an account's entire history every run.
-5. On detected activity, Threadums writes an activity record and recalculates the thread state. It does not infer that every reblog deserves a reply without user confirmation; users retain a one-tap override to switch between “your turn” and “their turn.”
-6. Refresh failures are visible in the connection/settings screen and never silently mark a thread as current.
+3. A user adds a starter by choosing a character/blog and supplying a Tumblr root post URL or post ID. The Worker validates that the post belongs to that selected blog before saving it.
+4. The user adds one reply branch for each participant who takes that starter. New participant branches can be added later without duplicating starter data.
+5. A scheduled worker scans only connected, active character blogs in fair batches. It uses stored cursors and indexes rather than fetching an account's entire history every run.
+6. On detected activity, Threadums writes an activity record and recalculates only the matching reply branch's state. It does not infer that every reblog deserves a reply without user confirmation; users retain a one-tap override to switch between “your turn” and “their turn.”
+7. Refresh failures are visible in the connection/settings screen and never silently mark a reply branch as current.
 
 ### Initial refresh cadence
 
@@ -98,9 +102,10 @@ All user-owned rows include `workspace_id`; every database query must scope thro
 | Page | Primary job |
 |---|---|
 | Sign in / invitation acceptance | Join the private beta safely |
-| Inbox | See and act on threads needing a reply |
-| Your turn / Their turn / Queued / Archive | Dedicated filtered views, all backed by one query model |
-| Thread detail | Edit metadata, status, tags, source link, activity history, archive/restore |
+| Inbox | See and act on reply branches needing a response; rows identify their shared starter |
+| Your turn / Their turn / Queued / Archive | Dedicated filtered views, all backed by the reply-branch query model |
+| Starter detail | Edit shared metadata/tags/source and see every participant branch |
+| Reply branch detail | Edit the branch partner, status, notes, source link, activity history, archive/restore |
 | Characters | Create/edit characters; attach Tumblr blog(s); optional icon upload/remove |
 | Tumblr connections | Connect/reconnect, see blog state and refresh errors |
 | Partners and tags | Lightweight organization controls |
@@ -119,10 +124,10 @@ All user-owned rows include `workspace_id`; every database query must scope thro
 
 ## Testing and acceptance
 
-- Unit tests: status transitions, ownership checks, Tumblr URL/post-ID parsing, export escaping, palette persistence, initials fallback.
+- Unit tests: status transitions, starter/branch isolation, ownership checks, Tumblr URL/post-ID parsing, export escaping, palette persistence, initials fallback.
 - Integration tests: invite acceptance, workspace isolation, OAuth callback state validation with mocked Tumblr responses, thread creation/refresh state updates.
 - Browser checks: keyboard navigation, narrow mobile layout, light/dark contrast, icon upload/removal, and no client-side secret exposure.
-- Real beta test: Liz connects test Tumblr blogs, creates several characters and threads, posts/reblogs test replies, verifies refresh behavior and manual overrides before additional invites.
+- Real beta test: Liz connects test Tumblr blogs, creates several characters, a multi-reply open starter, and individual reply branches; posts/reblogs test replies; verifies refresh behavior and manual overrides before additional invites.
 
 ## Deferred Stage 2
 
