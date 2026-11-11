@@ -1,14 +1,30 @@
+import { useEffect, useState } from 'react'
+import AppShell, { type AppPage } from './components/AppShell'
+import InboxPage from './pages/InboxPage'
+
+function currentPage(): AppPage {
+  const hash = window.location.hash.slice(1)
+  return hash === 'characters' || hash === 'settings' ? hash : 'inbox'
+}
+
 export default function App() {
+  const [page, setPage] = useState(currentPage)
+  useEffect(() => {
+    const navigate = () => setPage(currentPage())
+    window.addEventListener('hashchange', navigate)
+    return () => window.removeEventListener('hashchange', navigate)
+  }, [])
+
   return (
-    <main className="app-shell">
-      <div className="brand-mark" aria-hidden="true">t</div>
-      <p className="eyebrow">A little order for your next chapter</p>
-      <h1>Threadums</h1>
-      <p className="tagline">Your stories, all in one place.</p>
-      <p className="description">
-        A home for your Tumblr roleplay threads, characters, and the replies waiting to happen.
-      </p>
-      <span className="beta-label">Private beta</span>
-    </main>
+    <AppShell page={page}>
+      {page === 'inbox' ? <InboxPage /> : (
+        <section aria-labelledby="page-title">
+          <h2 id="page-title" className="page-heading">{page === 'settings' ? 'Settings' : 'Characters'}</h2>
+          <p className="page-description">{page === 'settings'
+            ? 'Choose the appearance that feels like you.'
+            : 'Your cast of characters will live here. Character setup is coming soon.'}</p>
+        </section>
+      )}
+    </AppShell>
   )
 }
