@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "threadums",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-11-11",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "vars": {
+    "APP_ORIGIN": "http://localhost:5173",
+    "MAIL_FROM": "Threadums <noreply@example.com>"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "threadums-local",
+      // Local-only placeholder. Replace with the provisioned ID before deployment.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations",
+      "remote": false
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "ICONS", "bucket_name": "threadums-icons", "remote": false }
+  ],
+  "triggers": { "crons": ["*/30 * * * *"] }
+}
