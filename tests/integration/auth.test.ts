@@ -38,10 +38,91 @@ describe('invite-only authentication against local D1', () => {
 
   async function login() {
     await request('/api/auth/magic-link', { email: 'owner@example.com' })
-    const response = await request(new URL(sent.at(-1)!.url).pathname + new URL(sent.at(-1)!.url).search)
+    const response = await confirmMagicLink(sent.at(-1)!.url)
     expect(response.status).toBe(302)
     return response.headers.get('set-cookie')!.split(';')[0]
   }
+
+  async function confirmMagicLink(link: string, cookie?: string) {
+    const url = new URL(link)
+    const page = await request(url.pathname + url.search, undefined, cookie)
+    if (page.status !== 200) return page
+    return createApp(env, { mailSender: mail }).request('/api/auth/verify', {
+      method: 'POST', headers: { origin: env.APP_ORIGIN, 'content-type': 'application/x-www-form-urlencoded', ...(cookie ? { cookie } : {}) },
+      body: new URLSearchParams({ token: url.searchParams.get('token')! }),
+    }, env)
+  }
+
+  it('does not establish or replace a session on cross-site magic-link navigation', async () => {
+    const victim = await login()
+    await env.DB.prepare("INSERT INTO users (id,email,display_name,auth_identity) VALUES ('attacker','attacker@example.com','Attacker','email:attacker@example.com')").run()
+    await env.DB.prepare("INSERT INTO workspaces (id,name,owner_user_id) VALUES ('attacker','Attacker','attacker')").run()
+    await env.DB.prepare("INSERT INTO memberships (workspace_id,user_id,role) VALUES ('attacker','attacker','owner')").run()
+    const token = await createMagicLinks(env, mail).issueMagicLink('attacker@example.com')
+    for (const cookie of [undefined, victim]) {
+      const response = await createApp(env, { mailSender: mail }).request(`/api/auth/verify?token=${token}`, {
+        headers: { ...(cookie ? { cookie } : {}), 'sec-fetch-site': 'cross-site', 'sec-fetch-mode': 'navigate', referer: 'https://evil.test/' },
+      }, env)
+      expect(response.status).toBe(200)
+      expect(response.headers.get('set-cookie')).toBeNull()
+      expect(await response.text()).toContain('attacker@example.com')
+    }
+    expect(await (await request('/api/auth/session', undefined, victim)).json()).toMatchObject({ userId: 'owner', workspaceId: 'home' })
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM sessions WHERE revoked_at IS NULL').first<{ n: number }>())!.n).toBe(1)
+    expect((await env.DB.prepare("SELECT consumed_at FROM magic_links WHERE email='attacker@example.com'").first<{ consumed_at: string | null }>())!.consumed_at).toBeNull()
+  })
+
+  it('redeems only after a deliberate same-origin confirmation POST and rejects replay', async () => {
+    const token = await createMagicLinks(env, mail).issueMagicLink('owner@example.com')
+    const page = await request(`/api/auth/verify?token=${token}`)
+    expect(page.status).toBe(200)
+    expect(page.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
+    expect(page.headers.get('content-security-policy')).toContain("default-src 'none'")
+    expect(page.headers.get('content-security-policy')).toContain("form-action 'self'")
+    const html = await page.text()
+    expect(html).toContain('owner@example.com')
+    expect(html).toContain('method="post"')
+    expect(html).toContain('action="/api/auth/verify"')
+    expect(html).not.toContain('<script')
+    for (const origin of [undefined, 'https://evil.test']) {
+      const response = await createApp(env, { mailSender: mail }).request('/api/auth/verify', {
+        method: 'POST', headers: { ...(origin ? { origin } : {}), 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ token }),
+      }, env)
+      expect(response.status).toBe(403)
+      expect(response.headers.get('set-cookie')).toBeNull()
+    }
+    const accepted = await createApp(env, { mailSender: mail }).request('/api/auth/verify', {
+      method: 'POST', headers: { origin: env.APP_ORIGIN, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token }),
+    }, env)
+    expect(accepted.status).toBe(302)
+    expect(accepted.headers.get('location')).toBe('/')
+    expect((await request('/api/auth/session', undefined, accepted.headers.get('set-cookie')!.split(';')[0])).status).toBe(200)
+    const replay = await createApp(env, { mailSender: mail }).request('/api/auth/verify', {
+      method: 'POST', headers: { origin: env.APP_ORIGIN, 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token }),
+    }, env)
+    expect(replay.status).toBe(400)
+    expect(replay.headers.get('set-cookie')).toBeNull()
+    expect((await request(`/api/auth/verify?token=${token}`)).status).toBe(400)
+  })
+
+  it('preserves no-store and no-referrer on successful callbacks and 400 401 403 errors', async () => {
+    await request('/api/auth/magic-link', { email: 'owner@example.com' })
+    const url = new URL(sent.at(-1)!.url)
+    const responses = [
+      await confirmMagicLink(url.toString()),
+      await request('/api/auth/verify?token=bad'),
+      await request('/api/auth/session'),
+      await request('/api/auth/sign-out', {}, undefined, 'https://evil.test'),
+    ]
+    expect(responses.map((response) => response.status)).toEqual([302, 400, 401, 403])
+    for (const response of responses) {
+      expect(response.headers.get('cache-control')).toBe('no-store')
+      expect(response.headers.get('referrer-policy')).toBe('no-referrer')
+    }
+  })
 
   it('rejects reused, expired and concurrent magic links and stores only hashes', async () => {
     const links = createMagicLinks(env, mail)
@@ -69,7 +150,7 @@ describe('invite-only authentication against local D1', () => {
   it('creates secure signed sessions, rejects tampering and invalidates logout', async () => {
     await request('/api/auth/magic-link', { email: 'owner@example.com' })
     const url = new URL(sent[0].url)
-    const response = await request(url.pathname + url.search)
+    const response = await confirmMagicLink(url.toString())
     const header = response.headers.get('set-cookie')!
     expect(header).toContain('HttpOnly')
     expect(header).toContain('Secure')
@@ -95,7 +176,7 @@ describe('invite-only authentication against local D1', () => {
     const previous = await login()
     await request('/api/auth/magic-link', { email: 'owner@example.com' })
     const url = new URL(sent.at(-1)!.url)
-    const response = await request(url.pathname + url.search, undefined, previous)
+    const response = await confirmMagicLink(url.toString(), previous)
     const headers = response.headers.get('set-cookie')!
     expect(headers.match(/__Host-threadums_session=/g)).toHaveLength(1)
     const current = headers.split(';')[0]
@@ -107,7 +188,7 @@ describe('invite-only authentication against local D1', () => {
     await request('/api/auth/magic-link', { email: 'owner@example.com' })
     await env.DB.prepare("DELETE FROM memberships WHERE user_id='owner'").run()
     const url = new URL(sent.at(-1)!.url)
-    expect((await request(url.pathname + url.search)).status).toBe(403)
+    expect((await confirmMagicLink(url.toString())).status).toBe(403)
     expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM sessions').first<{ n: number }>())!.n).toBe(0)
   })
 
@@ -126,7 +207,7 @@ describe('invite-only authentication against local D1', () => {
     expect(response.status).toBe(201)
     expect(sent.at(-1)!.to).toBe('new@example.com')
     const url = new URL(sent.at(-1)!.url)
-    const accepted = await request(url.pathname + url.search)
+    const accepted = await confirmMagicLink(url.toString())
     expect(accepted.status).toBe(302)
     const member = await env.DB.prepare("SELECT m.workspace_id, m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE u.email='new@example.com'").all<{ workspace_id: string; role: string }>()
     expect(member.results).toHaveLength(1)
@@ -141,7 +222,7 @@ describe('invite-only authentication against local D1', () => {
     const links = createMagicLinks(env, mail)
     await links.sendMagicLink('shared@example.com', 'accept_invite', { inviteToken: invite.token, workspaceId: 'home' })
     const url = new URL(sent.at(-1)!.url)
-    expect((await request(url.pathname + url.search)).status).toBe(302)
+    expect((await confirmMagicLink(url.toString())).status).toBe(302)
     expect((await env.DB.prepare("SELECT m.workspace_id,m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE u.email='shared@example.com'").all()).results)
       .toEqual([{ workspace_id: 'home', role: 'member' }])
   })
@@ -153,7 +234,7 @@ describe('invite-only authentication against local D1', () => {
     await links.sendMagicLink('new@example.com', 'accept_invite', { inviteToken: invite.token, workspaceId: 'home' })
     const responses = await Promise.all(sent.map(({ url }) => {
       const parsed = new URL(url)
-      return request(parsed.pathname + parsed.search)
+      return confirmMagicLink(parsed.toString())
     }))
     expect(responses.map((response) => response.status).sort()).toEqual([302, 400])
     expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM workspaces').first<{ n: number }>())!.n).toBe(2)
@@ -175,7 +256,7 @@ describe('invite-only authentication against local D1', () => {
     await links.sendMagicLink('new@example.com', 'accept_invite', { inviteToken: invite.token, workspaceId: 'home' })
     await env.DB.prepare("UPDATE invites SET expires_at='2000-01-01T00:00:00.000Z'").run()
     const url = new URL(sent[0].url)
-    expect((await request(url.pathname + url.search)).status).toBe(400)
+    expect((await confirmMagicLink(url.toString())).status).toBe(400)
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM users WHERE email='new@example.com'").first<{ n: number }>())!.n).toBe(0)
     await expect(links.sendMagicLink('new@example.com', 'accept_invite', { inviteToken: invite.token, workspaceId: 'home' })).rejects.toThrow('invalid invite')
   })

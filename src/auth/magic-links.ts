@@ -58,6 +58,15 @@ export function createMagicLinks(env: Env, sender: MailSender = resendMailSender
     return identity
   }
 
+  async function inspectMagicLink(token: string): Promise<MagicLinkIdentity> {
+    if (!/^[a-f0-9]{64}$/.test(token)) throw new Error('invalid magic link')
+    const identity = await env.DB.prepare(`SELECT email, intent, workspace_id AS workspaceId, invite_id AS inviteId
+      FROM magic_links WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?`)
+      .bind(await hashToken(token), new Date().toISOString()).first<MagicLinkIdentity>()
+    if (!identity) throw new Error('invalid magic link')
+    return identity
+  }
+
   async function sendMagicLink(email: string, intent: MagicLinkIdentity['intent'], invite?: { inviteToken: string; workspaceId: string }): Promise<void> {
     const token = await issueMagicLink(email, intent, invite)
     const url = new URL('/api/auth/verify', env.APP_ORIGIN)
@@ -68,5 +77,5 @@ export function createMagicLinks(env: Env, sender: MailSender = resendMailSender
     }
   }
 
-  return { issueMagicLink, consumeMagicLink, sendMagicLink }
+  return { issueMagicLink, consumeMagicLink, inspectMagicLink, sendMagicLink }
 }

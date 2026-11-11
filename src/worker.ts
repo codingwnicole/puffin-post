@@ -27,7 +27,12 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
     await next()
   })
   app.onError((error, c) => {
-    if (error instanceof HTTPException) return error.getResponse()
+    if (error instanceof HTTPException) {
+      const response = error.getResponse()
+      response.headers.set('Cache-Control', 'no-store')
+      response.headers.set('Referrer-Policy', 'no-referrer')
+      return response
+    }
     if (error instanceof SyntaxError) return c.json({ error: 'Invalid request body' }, 400)
     return c.json({ error: 'Request failed' }, 500)
   })
