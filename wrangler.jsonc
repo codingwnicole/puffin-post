@@ -15,7 +15,8 @@
     {
       "binding": "DB",
       "database_name": "threadums-local",
-      // Local-only placeholder. Replace with the provisioned ID before deployment.
+      // Local-only placeholder. Keep this non-deployable value in Git; use an
+      // uncommitted production config with a provisioned D1 ID (see docs/beta-runbook.md).
       "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "src/db/migrations",
       "remote": false
