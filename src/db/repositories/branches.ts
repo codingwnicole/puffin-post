@@ -33,6 +33,9 @@ export interface InboxQuery extends WorkspaceScope {
   status?: ReplyStatus
   starterId?: string
   includeArchived?: boolean
+  characterId?: string
+  tagId?: string
+  q?: string
 }
 
 export interface InboxBranch extends ReplyBranch {
@@ -94,8 +97,11 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
     LEFT JOIN partners p ON p.workspace_id = b.workspace_id AND p.id = b.partner_id
     WHERE b.workspace_id = ? AND ${status === undefined ? (input.includeArchived ? '1 = 1' : 'b.archived_at IS NULL') : 'b.status = ?'}
       ${input.starterId ? 'AND b.starter_id = ?' : ''}
+      ${input.characterId ? 'AND s.character_id = ?' : ''}
+      ${input.tagId ? 'AND EXISTS (SELECT 1 FROM starter_tags st WHERE st.workspace_id=b.workspace_id AND st.starter_id=b.starter_id AND st.tag_id=?)' : ''}
+      ${input.q ? "AND (lower(s.title) LIKE ? OR lower(c.name) LIKE ? OR lower(COALESCE(p.display_label,'')) LIKE ?)" : ''}
     ORDER BY COALESCE(b.last_activity_at, b.created_at) DESC, b.id
-  `).bind(...[workspaceId, ...(status === undefined ? [] : [status]), ...(input.starterId ? [input.starterId] : [])]).all<InboxBranch>()
+  `).bind(...[workspaceId, ...(status === undefined ? [] : [status]), ...(input.starterId ? [input.starterId] : []), ...(input.characterId ? [input.characterId] : []), ...(input.tagId ? [input.tagId] : []), ...(input.q ? Array(3).fill(`%${input.q.toLocaleLowerCase()}%`) : [])]).all<InboxBranch>()
   return result.results
 }
 

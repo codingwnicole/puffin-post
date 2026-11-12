@@ -10,6 +10,9 @@ import { replyDraftRoutes } from './routes/reply-drafts'
 import { tumblrRoutes } from './routes/tumblr'
 import { connectionRoutes } from './routes/connections'
 import { runRefreshBatch } from './refresh/runner'
+import { characterRoutes } from './routes/characters'
+import { partnerRoutes } from './routes/partners'
+import { tagRoutes } from './routes/tags'
 
 export interface Env {
   DB: D1Database
@@ -54,6 +57,9 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   app.route('/api/reply-drafts', replyDraftRoutes())
   app.route('/api/tumblr', tumblrRoutes())
   app.route('/api/connections', connectionRoutes())
+  app.route('/api/characters', characterRoutes())
+  app.route('/api/partners', partnerRoutes())
+  app.route('/api/tags', tagRoutes())
   return app
 }
 

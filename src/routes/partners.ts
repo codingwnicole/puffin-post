@@ -1,0 +1,6 @@
+import { Hono } from 'hono'
+import { HTTPException } from 'hono/http-exception'
+import type { Env } from '../worker'
+import { requireWorkspace } from '../auth/sessions'
+import { canonicalBlogIdentifier } from '../tumblr/normalize'
+export function partnerRoutes() { const app=new Hono<{Bindings:Env}>(); app.get('/',async c=>{const s=await requireWorkspace(c);return c.json((await s.db.prepare('SELECT id,blog_identifier AS blogIdentifier,display_label AS displayLabel FROM partners WHERE workspace_id=? ORDER BY display_label').bind(s.workspaceId).all()).results)}); app.post('/',async c=>{const s=await requireWorkspace(c),x=await c.req.json<{blogIdentifier?:string;displayLabel?:string}>();if(!x.blogIdentifier||!x.displayLabel?.trim())throw new HTTPException(400,{message:'Partner blog and label are required'});const id=crypto.randomUUID();try{await s.db.prepare('INSERT INTO partners (id,workspace_id,blog_identifier,display_label) VALUES (?,?,?,?)').bind(id,s.workspaceId,canonicalBlogIdentifier(x.blogIdentifier),x.displayLabel.trim()).run()}catch{throw new HTTPException(409,{message:'Partner blog already exists'})}return c.json({id,blogIdentifier:canonicalBlogIdentifier(x.blogIdentifier),displayLabel:x.displayLabel.trim()},201)}); return app }

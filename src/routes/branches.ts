@@ -14,7 +14,10 @@ export function branchRoutes() {
   app.get('/inbox', async c => {
     const scope = await requireWorkspace(c)
     const status = z.enum(['your_turn','their_turn','queued','archived']).optional().parse(c.req.query('status'))
-    const [branches,owed] = await Promise.all([listInboxBranches({ ...scope,status }),listInboxBranches({ ...scope,status:'your_turn' })])
+    const characterId=z.string().max(100).optional().parse(c.req.query('characterId'))
+    const tagId=z.string().max(100).optional().parse(c.req.query('tagId'))
+    const q=z.string().max(300).optional().parse(c.req.query('q'))
+    const [branches,owed] = await Promise.all([listInboxBranches({ ...scope,status,characterId,tagId,q }),listInboxBranches({ ...scope,status:'your_turn' })])
     return c.json({ branches,yourTurnCount:owed.length })
   })
   return app
