@@ -165,6 +165,21 @@ describe('invite-only authentication against local D1', () => {
     expect((await request('/api/auth/session', undefined, cookie)).status).toBe(401)
   })
 
+  it('provisions only the secret-designated first owner, then remains invite-only', async () => {
+    await env.DB.batch(['sessions', 'magic_links', 'memberships', 'workspaces', 'users'].map(table => env.DB.prepare(`DELETE FROM ${table}`)))
+    env.BOOTSTRAP_OWNER_EMAIL = 'first@example.com'
+    const first = await request('/api/auth/magic-link', { email: 'first@example.com' })
+    const stranger = await request('/api/auth/magic-link', { email: 'stranger@example.com' })
+    expect(first.status).toBe(202)
+    expect(stranger.status).toBe(202)
+    expect(sent.map(message => message.to)).toEqual(['first@example.com'])
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>())!.n).toBe(1)
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM workspaces').first<{ n: number }>())!.n).toBe(1)
+    expect((await confirmMagicLink(sent[0].url)).status).toBe(302)
+    await request('/api/auth/magic-link', { email: 'another@example.com' })
+    expect(sent.map(message => message.to)).toEqual(['first@example.com'])
+  })
+
   it('expires sessions and rejects cross-origin state changes', async () => {
     const cookie = await login()
     expect((await request('/api/auth/sign-out', {}, cookie, 'https://evil.test')).status).toBe(403)

@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { html } from 'hono/html'
 import type { Env } from '../worker'
-import { acceptInvite, normalizeEmail } from '../auth/invites'
+import { acceptInvite, normalizeEmail, provisionBootstrapOwner } from '../auth/invites'
 import { createMagicLinks, type MailSender } from '../auth/magic-links'
 import { endSession, requireWorkspace, startSession } from '../auth/sessions'
 
@@ -19,6 +19,9 @@ export function authRoutes(env: Env, sender: MailSender) {
         ? { inviteToken: String(body.inviteToken ?? ''), workspaceId: String(body.workspaceId ?? '') } : undefined)
     } catch (error) {
       if (error instanceof Error && error.message === 'invalid magic link' && intent === 'sign_in') {
+        if (await provisionBootstrapOwner(env.DB, email, env.BOOTSTRAP_OWNER_EMAIL)) {
+          await links.sendMagicLink(email, 'sign_in')
+        }
         return c.json({ message: 'If you have access, a sign-in link is on its way.' }, 202)
       }
       throw error

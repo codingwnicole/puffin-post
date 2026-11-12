@@ -16,6 +16,8 @@ describe('tenant-safe repositories against local D1', () => {
     dispose = platform.dispose
     const migration = await readFile('src/db/migrations/0001_initial.sql', 'utf8')
     await db.batch(migration.split(';').filter((sql) => sql.trim()).map((sql) => db.prepare(sql)))
+    const refreshMigration = await readFile('src/db/migrations/0005_refresh.sql', 'utf8')
+    await db.batch(refreshMigration.split(';').filter((sql) => sql.trim()).map((sql) => db.prepare(sql)))
     for (const tenant of ['a', 'b']) {
       await db.prepare('INSERT INTO users (id, email, display_name, auth_identity) VALUES (?, ?, ?, ?)')
         .bind(`member-${tenant}`, `${tenant}@example.com`, tenant, `identity-${tenant}`).run()

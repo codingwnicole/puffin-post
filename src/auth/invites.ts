@@ -18,6 +18,29 @@ export interface Invite {
   kind: 'beta' | 'shared'
 }
 
+/** Provisions only the designated first owner; it is never public registration. */
+export async function provisionBootstrapOwner(db: Env['DB'], email: string, bootstrapEmail?: string): Promise<boolean> {
+  if (!bootstrapEmail) return false
+  let expected: string
+  try { expected = normalizeEmail(bootstrapEmail) } catch { return false }
+  if (email !== expected) return false
+  const userId = crypto.randomUUID()
+  const workspaceId = crypto.randomUUID()
+  const displayName = email.split('@')[0]
+  await db.batch([
+    db.prepare(`INSERT INTO users (id,email,display_name,auth_identity)
+      SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM users)`).bind(userId, email, displayName, `email:${email}`),
+    db.prepare(`INSERT INTO workspaces (id,name,owner_user_id)
+      SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ?) AND NOT EXISTS (SELECT 1 FROM workspaces)`)
+      .bind(workspaceId, `${displayName}'s workspace`, userId, userId),
+    db.prepare(`INSERT INTO memberships (workspace_id,user_id,role)
+      SELECT ?, ?, 'owner' WHERE EXISTS (SELECT 1 FROM workspaces WHERE id = ?)`)
+      .bind(workspaceId, userId, workspaceId),
+  ])
+  return Boolean(await db.prepare(`SELECT 1 FROM users u JOIN memberships m ON m.user_id = u.id
+    WHERE u.email = ? AND m.role = 'owner' LIMIT 1`).bind(email).first())
+}
+
 export async function createInvite(input: WorkspaceScope & { email: string; kind?: 'beta' | 'shared' }) {
   let membership
   try { membership = await requireMembership(input.db, input.userId, input.workspaceId) } catch {

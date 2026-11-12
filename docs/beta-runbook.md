@@ -57,9 +57,12 @@ npx wrangler secret put TOKEN_ENCRYPTION_KEY --config .\wrangler.production.json
 npx wrangler secret put TUMBLR_CONSUMER_KEY --config .\wrangler.production.jsonc
 npx wrangler secret put TUMBLR_CONSUMER_SECRET --config .\wrangler.production.jsonc
 npx wrangler secret put RESEND_API_KEY --config .\wrangler.production.jsonc
+npx wrangler secret put BOOTSTRAP_OWNER_EMAIL --config .\wrangler.production.jsonc
 ```
 
 `SESSION_SECRET` and `TOKEN_ENCRYPTION_KEY` must be cryptographically random and retained safely. Rotating the latter makes previously stored Tumblr credentials unreadable unless a key-version migration is planned first.
+
+Set `BOOTSTRAP_OWNER_EMAIL` to your own email before the first beta sign-in. The first magic-link request from that exact address creates the sole initial owner workspace; after that, all users remain invite-only.
 
 Deploy only after all bindings and secrets are present:
 

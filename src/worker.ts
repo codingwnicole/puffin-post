@@ -26,6 +26,7 @@ export interface Env {
   TUMBLR_CONSUMER_SECRET: string
   RESEND_API_KEY: string
   MAIL_FROM: string
+  BOOTSTRAP_OWNER_EMAIL?: string
 }
 
 export function createApp(env: Env, options: { mailSender?: MailSender } = {}): Hono<{ Bindings: Env }> {

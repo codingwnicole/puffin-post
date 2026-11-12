@@ -19,11 +19,18 @@ export default function InboxPage() {
       .then(([inbox,options,tags]) => { if (active) { setInbox(inbox); setOptions(options); setTags(tags); setLoaded(true) } }).catch(e => { if (active) setError(e.message) })
     return () => { active = false }
   },[filters.status,filters.characterId,filters.tagId,filters.q])
+  const needsSignIn = error === 'Sign in to see your writing space.'
   return <section aria-labelledby="inbox-title">
     <h2 id="inbox-title" className="page-heading">Inbox</h2>
     <p className="page-description">A little order for your next chapter.</p>
     {error && <p role="alert">{error}</p>}
     {!loaded && <div className="empty-state"><h3>Your writing space</h3><p>{error ? 'Your replies are private. Sign in to see your Inbox.' : 'Loading your replies…'}</p></div>}
+    {needsSignIn && <form className="tracking-form" onSubmit={async event => {
+      event.preventDefault(); setError(''); setBusy(true)
+      const email = new FormData(event.currentTarget).get('email')
+      try { await api('/auth/magic-link', 'POST', { email }); setError('Check your email for a one-time sign-in link.') }
+      catch (error) { setError((error as Error).message) } finally { setBusy(false) }
+    }}><label>Email address<input name="email" type="email" autoComplete="email" required /></label><button disabled={busy}>{busy ? 'Sending link...' : 'Email me a sign-in link'}</button></form>}
     {loaded && <><p className="reply-count" aria-live="polite">{inbox.yourTurnCount} {inbox.yourTurnCount === 1 ? 'reply needs' : 'replies need'} you</p>
       <FilterBar filters={filters} options={options} tags={tags} onChange={setFilters}/>
       {inbox.branches.map(branch => <BranchRow key={`${branch.id}:${branch.status}:${branch.notes}:${branch.partnerId}`} branch={branch} options={options} onChange={reload} />)}
