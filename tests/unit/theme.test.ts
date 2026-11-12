@@ -44,4 +44,20 @@ describe('character avatars', () => {
     expect(html).toContain('src="/api/characters/parisa/icon"')
     expect(html).toContain('alt="Parisa Farzaneh"')
   })
+
+  it.each([
+    ['#ffffff', '#000000'], ['#fff', '#000000'], ['#000000', '#ffffff'],
+    ['#000', '#ffffff'], ['#2b1724', '#ffffff'], ['#808080', '#000000'],
+    ['#00FF00', '#000000'], ['#ff0000', '#000000'], ['#0000ff', '#ffffff'],
+  ])('chooses a contrasting foreground for %s', (color, foreground) => {
+    const html = renderToStaticMarkup(createElement(InitialsAvatar, { name: 'Parisa Farzaneh', color }))
+    expect(html).toContain(`background-color:${color};color:${foreground}`)
+    expect(html).toContain('PF')
+  })
+
+  it.each(['transparent', '#ffffff00', 'var(--text)', '#xyz', 'white', ''])('uses the palette for unsupported color %s', color => {
+    const html = renderToStaticMarkup(createElement(InitialsAvatar, { name: 'Parisa Farzaneh', color }))
+    expect(html).not.toContain('style=')
+    expect(html).toContain('PF')
+  })
 })

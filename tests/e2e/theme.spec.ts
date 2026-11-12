@@ -73,5 +73,51 @@ for (const palette of ['rose', 'violet', 'ocean']) {
       })
       for (const contrast of contrasts) expect(contrast).toBeGreaterThanOrEqual(4.5)
     })
+
+    test(`${palette} ${mode} keeps custom avatar initials readable after icon failure`, async ({ page }) => {
+      await page.goto('/')
+      await page.getByLabel('Appearance').selectOption(mode)
+      await page.getByLabel('Palette').selectOption(palette)
+      await page.route('**/missing-avatar.png', route => route.abort())
+      await page.evaluate(async () => {
+        const reactPath = '/node_modules/.vite/deps/react.js'
+        const clientPath = '/node_modules/.vite/deps/react-dom_client.js'
+        const avatarPath = '/src/web/components/InitialsAvatar.tsx'
+        const [{ default: { createElement } }, { default: { createRoot } }, { InitialsAvatar }] = await Promise.all([
+          import(reactPath), import(clientPath), import(avatarPath),
+        ])
+        const fixture = document.createElement('div')
+        fixture.id = 'avatar-fixture'
+        document.querySelector('main')!.appendChild(fixture)
+        const colors = ['#ffffff', '#2b1724', '#fff', '#000', '#808080', '#00FF00', '#ff0000', '#0000ff', 'transparent', '#ffffff00', '#xyz', undefined]
+        createRoot(fixture).render(createElement('div', null, ...colors.flatMap(color => [
+          createElement(InitialsAvatar, { key: `${color}-initials`, name: 'Parisa Farzaneh', color }),
+          createElement(InitialsAvatar, { key: `${color}-failed`, name: 'Parisa Farzaneh', color, imageUrl: '/missing-avatar.png' }),
+        ])))
+      })
+      await expect(page.locator('#avatar-fixture .initials-avatar')).toHaveCount(24)
+      await expect(page.locator('#avatar-fixture img')).toHaveCount(0)
+      await expect(page.locator('#avatar-fixture [role="img"]')).toHaveCount(24)
+      const avatars = await page.locator('#avatar-fixture .initials-avatar').evaluateAll(elements => {
+        function luminance(color: string) {
+          const channels = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => {
+            const channel = value / 255
+            return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4
+          })
+          return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722
+        }
+        return elements.map(element => {
+          const style = getComputedStyle(element)
+          const a = luminance(style.color), b = luminance(style.backgroundColor)
+          return { text: element.textContent, background: style.backgroundColor, contrast: (Math.max(a, b) + .05) / (Math.min(a, b) + .05) }
+        })
+      })
+      expect(avatars[0].background).toBe('rgb(255, 255, 255)')
+      expect(avatars[2].background).toBe('rgb(43, 23, 36)')
+      for (const avatar of avatars) {
+        expect(avatar.text).toBe('PF')
+        expect(avatar.contrast).toBeGreaterThanOrEqual(4.5)
+      }
+    })
   }
 }
