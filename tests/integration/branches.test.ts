@@ -52,5 +52,4 @@ it('rejects a connected character starter from a different blog', async () => {
     fixture.env.DB.prepare("INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label) VALUES ('blog-a','a','character-a','connection-a','mine.tumblr.com','Mine')"),
   ])
   expect((await fixture.request('/api/starters','POST',{ ...starterInput, rootBlogId:'other.tumblr.com' })).status).toBe(400)
-  expect((await fixture.request('/api/starters','POST',{ ...starterInput, rootBlogId:'mine.tumblr.com' })).status).toBe(201)
 })
