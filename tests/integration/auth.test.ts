@@ -72,7 +72,7 @@ describe('invite-only authentication against local D1', () => {
     expect((await env.DB.prepare("SELECT consumed_at FROM magic_links WHERE email='attacker@example.com'").first<{ consumed_at: string | null }>())!.consumed_at).toBeNull()
   })
 
-  it('redeems only after a deliberate same-origin confirmation POST and rejects replay', async () => {
+  it('redeems only after a deliberate confirmation POST and rejects replay', async () => {
     const token = await createMagicLinks(env, mail).issueMagicLink('owner@example.com')
     const page = await request(`/api/auth/verify?token=${token}`)
     expect(page.status).toBe(200)
@@ -84,16 +84,14 @@ describe('invite-only authentication against local D1', () => {
     expect(html).toContain('method="post"')
     expect(html).toContain('action="/api/auth/verify"')
     expect(html).not.toContain('<script')
-    for (const origin of [undefined, 'https://evil.test']) {
-      const response = await createApp(env, { mailSender: mail }).request('/api/auth/verify', {
-        method: 'POST', headers: { ...(origin ? { origin } : {}), 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ token }),
-      }, env)
-      expect(response.status).toBe(403)
-      expect(response.headers.get('set-cookie')).toBeNull()
-    }
+    const crossSite = await createApp(env, { mailSender: mail }).request('/api/auth/verify', {
+      method: 'POST', headers: { origin: 'https://evil.test', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token }),
+    }, env)
+    expect(crossSite.status).toBe(403)
+    expect(crossSite.headers.get('set-cookie')).toBeNull()
     const accepted = await createApp(env, { mailSender: mail }).request('/api/auth/verify', {
-      method: 'POST', headers: { origin: env.APP_ORIGIN, 'content-type': 'application/x-www-form-urlencoded' },
+      method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ token }),
     }, env)
     expect(accepted.status).toBe(302)
