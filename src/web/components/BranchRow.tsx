@@ -14,6 +14,7 @@ export default function BranchRow({ branch, options, onChange }: { branch:InboxB
     </div></div>
     <a href={`https://www.tumblr.com/${encodeURIComponent(branch.rootBlogId.replace(/\.tumblr\.com$/,''))}/${encodeURIComponent(branch.latestPostId ?? branch.rootPostId)}`} target="_blank" rel="noopener noreferrer">Open Tumblr post</a>
     {branch.lastActivityAt && <p>Last activity: <time dateTime={branch.lastActivityAt}>{new Date(branch.lastActivityAt).toLocaleString()}</time></p>}
+    {branch.refreshError && <p className="refresh-warning" role="status"><strong>Refresh needs attention:</strong> {branch.refreshError}</p>}
     <form className="tracking-form" onSubmit={async event => {
       event.preventDefault(); const data = new FormData(event.currentTarget)
       setBusy(true); setError('')

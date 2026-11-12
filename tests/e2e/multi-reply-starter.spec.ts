@@ -107,3 +107,26 @@ test('a delayed previous starter response cannot overwrite the current starter',
   await expect(page.getByRole('heading',{ name:'Starter two',exact:true })).toBeVisible()
   await expect(page.getByText('Scene one',{ exact:true })).toHaveCount(0)
 })
+
+test('shows a refresh warning only on the affected branch in inbox and starter detail', async ({ page }) => {
+  const starter = { id:'s',title:'Refresh test',characterId:'c',description:'Shared scene',rootPostId:'123',rootBlogId:'writer.tumblr.com' }
+  const branches = [
+    { id:'affected',starterId:'s',title:starter.title,characterId:'c',characterName:'Writer',partnerLabel:'Friend',partnerId:null,status:'their_turn',notes:'',rootPostId:'123',rootBlogId:'writer.tumblr.com',refreshError:'Tumblr refresh failed (503)' },
+    { id:'healthy',starterId:'s',title:starter.title,characterId:'c',characterName:'Writer',partnerLabel:'Other',partnerId:null,status:'their_turn',notes:'',rootPostId:'123',rootBlogId:'writer.tumblr.com',refreshError:null },
+  ]
+  await page.route('**/api/**', async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/starters/options') return route.fulfill({ json:{ characters:[{ id:'c',name:'Writer' }],partners:[] } })
+    if (path === '/api/inbox') return route.fulfill({ json:{ branches,yourTurnCount:0 } })
+    if (path === '/api/starters/s') return route.fulfill({ json:{ starter,branches } })
+    return route.fulfill({ status:404 })
+  })
+  await page.goto('/')
+  const affected = page.getByRole('article').filter({ hasText:'Friend' })
+  const healthy = page.getByRole('article').filter({ hasText:'Other' })
+  await expect(affected.getByRole('status')).toHaveText('Refresh needs attention: Tumblr refresh failed (503)')
+  await expect(healthy.getByRole('status')).toHaveCount(0)
+  await affected.getByRole('link',{ name:'Refresh test',exact:true }).click()
+  await expect(page.getByRole('article').filter({ hasText:'Friend' }).getByRole('status')).toHaveText('Refresh needs attention: Tumblr refresh failed (503)')
+  await expect(page.getByRole('article').filter({ hasText:'Other' }).getByRole('status')).toHaveCount(0)
+})
