@@ -1,6 +1,6 @@
 export type ThemePreference = {
   mode: 'light' | 'dark' | 'system'
-  palette: 'rose' | 'violet' | 'ocean'
+  palette: 'rose' | 'violet' | 'ocean' | 'sage' | 'ember' | 'midnight'
 }
 
 const storageKey = 'threadums.theme'
@@ -11,7 +11,7 @@ export function readThemePreference(storage?: Pick<Storage, 'getItem'>): ThemePr
     const value: unknown = JSON.parse((storage ?? window.localStorage).getItem(storageKey) ?? 'null')
     if (value && typeof value === 'object' && 'mode' in value && 'palette' in value
       && typeof value.mode === 'string' && ['light', 'dark', 'system'].includes(value.mode)
-      && typeof value.palette === 'string' && ['rose', 'violet', 'ocean'].includes(value.palette)) {
+      && typeof value.palette === 'string' && ['rose', 'violet', 'ocean', 'sage', 'ember', 'midnight'].includes(value.palette)) {
       return { mode: value.mode, palette: value.palette } as ThemePreference
     }
   } catch { /* Storage can be blocked or contain stale data. */ }

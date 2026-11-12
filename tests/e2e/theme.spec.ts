@@ -11,7 +11,7 @@ test('keyboard skip link focuses content without leaving the selected page', asy
 
 test('system preference follows changes until the user chooses a mode', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' })
-  await page.goto('/')
+  await page.goto('/#settings')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.emulateMedia({ colorScheme: 'light' })
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
@@ -35,6 +35,7 @@ test('390px layout uses bottom navigation without horizontal scrolling', async (
   expect(box!.y).toBeGreaterThan(700)
   expect(box!.width).toBe(390)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
+  await navigation.getByRole('button', { name: 'More' }).click()
   await navigation.getByRole('link', { name: 'Settings' }).click()
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await page.setViewportSize({ width: 1280, height: 900 })
@@ -42,10 +43,10 @@ test('390px layout uses bottom navigation without horizontal scrolling', async (
   expect((await navigation.boundingBox())!.width).toBeLessThan(300)
 })
 
-for (const palette of ['rose', 'violet', 'ocean']) {
+for (const palette of ['rose', 'violet', 'ocean', 'sage', 'ember', 'midnight']) {
   for (const mode of ['light', 'dark']) {
     test(`${palette} ${mode} retains readable text and controls`, async ({ page }) => {
-      await page.goto('/')
+      await page.goto('/#settings')
       await page.getByLabel('Appearance').selectOption(mode)
       await page.getByLabel('Palette').selectOption(palette)
       await expect(page.locator('html')).toHaveAttribute('data-palette', palette)
@@ -58,7 +59,7 @@ for (const palette of ['rose', 'violet', 'ocean']) {
           })
           return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722
         }
-        return ['.page-heading', '.empty-state p', '.primary-nav a[aria-current="page"]', '.theme-menu select'].map(selector => {
+        return ['.page-heading', '.settings-section p', '.primary-nav a[aria-current="page"]', '.theme-menu select'].map(selector => {
           const element = document.querySelector(selector)!
           const style = getComputedStyle(element)
           let background = style.backgroundColor
@@ -75,7 +76,7 @@ for (const palette of ['rose', 'violet', 'ocean']) {
     })
 
     test(`${palette} ${mode} keeps custom avatar initials readable after icon failure`, async ({ page }) => {
-      await page.goto('/')
+      await page.goto('/#settings')
       await page.getByLabel('Appearance').selectOption(mode)
       await page.getByLabel('Palette').selectOption(palette)
       await page.route('**/missing-avatar.png', route => route.abort())

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import ThemeMenu from '../components/ThemeMenu'
 
 export default function SettingsPage() {
   const [message, setMessage] = useState('')
@@ -9,6 +10,7 @@ export default function SettingsPage() {
   return <section aria-labelledby="settings-title">
     <h2 id="settings-title" className="page-heading">Settings</h2>
     <p className="page-description">Manage your workspace and keep a copy of your tracking data.</p>
+    <section className="settings-section"><h3>Make it yours</h3><p>Choose an appearance and color story that is easy on your eyes.</p><ThemeMenu /></section>
     <section className="tracking-card" aria-labelledby="export-title"><h3 id="export-title">Export your data</h3>
       <p>Download your starters and reply branches as a spreadsheet-safe CSV.</p>
       <a className="button" href="/api/export.csv" onClick={() => setMessage('Your download is starting.')}>Download CSV</a>

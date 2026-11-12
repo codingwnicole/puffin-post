@@ -36,6 +36,9 @@ export default function ThemeMenu() {
           <option value="rose">Rose</option>
           <option value="violet">Violet</option>
           <option value="ocean">Ocean</option>
+          <option value="sage">Sage</option>
+          <option value="ember">Ember</option>
+          <option value="midnight">Midnight</option>
         </select>
       </label>
     </fieldset>
