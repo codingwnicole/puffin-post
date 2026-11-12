@@ -10,7 +10,7 @@ export interface ExportRow {
 }
 
 export function toFormulaSafeCell(value: string): string {
-  return /^[=+\-@]/.test(value) ? `'${value}` : value
+  return /^[\s\u0000-\u001f]*[=+\-@]/.test(value) ? `'${value}` : value
 }
 
 function cell(value: string) {

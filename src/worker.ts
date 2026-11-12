@@ -14,6 +14,7 @@ import { characterRoutes } from './routes/characters'
 import { partnerRoutes } from './routes/partners'
 import { tagRoutes } from './routes/tags'
 import { exportRoutes } from './routes/export'
+import { settingsRoutes } from './routes/settings'
 
 export interface Env {
   DB: D1Database
@@ -62,6 +63,7 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   app.route('/api/partners', partnerRoutes())
   app.route('/api/tags', tagRoutes())
   app.route('/api', exportRoutes())
+  app.route('/api/settings', settingsRoutes())
   return app
 }
 
