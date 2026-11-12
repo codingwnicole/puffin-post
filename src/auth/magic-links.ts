@@ -11,8 +11,8 @@ export function resendMailSender(env: Env): MailSender {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject: 'Your Threadums sign-in link',
-        text: `Sign in to Threadums: ${url}\n\nThis link expires in 15 minutes and can be used once.` }),
+      body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject: 'Your Puffin Post sign-in link',
+        text: `Sign in to Puffin Post: ${url}\n\nThis link expires in 15 minutes and can be used once.` }),
     })
     if (!response.ok) throw new Error('Unable to send sign-in email')
   } }

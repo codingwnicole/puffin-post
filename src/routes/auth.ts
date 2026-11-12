@@ -35,8 +35,8 @@ export function authRoutes(env: Env, sender: MailSender) {
       throw new HTTPException(400, { message: 'invalid magic link' })
     }
     c.header('Content-Security-Policy', "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
-    return c.html(html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Confirm Threadums sign-in</title></head><body><main>
-      <h1>Sign in to Threadums</h1><p>Continue as <strong>${identity.email}</strong>?</p>
+    return c.html(html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Confirm Puffin Post sign-in</title></head><body><main>
+      <h1>Sign in to Puffin Post</h1><p>Continue as <strong>${identity.email}</strong>?</p>
       <p>Continuing will sign this browser in to this account and replace any current sign-in.</p>
       <form method="post" action="/api/auth/verify"><input type="hidden" name="token" value="${token}"><button type="submit">Continue as ${identity.email}</button></form>
       </main></body></html>`)

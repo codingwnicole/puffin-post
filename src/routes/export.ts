@@ -14,7 +14,7 @@ export function exportRoutes() {
       rootPostId: branch.rootPostId, partner: branch.partnerLabel ?? '', status: branch.status,
       notes: branch.notes, lastActivityAt: branch.lastActivityAt ?? '',
     })))
-    c.header('Content-Disposition', 'attachment; filename="threadums-export.csv"')
+    c.header('Content-Disposition', 'attachment; filename="puffin-post-export.csv"')
     c.header('X-Content-Type-Options', 'nosniff')
     return c.text(csv, 200, { 'Content-Type': 'text/csv; charset=utf-8' })
   })

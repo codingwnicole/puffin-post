@@ -3,7 +3,7 @@ export type ThemePreference = {
   palette: 'rose' | 'violet' | 'ocean' | 'sage' | 'ember' | 'midnight'
 }
 
-const storageKey = 'threadums.theme'
+const storageKey = 'puffin-post.theme'
 const defaultPreference: ThemePreference = { mode: 'system', palette: 'rose' }
 
 export function readThemePreference(storage?: Pick<Storage, 'getItem'>): ThemePreference {

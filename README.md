@@ -1,6 +1,6 @@
-# Threadums
+# Puffin Post
 
-Threadums is a private, Tumblr-first roleplay thread tracker. It tracks independent reply branches, including multiple replies to one open starter, and keeps character icons, notes, filters, archives, exports, and private-beta access in one mobile-friendly workspace.
+Puffin Post is a private, Tumblr-first roleplay thread tracker. It tracks independent reply branches, including multiple replies to one open starter, and keeps character icons, notes, filters, archives, exports, and private-beta access in one mobile-friendly workspace.
 
 ## Local setup
 

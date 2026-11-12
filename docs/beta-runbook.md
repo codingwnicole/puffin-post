@@ -1,4 +1,4 @@
-# Threadums private-beta runbook
+# Puffin Post private-beta runbook
 
 This runbook gets a private Worker beta online without putting credentials, Tumblr tokens, or personal test URLs in Git.
 
@@ -6,7 +6,7 @@ This runbook gets a private Worker beta online without putting credentials, Tumb
 
 - [ ] Run `npm.cmd test`, `npm.cmd run test:e2e`, and `npm.cmd run build` locally.
 - [ ] Verify `git status --short` contains no `.dev.vars`, `.env`, token exports, or generated database files. `debug.log` is a local diagnostic file; do not commit it.
-- [ ] Create a fresh private beta subdomain, for example `threadums.example.com`. Set its exact HTTPS origin aside for `APP_ORIGIN`.
+- [ ] Create a fresh private beta domain, for example `puffinpost.app`. Set its exact HTTPS origin aside for `APP_ORIGIN`.
 - [ ] Create a separate Cloudflare D1 database for production and a private R2 bucket for icons. Do not reuse local resources.
 - [ ] Obtain a Tumblr OAuth 1.0a consumer key/secret with the callback URL `https://YOUR_DOMAIN/api/tumblr/callback`.
 - [ ] Verify Resend has a sending domain and exact `MAIL_FROM` address for magic links. The address must be verified before deployment; `noreply@example.com` and any local example are not valid production senders.
@@ -25,7 +25,7 @@ Copy `wrangler.jsonc` to a private deployment-only configuration (or replace the
 - the production D1 `database_id` and `database_name`;
 - the production R2 `bucket_name`;
 - `APP_ORIGIN` to the exact HTTPS beta origin;
-- `MAIL_FROM` to a Resend-verified sender, for example `Threadums <noreply@YOUR_VERIFIED_RESEND_DOMAIN>`;
+- `MAIL_FROM` to a Resend-verified sender, for example `Puffin Post <noreply@YOUR_VERIFIED_RESEND_DOMAIN>`;
 - the Worker/custom-domain name chosen for the beta.
 
 `MAIL_FROM` is an ordinary non-secret Worker variable. In the private production configuration, it belongs beside `APP_ORIGIN`, never in a secret command:
@@ -33,7 +33,7 @@ Copy `wrangler.jsonc` to a private deployment-only configuration (or replace the
 ```jsonc
 "vars": {
   "APP_ORIGIN": "https://YOUR_BETA_DOMAIN",
-  "MAIL_FROM": "Threadums <noreply@YOUR_VERIFIED_RESEND_DOMAIN>"
+  "MAIL_FROM": "Puffin Post <noreply@YOUR_VERIFIED_RESEND_DOMAIN>"
 }
 ```
 
