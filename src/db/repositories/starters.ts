@@ -1,6 +1,15 @@
 import type { WorkspaceScope } from '../client'
 import { requireMembership } from './workspaces'
 
+export async function getStarter(scope: WorkspaceScope, id: string): Promise<Starter> {
+  await requireMembership(scope.db, scope.userId, scope.workspaceId)
+  const starter = await scope.db.prepare(`SELECT id, workspace_id AS workspaceId, character_id AS characterId,
+    title, source, root_post_id AS rootPostId, root_blog_id AS rootBlogId, description, created_at AS createdAt
+    FROM starters WHERE workspace_id = ? AND id = ?`).bind(scope.workspaceId,id).first<Starter>()
+  if (!starter) throw new Error('Starter not found')
+  return starter
+}
+
 export interface Starter {
   id: string
   workspaceId: string

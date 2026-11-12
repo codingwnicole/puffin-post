@@ -29,6 +29,8 @@ export interface CreateReplyBranchInput extends WorkspaceScope {
 
 export interface InboxQuery extends WorkspaceScope {
   status?: ReplyStatus
+  starterId?: string
+  includeArchived?: boolean
 }
 
 export interface InboxBranch extends ReplyBranch {
@@ -86,8 +88,27 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
     JOIN starters s ON s.workspace_id = b.workspace_id AND s.id = b.starter_id
     JOIN characters c ON c.workspace_id = s.workspace_id AND c.id = s.character_id
     LEFT JOIN partners p ON p.workspace_id = b.workspace_id AND p.id = b.partner_id
-    WHERE b.workspace_id = ? AND ${status === undefined ? 'b.archived_at IS NULL' : 'b.status = ?'}
+    WHERE b.workspace_id = ? AND ${status === undefined ? (input.includeArchived ? '1 = 1' : 'b.archived_at IS NULL') : 'b.status = ?'}
+      ${input.starterId ? 'AND b.starter_id = ?' : ''}
     ORDER BY COALESCE(b.last_activity_at, b.created_at) DESC, b.id
-  `).bind(...(status === undefined ? [workspaceId] : [workspaceId, status])).all<InboxBranch>()
+  `).bind(...[workspaceId, ...(status === undefined ? [] : [status]), ...(input.starterId ? [input.starterId] : [])]).all<InboxBranch>()
   return result.results
+}
+
+export async function updateReplyBranch(scope: WorkspaceScope, id: string,
+  patch: { partnerId?: string | null; status?: ReplyStatus; notes?: string }): Promise<ReplyBranch> {
+  await requireMembership(scope.db,scope.userId,scope.workspaceId)
+  if (patch.partnerId != null && !await scope.db.prepare('SELECT id FROM partners WHERE workspace_id=? AND id=?')
+    .bind(scope.workspaceId,patch.partnerId).first()) throw new Error('Partner not found')
+  if (patch.status !== undefined && !REPLY_STATUSES.includes(patch.status)) throw new Error('Invalid reply status')
+  const result = await scope.db.prepare(`UPDATE reply_branches SET
+    partner_id = CASE WHEN ? THEN ? ELSE partner_id END,
+    notes = CASE WHEN ? THEN ? ELSE notes END,
+    status = COALESCE(?,status),
+    archived_at = CASE WHEN ? = 'archived' THEN COALESCE(archived_at,?) WHEN ? IS NOT NULL THEN NULL ELSE archived_at END
+    WHERE workspace_id=? AND id=? RETURNING id`)
+    .bind(patch.partnerId !== undefined,patch.partnerId ?? null,patch.notes !== undefined,patch.notes ?? null,
+      patch.status ?? null,patch.status ?? null,new Date().toISOString(),patch.status ?? null,scope.workspaceId,id).first()
+  if (!result) throw new Error('Branch not found')
+  return (await listInboxBranches({ ...scope, includeArchived: true })).find(b => b.id === id)!
 }

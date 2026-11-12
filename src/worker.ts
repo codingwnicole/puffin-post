@@ -3,6 +3,10 @@ import { HTTPException } from 'hono/http-exception'
 import { resendMailSender, type MailSender } from './auth/magic-links'
 import { authRoutes } from './routes/auth'
 import { inviteRoutes } from './routes/invites'
+import { ZodError } from 'zod'
+import { starterRoutes } from './routes/starters'
+import { branchRoutes } from './routes/branches'
+import { replyDraftRoutes } from './routes/reply-drafts'
 
 export interface Env {
   DB: D1Database
@@ -34,11 +38,17 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
       return response
     }
     if (error instanceof SyntaxError) return c.json({ error: 'Invalid request body' }, 400)
+    if (error instanceof ZodError) return c.json({ error: 'Invalid request body or query' },400)
+    if (['Starter not found','Branch not found','Draft not found','Character not found','Partner not found'].includes(error.message)) return c.json({ error: error.message },404)
+    if (['Draft is archived','Draft is already converted'].includes(error.message)) return c.json({ error: error.message },409)
     return c.json({ error: 'Request failed' }, 500)
   })
   const sender = options.mailSender ?? resendMailSender(env)
   app.route('/api/auth', authRoutes(env, sender))
   app.route('/api/workspaces', inviteRoutes(env, sender))
+  app.route('/api/starters', starterRoutes())
+  app.route('/api', branchRoutes())
+  app.route('/api/reply-drafts', replyDraftRoutes())
   return app
 }
 
