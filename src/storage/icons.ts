@@ -13,9 +13,9 @@ export async function putCharacterIcon(input: IconUploadInput) {
   if (!input.file.size || input.file.size > MAX_BYTES) throw new Error('icon exceeds 2 MB limit')
   const character = await input.db.prepare('SELECT id,icon_object_key AS iconObjectKey FROM characters WHERE workspace_id=? AND id=?').bind(input.workspaceId,input.characterId).first<{id:string;iconObjectKey:string|null}>()
   if (!character) throw new Error('Character not found')
+  const contentType = await validatedRasterType(input.file)
   const key = `characters/${input.workspaceId}/${input.characterId}/${crypto.randomUUID()}`
-  await input.db.prepare('UPDATE characters SET icon_object_key=? WHERE workspace_id=? AND id=?').bind(key,input.workspaceId,input.characterId).run()
-  return { objectKey:key, body:input.file.stream(), contentType:input.file.type }
+  return { objectKey:key, previousObjectKey:character.iconObjectKey, body:input.file.stream(), contentType }
 }
 
 export async function getAuthorizedCharacterIcon(input: IconReadInput) {
@@ -26,3 +26,14 @@ export async function getAuthorizedCharacterIcon(input: IconReadInput) {
 }
 
 export const iconContentTypeAllowed = (type:string) => ALLOWED.has(type)
+
+export async function validatedRasterType(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.slice(0, 32).arrayBuffer())
+  const matches = (...signature:number[]) => signature.every((value,index) => bytes[index] === value)
+  if (matches(0xff,0xd8,0xff)) return 'image/jpeg'
+  if (matches(0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a)) return 'image/png'
+  if (matches(0x47,0x49,0x46,0x38,0x37,0x61) || matches(0x47,0x49,0x46,0x38,0x39,0x61)) return 'image/gif'
+  if (matches(0x52,0x49,0x46,0x46) && matchesAt(bytes,8,0x57,0x45,0x42,0x50)) return 'image/webp'
+  throw new Error('unsupported image type')
+}
+function matchesAt(bytes:Uint8Array, start:number, ...signature:number[]) { return signature.every((value,index)=>bytes[start+index]===value) }
