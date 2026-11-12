@@ -38,8 +38,9 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
     // Browsers can omit Origin on a regular same-site HTML form submission. This
     // one endpoint is safe to permit without it: it requires an unguessable,
     // single-use token that was delivered to the recipient's email address.
-    const allowsOriginlessConfirmation = isMagicLinkConfirmation && !c.req.header('origin')
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) && c.req.header('origin') !== env.APP_ORIGIN && !allowsOriginlessConfirmation) {
+    const origin = c.req.header('origin')
+    const allowsOriginlessConfirmation = isMagicLinkConfirmation && (!origin || origin === 'null')
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) && origin !== env.APP_ORIGIN && !allowsOriginlessConfirmation) {
       throw new HTTPException(403, { message: 'Invalid request origin' })
     }
     await next()
