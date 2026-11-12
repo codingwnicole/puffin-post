@@ -61,3 +61,49 @@ test('creates a shared starter and adds a participant without duplicating it', a
   await expect(page.getByText('Shared by every branch')).toBeVisible()
   expect(added).toEqual({ partnerId:'p',notes:'Only for this participant' })
 })
+
+test('direct starter navigation updates the record and participant action target', async ({ page }) => {
+  const fetched: string[] = [], targets: string[] = []
+  await page.route('**/api/**',async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/starters/options') return route.fulfill({ json:{ characters:[],partners:[] } })
+    const match = /^\/api\/starters\/(one|two)(\/branches)?$/.exec(path)
+    if (!match) return route.fulfill({ status:404 })
+    if (match[2]) { targets.push(match[1]); return route.fulfill({ status:201,json:{ id:'branch' } }) }
+    fetched.push(match[1])
+    return route.fulfill({ json:{ starter:{ id:match[1],title:`Starter ${match[1]}`,description:`Scene ${match[1]}`,rootBlogId:'writer.tumblr.com',rootPostId:'123' },branches:[] } })
+  })
+  await page.goto('/#starter/one')
+  await expect(page.getByRole('heading',{ name:'Starter one',exact:true })).toBeVisible()
+  await page.evaluate(() => { location.hash = 'starter/two' })
+  await expect(page.getByRole('heading',{ name:'Starter two',exact:true })).toBeVisible()
+  await expect(page.getByText('Scene two',{ exact:true })).toBeVisible()
+  expect(fetched).toContain('two')
+  await page.getByLabel('Branch notes').fill('For the second scene')
+  await page.getByRole('button',{ name:'Add branch',exact:true }).click()
+  await expect.poll(() => targets).toEqual(['two'])
+  await expect(page.getByRole('heading',{ name:'Starter one',exact:true })).toHaveCount(0)
+})
+
+test('a delayed previous starter response cannot overwrite the current starter', async ({ page }) => {
+  let releasePrevious!: () => void
+  const previousPending = new Promise<void>(resolve => { releasePrevious = resolve })
+  await page.route('**/api/**',async route => {
+    const path = new URL(route.request().url()).pathname
+    if (path === '/api/starters/options') return route.fulfill({ json:{ characters:[],partners:[] } })
+    const id = path.split('/').at(-1)!
+    if (id === 'one') await previousPending
+    return route.fulfill({ json:{ starter:{ id,title:`Starter ${id}`,description:`Scene ${id}` },branches:[] } })
+  })
+  const previousRequest = page.waitForRequest('**/api/starters/one')
+  await page.goto('/#starter/one')
+  await previousRequest
+  await page.evaluate(() => { location.hash = 'starter/two' })
+  await expect(page.getByRole('heading',{ name:'Starter two',exact:true })).toBeVisible()
+  const oldResponse = page.waitForResponse('**/api/starters/one')
+  releasePrevious()
+  await (await oldResponse).finished()
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  await expect(page.getByRole('heading',{ name:'Starter two',exact:true })).toBeVisible()
+  await expect(page.getByText('Scene one',{ exact:true })).toHaveCount(0)
+})
