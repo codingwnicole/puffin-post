@@ -48,6 +48,7 @@
 | `src/refresh/*.ts` | Fair cursor selection and scheduled refresh runner |
 | `src/storage/icons.ts` | R2 image validation, object key and authorized streaming |
 | `src/export/csv.ts` | Formula-safe CSV serializer |
+| `src/routes/reply-drafts.ts`, `src/web/pages/ReplyParkingLotPage.tsx` | Manual owed-reply queue and safe conversion into tracked Tumblr work |
 | `src/web/*` | React application, theme state, page components, API client, styles |
 | `tests/unit/*`, `tests/integration/*`, `tests/e2e/*` | Unit, Worker/D1, and browser tests |
 
@@ -241,16 +242,17 @@ git add src/web tests/unit/theme.test.ts tests/e2e/theme.spec.ts
 git commit -m "feat: add responsive themed application shell"
 ```
 
-### Task 5: Deliver starter and multi-reply branch tracking
+### Task 5: Deliver starter, multi-reply branch, and reply-parking-lot tracking
 
 **Files:**
-- Create: `src/routes/starters.ts`, `src/routes/branches.ts`, `src/web/components/BranchRow.tsx`, `src/web/components/StarterBranches.tsx`, `src/web/pages/StarterPage.tsx`
+- Create: `src/db/migrations/0003_reply_drafts.sql`, `src/db/repositories/reply-drafts.ts`, `src/routes/starters.ts`, `src/routes/branches.ts`, `src/routes/reply-drafts.ts`, `src/web/components/BranchRow.tsx`, `src/web/components/StarterBranches.tsx`, `src/web/pages/StarterPage.tsx`, `src/web/pages/ReplyParkingLotPage.tsx`
 - Modify: `src/web/pages/InboxPage.tsx`, `src/worker.ts`
-- Create: `tests/integration/branches.test.ts`, `tests/e2e/multi-reply-starter.spec.ts`
+- Create: `tests/integration/branches.test.ts`, `tests/integration/reply-drafts.test.ts`, `tests/e2e/multi-reply-starter.spec.ts`, `tests/e2e/reply-parking-lot.spec.ts`
 
 **Interfaces:**
 - Consumes: `createStarter`, `createReplyBranch`, `listInboxBranches`.
 - Produces: `POST /api/starters`, `POST /api/starters/:starterId/branches`, `PATCH /api/branches/:branchId`, `GET /api/inbox`.
+- Produces: `POST /api/reply-drafts`, `PATCH /api/reply-drafts/:draftId`, `POST /api/reply-drafts/:draftId/convert`, `GET /api/reply-drafts`.
 
 - [ ] **Step 1: Write failing multi-reply tests**
 
@@ -277,11 +279,19 @@ Validate requests with Zod. Allow branch-level partner, status, notes, and archi
 
 Inbox groups visually only when helpful but counts every branch independently. Starter detail presents shared metadata and a participant-branch list with add-branch control.
 
-- [ ] **Step 5: Verify independent branch actionability**
+- [ ] **Step 4a: Implement the manual Reply Parking Lot and atomic conversion**
 
-Run: `npm test -- tests/integration/branches.test.ts && npx playwright test tests/e2e/multi-reply-starter.spec.ts`
+Create a workspace-scoped draft with optional character/partner, notes, source URL, and reminder. Conversion accepts the required Tumblr starter reference and optional branch data, creates the Starter/ReplyBranch in one transaction, marks the draft `converted`, stores the created IDs, and returns the existing conversion on retry rather than duplicating data. No Discord API, credential, or automated DM reading is added.
 
-Expected: changing one branch to archived does not change sibling branches; three active branches produce three Your Turn counts.
+- [ ] **Step 4b: Implement the Reply Parking Lot UI**
+
+Show open/overdue drafts, reminder date, optional source-link button, notes preview, archive action, and a conversion form that keeps the draft notes as branch notes unless the user edits them.
+
+- [ ] **Step 5: Verify independent branch actionability and draft conversion**
+
+Run: `npm test -- tests/integration/branches.test.ts tests/integration/reply-drafts.test.ts && npx playwright test tests/e2e/multi-reply-starter.spec.ts tests/e2e/reply-parking-lot.spec.ts`
+
+Expected: changing one branch to archived does not change sibling branches; three active branches produce three Your Turn counts; a converted draft cannot create a duplicate starter/branch, retains its notes, and remains private to its workspace.
 
 - [ ] **Step 6: Commit**
 

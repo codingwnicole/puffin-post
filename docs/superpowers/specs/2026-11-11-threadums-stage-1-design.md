@@ -15,6 +15,7 @@ The first launch is private/invite-only for testing with Liz's Tumblr blogs, whi
 - Optional character icons: uploaded portrait/icon when supplied, initials fallback otherwise.
 - Light/dark themes with three paired palettes (rose, violet, ocean); respect system preference on first visit.
 - Quick add, edit, archive, restore, filtering, search, tags, and CSV export.
+- A manual Reply Parking Lot for owed DMs and unposted starters, with notes, an optional reminder date, an optional source link, and one-way conversion into a Tumblr starter/branch once posted.
 - Background refreshes that identify new Tumblr activity for tracked posts and update the thread state without posting or modifying Tumblr content.
 - Owner-controlled invite-only access at launch.
 
@@ -71,6 +72,7 @@ All user-owned rows include `workspace_id`; every database query must scope thro
 | Reply branch | workspace ID, starter ID, optional partner ID, status, branch notes, latest Tumblr post ID, last poster, last activity timestamp, last refresh timestamp, archived timestamp |
 | Starter tag | starter ID, tag ID |
 | Activity | workspace ID, starter ID, optional reply branch ID, type, actor/source, metadata JSON, timestamp |
+| Reply draft | workspace ID, optional character ID, optional partner ID, title, notes, optional source URL, optional reminder timestamp, state (`open` / `converted` / `archived`), converted starter/branch IDs, timestamps |
 | Refresh cursor | character blog ID, newest scanned post timestamp/ID, last successful refresh, error state |
 
 ## Tumblr behavior
@@ -103,6 +105,7 @@ All user-owned rows include `workspace_id`; every database query must scope thro
 |---|---|
 | Sign in / invitation acceptance | Join the private beta safely |
 | Inbox | See and act on reply branches needing a response; rows identify their shared starter |
+| Reply Parking Lot | Log owed DMs and unposted starters, see overdue reminders, open the source link, and convert an item into a posted Tumblr starter/branch |
 | Your turn / Their turn / Queued / Archive | Dedicated filtered views, all backed by the reply-branch query model |
 | Starter detail | Edit shared metadata/tags/source and see every participant branch |
 | Reply branch detail | Edit the branch partner, status, notes, source link, activity history, archive/restore |
@@ -124,7 +127,7 @@ All user-owned rows include `workspace_id`; every database query must scope thro
 
 ## Testing and acceptance
 
-- Unit tests: status transitions, starter/branch isolation, ownership checks, Tumblr URL/post-ID parsing, export escaping, palette persistence, initials fallback.
+- Unit tests: status transitions, starter/branch isolation, draft conversion/idempotency, ownership checks, Tumblr URL/post-ID parsing, export escaping, palette persistence, initials fallback.
 - Integration tests: invite acceptance, workspace isolation, OAuth callback state validation with mocked Tumblr responses, thread creation/refresh state updates.
 - Browser checks: keyboard navigation, narrow mobile layout, light/dark contrast, icon upload/removal, and no client-side secret exposure.
 - Real beta test: Liz connects test Tumblr blogs, creates several characters, a multi-reply open starter, and individual reply branches; posts/reblogs test replies; verifies refresh behavior and manual overrides before additional invites.
