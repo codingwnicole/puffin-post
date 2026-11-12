@@ -13,6 +13,7 @@ import { runRefreshBatch } from './refresh/runner'
 import { characterRoutes } from './routes/characters'
 import { partnerRoutes } from './routes/partners'
 import { tagRoutes } from './routes/tags'
+import { exportRoutes } from './routes/export'
 
 export interface Env {
   DB: D1Database
@@ -60,6 +61,7 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   app.route('/api/characters', characterRoutes())
   app.route('/api/partners', partnerRoutes())
   app.route('/api/tags', tagRoutes())
+  app.route('/api', exportRoutes())
   return app
 }
 

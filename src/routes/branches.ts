@@ -11,6 +11,14 @@ export function branchRoutes() {
     const scope = await requireWorkspace(c)
     return c.json(await updateReplyBranch(scope,c.req.param('branchId'),branchSchema.parse(await c.req.json())))
   })
+  app.post('/branches/:branchId/archive', async c => {
+    const scope = await requireWorkspace(c)
+    return c.json(await updateReplyBranch(scope, c.req.param('branchId'), { status: 'archived' }))
+  })
+  app.post('/branches/:branchId/restore', async c => {
+    const scope = await requireWorkspace(c)
+    return c.json(await updateReplyBranch(scope, c.req.param('branchId'), { status: 'queued' }))
+  })
   app.get('/inbox', async c => {
     const scope = await requireWorkspace(c)
     const status = z.enum(['your_turn','their_turn','queued','archived']).optional().parse(c.req.query('status'))

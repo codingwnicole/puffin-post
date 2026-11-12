@@ -52,3 +52,23 @@ it('requires a selected connection and verifies its remote blog before starter c
   await fixture.env.DB.prepare("DELETE FROM character_blogs WHERE id='blog-a'").run()
   expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(400)
 })
+
+it('archives and restores only the requested branch through dedicated controls', async () => {
+  const starter = await (await fixture.request('/api/starters','POST',starterInput)).json() as any
+  const first = await (await fixture.request(`/api/starters/${starter.id}/branches`,'POST',{})).json() as any
+  const second = await (await fixture.request(`/api/starters/${starter.id}/branches`,'POST',{})).json() as any
+  expect((await fixture.request(`/api/branches/${first.id}/archive`,'POST',{})).status).toBe(200)
+  const all = await (await fixture.request(`/api/starters/${starter.id}`)).json() as any
+  expect(all.branches.find((branch:any) => branch.id === first.id).status).toBe('archived')
+  expect(all.branches.find((branch:any) => branch.id === second.id).status).not.toBe('archived')
+  expect((await fixture.request(`/api/branches/${first.id}/restore`,'POST',{})).status).toBe(200)
+})
+
+it('exports only active workspace rows with formula-safe cells', async () => {
+  const starter = await (await fixture.request('/api/starters','POST',{ ...starterInput, title: '=not-a-formula' })).json() as any
+  await fixture.request(`/api/starters/${starter.id}/branches`,'POST',{})
+  const response = await fixture.request('/api/export.csv')
+  expect(response.status).toBe(200)
+  expect(response.headers.get('content-type')).toContain('text/csv')
+  expect(await response.text()).toContain("'=not-a-formula")
+})
