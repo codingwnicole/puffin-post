@@ -34,11 +34,12 @@ export function authRoutes(env: Env, sender: MailSender) {
     try { identity = await links.inspectMagicLink(token) } catch {
       throw new HTTPException(400, { message: 'invalid magic link' })
     }
-    c.header('Content-Security-Policy', "default-src 'none'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+    const confirmationUrl = new URL('/api/auth/verify', env.APP_ORIGIN).toString()
+    c.header('Content-Security-Policy', `default-src 'none'; form-action ${env.APP_ORIGIN}; frame-ancestors 'none'; base-uri 'none'`)
     return c.html(html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Confirm Puffin Post sign-in</title></head><body><main>
       <h1>Sign in to Puffin Post</h1><p>Continue as <strong>${identity.email}</strong>?</p>
       <p>Continuing will sign this browser in to this account and replace any current sign-in.</p>
-      <form method="post" action="/api/auth/verify"><input type="hidden" name="token" value="${token}"><button type="submit">Continue as ${identity.email}</button></form>
+      <form method="post" action="${confirmationUrl}"><input type="hidden" name="token" value="${token}"><button type="submit">Continue as ${identity.email}</button></form>
       </main></body></html>`)
   })
   app.post('/verify', async (c) => {
