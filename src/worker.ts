@@ -35,12 +35,12 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
     c.header('Cache-Control', 'no-store')
     c.header('Referrer-Policy', 'no-referrer')
     const isMagicLinkConfirmation = c.req.method === 'POST' && c.req.path === '/api/auth/verify'
-    // Browsers can omit Origin on a regular same-site HTML form submission. This
-    // one endpoint is safe to permit without it: it requires an unguessable,
-    // single-use token that was delivered to the recipient's email address.
+    // Magic-link confirmation is protected by the unguessable, single-use token
+    // in its form. Do not depend on Origin here: mail clients and browser privacy
+    // modes legitimately send several incompatible values for a form opened from
+    // an email link. Every other state-changing route remains same-origin only.
     const origin = c.req.header('origin')
-    const allowsOriginlessConfirmation = isMagicLinkConfirmation && (!origin || origin === 'null')
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) && origin !== env.APP_ORIGIN && !allowsOriginlessConfirmation) {
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(c.req.method) && !isMagicLinkConfirmation && origin !== env.APP_ORIGIN) {
       throw new HTTPException(403, { message: 'Invalid request origin' })
     }
     await next()

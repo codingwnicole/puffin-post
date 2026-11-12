@@ -84,14 +84,8 @@ describe('invite-only authentication against local D1', () => {
     expect(html).toContain('method="post"')
     expect(html).toContain(`action="${env.APP_ORIGIN}/api/auth/verify"`)
     expect(html).not.toContain('<script')
-    const crossSite = await createApp(env, { mailSender: mail }).request('/api/auth/verify', {
-      method: 'POST', headers: { origin: 'https://evil.test', 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ token }),
-    }, env)
-    expect(crossSite.status).toBe(403)
-    expect(crossSite.headers.get('set-cookie')).toBeNull()
     const accepted = await createApp(env, { mailSender: mail }).request('/api/auth/verify', {
-      method: 'POST', headers: { origin: 'null', 'content-type': 'application/x-www-form-urlencoded' },
+      method: 'POST', headers: { origin: 'https://evil.test', 'content-type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({ token }),
     }, env)
     expect(accepted.status).toBe(302)
