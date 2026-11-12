@@ -21,3 +21,7 @@ Focused tests and production build pass (6 tests). No live credentials or reques
 Tumblr starter creation now requires a selected connected character blog. The connections API returns only sanitized cached blog identifiers, and a compact Connections screen links account authorization to the returned-blog list.
 
 `npm.cmd run build` and `git diff --check` passed.
+
+## Verification update
+
+The tracking integration fixture now supplies encrypted test connection credentials and mocked Tumblr post replies. Regression coverage confirms a selected connected blog succeeds, a different blog fails, and removing the character's selected blog fails. `branches` and `reply-drafts` integration suites passed (7 tests).

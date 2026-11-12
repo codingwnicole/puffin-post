@@ -22,6 +22,8 @@ export function starterRoutes() {
   app.post('/', async c => {
     const scope = await requireWorkspace(c)
     const input = starterSchema.parse(await c.req.json())
+    const character = await scope.db.prepare('SELECT id FROM characters WHERE workspace_id=? AND id=?').bind(scope.workspaceId,input.characterId).first()
+    if (!character) throw new HTTPException(404, { message:'Character not found' })
     const blogs = await scope.db.prepare(`SELECT cb.blog_identifier, tc.token_encrypted, tc.token_secret_encrypted
       FROM character_blogs cb JOIN tumblr_connections tc ON tc.id=cb.tumblr_connection_id AND tc.workspace_id=cb.workspace_id
       WHERE cb.workspace_id=? AND cb.character_id=?`).bind(scope.workspaceId, input.characterId).all<{ blog_identifier:string; token_encrypted:string; token_secret_encrypted:string }>()

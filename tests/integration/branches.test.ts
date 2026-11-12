@@ -46,10 +46,9 @@ it('validates payloads and denies foreign references and anonymous requests', as
   expect((await fixture.request('/api/inbox?status=invalid')).status).toBe(400)
 })
 
-it('rejects a connected character starter from a different blog', async () => {
-  await fixture.env.DB.batch([
-    fixture.env.DB.prepare("INSERT INTO tumblr_connections (id,workspace_id,token_encrypted,token_secret_encrypted) VALUES ('connection-a','a','cipher','cipher')"),
-    fixture.env.DB.prepare("INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label) VALUES ('blog-a','a','character-a','connection-a','mine.tumblr.com','Mine')"),
-  ])
+it('requires a selected connection and verifies its remote blog before starter creation', async () => {
   expect((await fixture.request('/api/starters','POST',{ ...starterInput, rootBlogId:'other.tumblr.com' })).status).toBe(400)
+  expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(201)
+  await fixture.env.DB.prepare("DELETE FROM character_blogs WHERE id='blog-a'").run()
+  expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(400)
 })
