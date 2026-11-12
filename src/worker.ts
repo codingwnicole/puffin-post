@@ -9,6 +9,7 @@ import { branchRoutes } from './routes/branches'
 import { replyDraftRoutes } from './routes/reply-drafts'
 import { tumblrRoutes } from './routes/tumblr'
 import { connectionRoutes } from './routes/connections'
+import { runRefreshBatch } from './refresh/runner'
 
 export interface Env {
   DB: D1Database
@@ -60,7 +61,7 @@ export default {
   fetch(request, env, ctx) {
     return createApp(env).fetch(request, env, ctx)
   },
-  scheduled() {
-    // Refresh processing is added in the scheduled-refresh task.
+  scheduled(_event, env, ctx) {
+    ctx.waitUntil(runRefreshBatch(env, new Date(), 20))
   },
 } satisfies ExportedHandler<Env>

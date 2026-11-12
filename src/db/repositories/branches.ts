@@ -13,6 +13,8 @@ export interface ReplyBranch {
   lastPoster: string | null
   lastActivityAt: string | null
   lastRefreshAt: string | null
+  refreshError: string | null
+  statusManualOverrideAt: string | null
   archivedAt: string | null
   createdAt: string
 }
@@ -62,7 +64,8 @@ export async function createReplyBranch(input: CreateReplyBranchInput): Promise<
     id: crypto.randomUUID(), workspaceId, starterId: input.starterId, partnerId: input.partnerId ?? null,
     status, notes: input.notes ?? '', latestPostId: input.latestPostId ?? null,
     lastPoster: input.lastPoster ?? null, lastActivityAt: input.lastActivityAt ?? null,
-    lastRefreshAt: null, archivedAt: status === 'archived' ? createdAt : null, createdAt,
+    lastRefreshAt: null, refreshError: null, statusManualOverrideAt: null,
+    archivedAt: status === 'archived' ? createdAt : null, createdAt,
   }
   await db.prepare(`
     INSERT INTO reply_branches (id, workspace_id, starter_id, partner_id, status, notes,
@@ -81,6 +84,7 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
     SELECT b.id, b.workspace_id AS workspaceId, b.starter_id AS starterId, b.partner_id AS partnerId,
       b.status, b.notes, b.latest_post_id AS latestPostId, b.last_poster AS lastPoster,
       b.last_activity_at AS lastActivityAt, b.last_refresh_at AS lastRefreshAt,
+      b.refresh_error AS refreshError, b.status_manual_override_at AS statusManualOverrideAt,
       b.archived_at AS archivedAt, b.created_at AS createdAt, s.title, s.character_id AS characterId,
       c.name AS characterName, c.icon_object_key AS iconObjectKey,
       s.source, s.root_post_id AS rootPostId, s.root_blog_id AS rootBlogId, p.display_label AS partnerLabel
@@ -105,10 +109,11 @@ export async function updateReplyBranch(scope: WorkspaceScope, id: string,
     partner_id = CASE WHEN ? THEN ? ELSE partner_id END,
     notes = CASE WHEN ? THEN ? ELSE notes END,
     status = COALESCE(?,status),
-    archived_at = CASE WHEN ? = 'archived' THEN COALESCE(archived_at,?) WHEN ? IS NOT NULL THEN NULL ELSE archived_at END
+    archived_at = CASE WHEN ? = 'archived' THEN COALESCE(archived_at,?) WHEN ? IS NOT NULL THEN NULL ELSE archived_at END,
+    status_manual_override_at = CASE WHEN ? IS NOT NULL THEN ? ELSE status_manual_override_at END
     WHERE workspace_id=? AND id=? RETURNING id`)
     .bind(patch.partnerId !== undefined,patch.partnerId ?? null,patch.notes !== undefined,patch.notes ?? null,
-      patch.status ?? null,patch.status ?? null,new Date().toISOString(),patch.status ?? null,scope.workspaceId,id).first()
+      patch.status ?? null,patch.status ?? null,new Date().toISOString(),patch.status ?? null,patch.status ?? null,new Date().toISOString(),scope.workspaceId,id).first()
   if (!result) throw new Error('Branch not found')
   return (await listInboxBranches({ ...scope, includeArchived: true })).find(b => b.id === id)!
 }
