@@ -15,3 +15,9 @@ Commit: `30ffcba feat: add Tumblr OAuth connection safety`. No live Tumblr crede
 OAuth state is now embedded in the signed OAuth 1 callback URL, rather than a Tumblr authorization parameter. Callback exchanges load and persist the authenticated account's returned blog list. Character-blog assignment rejects blogs outside that cached list. Connected starter creation decrypts its assigned connection and verifies the remote normalized Tumblr post before persistence.
 
 Focused tests and production build pass (6 tests). No live credentials or requests were used.
+
+## Fix round 2
+
+Tumblr starter creation now requires a selected connected character blog. The connections API returns only sanitized cached blog identifiers, and a compact Connections screen links account authorization to the returned-blog list.
+
+`npm.cmd run build` and `git diff --check` passed.

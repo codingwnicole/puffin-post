@@ -22,12 +22,11 @@ export function starterRoutes() {
   app.post('/', async c => {
     const scope = await requireWorkspace(c)
     const input = starterSchema.parse(await c.req.json())
-    // A connected character may only create starters from one of its selected blogs.
-    // Empty legacy/manual setups stay usable until the connection wizard attaches a blog.
     const blogs = await scope.db.prepare(`SELECT cb.blog_identifier, tc.token_encrypted, tc.token_secret_encrypted
       FROM character_blogs cb JOIN tumblr_connections tc ON tc.id=cb.tumblr_connection_id AND tc.workspace_id=cb.workspace_id
       WHERE cb.workspace_id=? AND cb.character_id=?`).bind(scope.workspaceId, input.characterId).all<{ blog_identifier:string; token_encrypted:string; token_secret_encrypted:string }>()
-    if (blogs.results.length && !blogs.results.some(blog => canonicalBlogIdentifier(blog.blog_identifier) === canonicalBlogIdentifier(input.rootBlogId))) {
+    if (!blogs.results.length) throw new HTTPException(400, { message:'Connect a Tumblr blog to this character before tracking a starter' })
+    if (!blogs.results.some(blog => canonicalBlogIdentifier(blog.blog_identifier) === canonicalBlogIdentifier(input.rootBlogId))) {
       throw new HTTPException(400, { message:'Post does not belong to the selected blog' })
     }
     const assigned = blogs.results.find(blog => canonicalBlogIdentifier(blog.blog_identifier) === canonicalBlogIdentifier(input.rootBlogId))

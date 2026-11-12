@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import ThemeMenu from './ThemeMenu'
 
-export type AppPage = 'inbox' | 'characters' | 'settings' | 'parking-lot' | 'starter'
+export type AppPage = 'inbox' | 'characters' | 'settings' | 'parking-lot' | 'connections' | 'starter'
 
 export default function AppShell({ page, children }: { page: AppPage; children: ReactNode }) {
   return (
@@ -16,7 +16,7 @@ export default function AppShell({ page, children }: { page: AppPage; children: 
         <span className="beta-label">Private beta</span>
       </header>
       <nav className="primary-nav" aria-label="Primary">
-        {(['inbox', 'parking-lot', 'characters', 'settings'] as const).map(item => (
+        {(['inbox', 'parking-lot', 'characters', 'connections', 'settings'] as const).map(item => (
           <a key={item} href={`#${item}`} aria-current={page === item ? 'page' : undefined}>
             <span aria-hidden="true">{item === 'inbox' ? '▤' : item === 'characters' ? '♧' : '⚙'}</span>
             {item === 'parking-lot' ? 'Reply Parking Lot' : item[0].toUpperCase() + item.slice(1)}

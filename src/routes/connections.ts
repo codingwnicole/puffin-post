@@ -7,8 +7,11 @@ export function connectionRoutes() {
   const app = new Hono<{ Bindings: Env }>()
   app.get('/', async c => {
     const scope = await requireWorkspace(c)
-    const rows = await scope.db.prepare('SELECT id,status,created_at AS createdAt FROM tumblr_connections WHERE workspace_id=? ORDER BY created_at DESC').bind(scope.workspaceId).all()
-    return c.json(rows.results)
+    const rows = await scope.db.prepare('SELECT id,status,created_at AS createdAt,account_metadata_json FROM tumblr_connections WHERE workspace_id=? ORDER BY created_at DESC').bind(scope.workspaceId).all<{id:string;status:string;createdAt:string;account_metadata_json:string}>()
+    return c.json(rows.results.map(({ account_metadata_json, ...connection }) => {
+      let blogs: string[] = []; try { blogs = JSON.parse(account_metadata_json).blogs ?? [] } catch { /* no assignable blogs */ }
+      return { ...connection, blogs: blogs.map(canonicalBlogIdentifier) }
+    }))
   })
   app.post('/:connectionId/blogs', async c => {
     const scope = await requireWorkspace(c)
