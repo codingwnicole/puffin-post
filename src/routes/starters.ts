@@ -4,6 +4,8 @@ import { requireWorkspace } from '../auth/sessions'
 import { createStarter, getStarter } from '../db/repositories/starters'
 import { createReplyBranch, listInboxBranches } from '../db/repositories/branches'
 import { branchSchema, starterSchema } from './tracking-validation'
+import { canonicalBlogIdentifier } from '../tumblr/normalize'
+import { HTTPException } from 'hono/http-exception'
 
 export function starterRoutes() {
   const app = new Hono<{ Bindings: Env }>()
@@ -17,7 +19,15 @@ export function starterRoutes() {
   })
   app.post('/', async c => {
     const scope = await requireWorkspace(c)
-    return c.json(await createStarter({ ...scope,...starterSchema.parse(await c.req.json()) }),201)
+    const input = starterSchema.parse(await c.req.json())
+    // A connected character may only create starters from one of its selected blogs.
+    // Empty legacy/manual setups stay usable until the connection wizard attaches a blog.
+    const blogs = await scope.db.prepare('SELECT blog_identifier FROM character_blogs WHERE workspace_id=? AND character_id=?')
+      .bind(scope.workspaceId, input.characterId).all<{ blog_identifier:string }>()
+    if (blogs.results.length && !blogs.results.some(blog => canonicalBlogIdentifier(blog.blog_identifier) === canonicalBlogIdentifier(input.rootBlogId))) {
+      throw new HTTPException(400, { message:'Post does not belong to the selected blog' })
+    }
+    return c.json(await createStarter({ ...scope,...input }),201)
   })
   app.get('/:starterId', async c => {
     const scope = await requireWorkspace(c), id = c.req.param('starterId')

@@ -7,6 +7,8 @@ import { ZodError } from 'zod'
 import { starterRoutes } from './routes/starters'
 import { branchRoutes } from './routes/branches'
 import { replyDraftRoutes } from './routes/reply-drafts'
+import { tumblrRoutes } from './routes/tumblr'
+import { connectionRoutes } from './routes/connections'
 
 export interface Env {
   DB: D1Database
@@ -49,6 +51,8 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   app.route('/api/starters', starterRoutes())
   app.route('/api', branchRoutes())
   app.route('/api/reply-drafts', replyDraftRoutes())
+  app.route('/api/tumblr', tumblrRoutes())
+  app.route('/api/connections', connectionRoutes())
   return app
 }
 

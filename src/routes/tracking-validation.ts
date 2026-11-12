@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { canonicalBlogIdentifier, parseTumblrPostReference } from '../tumblr/normalize'
 
 export const reference = z.string().trim().min(1).max(200)
 export const branchSchema = z.object({
@@ -11,6 +12,12 @@ export const starterSchema = z.object({
   rootPostId: z.string().regex(/^\d{1,30}$/), rootBlogId: reference,
   description: z.string().max(20000).optional(),
 }).strict()
+
+export function validateStarterPost(input: { selectedBlogIdentifier: string; postUrl: string }) {
+  const post = parseTumblrPostReference(input.postUrl)
+  if (post.blogIdentifier !== canonicalBlogIdentifier(input.selectedBlogIdentifier)) throw new Error('Post does not belong to the selected blog')
+  return post
+}
 export const draftSchema = z.object({
   title: z.string().trim().min(1).max(300), notes: z.string().max(20000).optional(),
   characterId: reference.nullable().optional(), partnerId: reference.nullable().optional(),

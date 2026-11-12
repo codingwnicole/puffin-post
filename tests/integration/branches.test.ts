@@ -45,3 +45,12 @@ it('validates payloads and denies foreign references and anonymous requests', as
   expect((await fixture.request('/api/inbox','GET',undefined,'anonymous')).status).toBe(401)
   expect((await fixture.request('/api/inbox?status=invalid')).status).toBe(400)
 })
+
+it('rejects a connected character starter from a different blog', async () => {
+  await fixture.env.DB.batch([
+    fixture.env.DB.prepare("INSERT INTO tumblr_connections (id,workspace_id,token_encrypted,token_secret_encrypted) VALUES ('connection-a','a','cipher','cipher')"),
+    fixture.env.DB.prepare("INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label) VALUES ('blog-a','a','character-a','connection-a','mine.tumblr.com','Mine')"),
+  ])
+  expect((await fixture.request('/api/starters','POST',{ ...starterInput, rootBlogId:'other.tumblr.com' })).status).toBe(400)
+  expect((await fixture.request('/api/starters','POST',{ ...starterInput, rootBlogId:'mine.tumblr.com' })).status).toBe(201)
+})
