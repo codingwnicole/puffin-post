@@ -9,7 +9,7 @@ This runbook gets a private Worker beta online without putting credentials, Tumb
 - [ ] Create a fresh private beta subdomain, for example `threadums.example.com`. Set its exact HTTPS origin aside for `APP_ORIGIN`.
 - [ ] Create a separate Cloudflare D1 database for production and a private R2 bucket for icons. Do not reuse local resources.
 - [ ] Obtain a Tumblr OAuth 1.0a consumer key/secret with the callback URL `https://YOUR_DOMAIN/api/tumblr/callback`.
-- [ ] Verify Resend has a sending domain and address for magic links.
+- [ ] Verify Resend has a sending domain and exact `MAIL_FROM` address for magic links. The address must be verified before deployment; `noreply@example.com` and any local example are not valid production senders.
 
 ## Provision Cloudflare resources
 
@@ -25,7 +25,17 @@ Copy `wrangler.jsonc` to a private deployment-only configuration (or replace the
 - the production D1 `database_id` and `database_name`;
 - the production R2 `bucket_name`;
 - `APP_ORIGIN` to the exact HTTPS beta origin;
+- `MAIL_FROM` to a Resend-verified sender, for example `Threadums <noreply@YOUR_VERIFIED_RESEND_DOMAIN>`;
 - the Worker/custom-domain name chosen for the beta.
+
+`MAIL_FROM` is an ordinary non-secret Worker variable. In the private production configuration, it belongs beside `APP_ORIGIN`, never in a secret command:
+
+```jsonc
+"vars": {
+  "APP_ORIGIN": "https://YOUR_BETA_DOMAIN",
+  "MAIL_FROM": "Threadums <noreply@YOUR_VERIFIED_RESEND_DOMAIN>"
+}
+```
 
 Keep `remote: false` and the all-zero database ID in the committed config. This makes an accidental `wrangler deploy` from a fresh checkout fail instead of silently targeting a real database.
 
@@ -67,6 +77,7 @@ npx wrangler deploy --config .\wrangler.production.jsonc
 ## Beta acceptance checklist
 
 - [ ] Invite acceptance works once and only for its intended beta user.
+- [ ] Request a magic link from the production beta origin, receive it from the verified `MAIL_FROM` sender, and complete sign-in successfully.
 - [ ] Tumblr connect and reconnect both work; returned blogs can be attached to characters.
 - [ ] One starter supports three independent reply branches.
 - [ ] A new partner reblog/reply changes only its matching branch.
