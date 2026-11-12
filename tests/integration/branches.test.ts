@@ -53,6 +53,20 @@ it('requires a selected connection and verifies its remote blog before starter c
   expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(400)
 })
 
+it('allows a character to use multiple blogs from the same Tumblr account', async () => {
+  await fixture.env.DB.prepare("UPDATE tumblr_connections SET account_metadata_json=? WHERE id='connection-a'").bind(JSON.stringify({ blogs:['a.tumblr.com','a-sideblog.tumblr.com'] })).run()
+  const assigned = await fixture.request('/api/connections/connection-a/blogs','POST',{ characterId:'character-a', blogIdentifier:'a-sideblog.tumblr.com', displayLabel:'A sideblog' })
+  expect(assigned.status).toBe(201)
+  const duplicate = await fixture.request('/api/connections/connection-a/blogs','POST',{ characterId:'character-a', blogIdentifier:'a-sideblog.tumblr.com', displayLabel:'A sideblog' })
+  expect(duplicate.status).toBe(409)
+  const connections = await (await fixture.request('/api/connections')).json() as any[]
+  expect(connections[0]).toMatchObject({ blogs:['a.tumblr.com','a-sideblog.tumblr.com'] })
+  expect(connections[0].assignments).toEqual(expect.arrayContaining([
+    expect.objectContaining({ blogIdentifier:'a.tumblr.com', characterName:'Character a' }),
+    expect.objectContaining({ blogIdentifier:'a-sideblog.tumblr.com', characterName:'Character a' }),
+  ]))
+})
+
 it('archives and restores only the requested branch through dedicated controls', async () => {
   const starter = await (await fixture.request('/api/starters','POST',starterInput)).json() as any
   const first = await (await fixture.request(`/api/starters/${starter.id}/branches`,'POST',{})).json() as any
