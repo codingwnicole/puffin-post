@@ -13,6 +13,13 @@ import { latestDirectExchange } from '../tumblr/refresh'
 
 type Assignment = { id:string; characterId:string; characterTag:string|null; characterName:string }
 
+function compactThreadSummary(value?: string) {
+  if (!value) return ''
+  const cleaned = value.replace(/\s+/g, ' ').trim()
+  const sentences = cleaned.split(/(?<=[.!?])\s+/).slice(0, 2).join(' ')
+  return sentences.length > 360 ? `${sentences.slice(0, 357).trimEnd()}…` : sentences
+}
+
 export function starterRoutes() {
   const app = new Hono<{ Bindings:Env }>()
 
@@ -94,7 +101,7 @@ export function starterRoutes() {
     if (found && found.participants.length > 1 && !partnerBlog) throw new HTTPException(400, { message:'Choose the writing partner for this thread' })
     if (found && partnerBlog && !found.participants.includes(partnerBlog)) throw new HTTPException(400, { message:'Choose a writing partner detected on this thread' })
     const manualId=crypto.randomUUID()
-    const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description })
+    const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(found?.preview) })
     const latest = found && partnerBlog ? latestDirectExchange(found.ownBlogIdentifiers,found.reference.blogIdentifier,partnerBlog,found.activities) : undefined
     const partnerId=partnerBlog ? await findOrCreatePartner(scope,partnerBlog) : input.partnerName?.trim() ? await findOrCreateManualPartner(scope,input.partnerName) : null
     const branch = (partnerId || !found) ? await createReplyBranch({ ...scope, starterId:starter.id, partnerId, status:latest?.status ?? 'your_turn', latestPostId:latest?.activity.postId, lastPoster:latest?.activity.blogIdentifier, lastActivityAt:latest?.activity.timestamp }) : null
