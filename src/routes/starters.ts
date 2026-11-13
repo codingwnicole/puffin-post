@@ -22,14 +22,20 @@ function compactThreadSummary(value?: string) {
 
 function parseDeclaredCharacterNames(value?: string) {
   if (!value) return []
-  const header = value.match(/\b(?:who|muses?|characters?|cast)\s*:\s*([\s\S]{1,220}?)(?=\b(?:where|when|verse|setting|plot|notes?)\s*:|$)/i)?.[1]
-  if (!header) return []
-  return header
+  const snippets: string[] = []
+  const add = (candidate?: string) => { if (candidate) snippets.push(candidate) }
+  add(value.match(/\b(?:who|muses?|characters?|cast)\s*:\s*([\s\S]{1,220}?)(?=\b(?:where|when|verse|setting|plot|notes?)\s*:|$)/i)?.[1])
+  for (const match of value.matchAll(/\b(?:gifted|closed|open)?\s*starter\s+(?:for|to)\s*[:—-]*\s*([^(@\n]{2,80})/gi)) add(match[1])
+  for (const match of value.matchAll(/\bgifted\s+for\s*[:—-]*\s*([^(@\n]{2,80})/gi)) add(match[1])
+  for (const match of value.matchAll(/\b(?:ft\.?|featuring)\s*[:—-]*\s*([^(@\n]{2,80})/gi)) add(match[1])
+  // Common compact format: "scene title, kit & diana @writingblog".
+  for (const match of value.matchAll(/,\s*([\p{L}][\p{L}' -]*(?:\s*(?:&|\bx\b|\band\b|,)\s*[\p{L}][\p{L}' -]*)+)\s*@\w+/giu)) add(match[1])
+  return snippets.flatMap(snippet => snippet
     .replace(/@[\w-]+/g, '')
     .replace(/\b(?:ft\.?|featuring|with)\b/gi, '')
     .split(/\s*(?:\+|\/|&|\bx\b|\band\b|,)\s*/i)
     .map(name => name.replace(/[()[\]{}]/g, '').replace(/\s+/g, ' ').trim())
-    .filter(name => /^[\p{L}][\p{L}' -]{1,60}$/u.test(name))
+    .filter(name => /^[\p{L}][\p{L}' -]{1,60}$/u.test(name)))
     .filter((name, index, all) => all.findIndex(other => other.localeCompare(name, undefined, { sensitivity:'accent' }) === 0) === index)
 }
 

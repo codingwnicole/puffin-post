@@ -1,5 +1,15 @@
 import { oauthAuthorizationHeader } from './oauth'
 
+function postPreview(content?: Array<{ text?: string }>, trail?: Array<{ content?: Array<{ text?: string }> }>, fallback?: string) {
+  const text = [...(content ?? []), ...(trail?.flatMap(item => item.content ?? []) ?? [])]
+    .map(item => item.text ?? '')
+    .filter(Boolean)
+    .join(' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+  return (text || fallback)?.slice(0, 700)
+}
+
 export interface TumblrPost { blogIdentifier: string; id: string; rootPostId: string; rootBlogIdentifier: string; tags: string[]; title?: string; preview?: string; postUrl?: string }
 export interface TumblrClient { getPost(blogIdentifier: string, postId: string): Promise<TumblrPost> }
 export interface TumblrClient { getRecentPosts(blogIdentifier: string): Promise<TumblrPost[]> }
@@ -18,7 +28,7 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
     const post = body.response
     if (!post?.blog?.name || !(post.id_string ?? post.id)) throw new Error('Tumblr post not found')
     const title = (post.title ?? post.summary)?.trim().replace(/\s+/g, ' ').slice(0, 300)
-    const preview = ([...(post.content ?? []), ...(post.trail?.flatMap(item => item.content ?? []) ?? [])].map(item => item.text ?? '').find(Boolean) ?? title)?.trim().replace(/\s+/g, ' ').slice(0, 300)
+    const preview = postPreview(post.content, post.trail, title)
     const returnedBlogIdentifier = `${post.blog.name}.tumblr.com`.toLowerCase()
     return { blogIdentifier:returnedBlogIdentifier, id: String(post.id_string ?? post.id), rootPostId:String(post.reblogged_root_id ?? post.id_string ?? post.id), rootBlogIdentifier:post.reblogged_root_name ? `${post.reblogged_root_name}.tumblr.com`.toLowerCase() : returnedBlogIdentifier, tags: post.tags ?? [], title, preview, postUrl: post.post_url }
   }, async getRecentPosts(blogIdentifier) {
@@ -29,7 +39,7 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
     return (body.response?.posts ?? []).flatMap(post => {
       if (!post.blog_name || (post.id_string ?? post.id) == null) return []
       const title = (post.title ?? post.summary)?.trim().replace(/\s+/g, ' ').slice(0, 300)
-      const preview = ([...(post.content ?? []), ...(post.trail?.flatMap(item => item.content ?? []) ?? [])].map(item => item.text ?? '').find(Boolean) ?? title)?.trim().replace(/\s+/g, ' ').slice(0, 300)
+      const preview = postPreview(post.content, post.trail, title)
       const postIdentifier=`${post.blog_name}.tumblr.com`.toLowerCase()
       return [{ blogIdentifier: postIdentifier, id: String(post.id_string ?? post.id), rootPostId:String(post.reblogged_root_id ?? post.id_string ?? post.id), rootBlogIdentifier:post.reblogged_root_name ? `${post.reblogged_root_name}.tumblr.com`.toLowerCase() : postIdentifier, tags: post.tags ?? [], title, preview, postUrl: post.post_url }]
     })
