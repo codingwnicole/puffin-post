@@ -71,7 +71,9 @@ export function starterRoutes() {
     const participants = new Set(activities.map(activity => activity.blogIdentifier).filter(blog => !ownBlogIdentifiers.has(blog)))
     if (!ownBlogIdentifiers.has(clickedPost.rootBlogIdentifier)) participants.add(clickedPost.rootBlogIdentifier)
     const selectedCharacter = characterId ? await scope.db.prepare('SELECT name FROM characters WHERE workspace_id=? AND id=?').bind(scope.workspaceId, characterId).first<{name:string}>() : null
-    const parserSource = post.parserText ?? post.preview
+    // Some groups put the RP header on the tagged reblog; others put it on the
+    // original starter. Read both, in that order, so neither convention loses.
+    const parserSource = [clickedPost.parserText ?? clickedPost.preview, post.parserText ?? post.preview].filter(Boolean).join('\n')
     const who = parserSource?.match(/\bwho\s*:\s*(.+?)(?=\bwhere\s*:|$)/i)?.[1]?.trim()
     const where = parserSource?.match(/\bwhere\s*:\s*(.+?)(?=$)/i)?.[1]?.trim()
     const suggestedTitle = selectedCharacter?.name ? `${selectedCharacter.name}${who ? ` × ${who.replace(/@[^\s,]+/g, '').replace(/\bft\.?\b/i, '').replace(/\s+/g, ' ').replace(/^\W+|\W+$/g, '') || 'writing partner'}` : ''}${where ? ` — ${where}` : ''}` : post.title
