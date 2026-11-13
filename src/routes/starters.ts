@@ -56,15 +56,20 @@ export function starterRoutes() {
       WHERE cb.workspace_id=? AND cb.blog_identifier=? AND tc.status='active'`).bind(scope.workspaceId, reference.blogIdentifier).all<Assignment>()
     const client = createTumblrClient({ consumerKey:env.TUMBLR_CONSUMER_KEY, consumerSecret:env.TUMBLR_CONSUMER_SECRET,
       token:await decryptToken(access.tokenEncrypted,env.TOKEN_ENCRYPTION_KEY), tokenSecret:await decryptToken(access.tokenSecretEncrypted,env.TOKEN_ENCRYPTION_KEY) })
-    const post = await client.getPost(reference.blogIdentifier, reference.postId)
-    if (canonicalBlogIdentifier(post.blogIdentifier) !== reference.blogIdentifier || post.id !== reference.postId) throw new HTTPException(400, { message:'Tumblr post could not be verified' })
-    const tags = new Set(post.tags.map(normalizeTumblrTag))
+    const clickedPost = await client.getPost(reference.blogIdentifier, reference.postId)
+    if (canonicalBlogIdentifier(clickedPost.blogIdentifier) !== reference.blogIdentifier || clickedPost.id !== reference.postId) throw new HTTPException(400, { message:'Tumblr post could not be verified' })
+    // Activity can point at the user's own reblog. Its wrapper often has no RP
+    // header, so read the root starter for character/title extraction instead.
+    const post = clickedPost.rootPostId !== clickedPost.id || clickedPost.rootBlogIdentifier !== clickedPost.blogIdentifier
+      ? await client.getPost(clickedPost.rootBlogIdentifier, clickedPost.rootPostId).catch(() => clickedPost)
+      : clickedPost
+    const tags = new Set([...clickedPost.tags, ...post.tags].map(normalizeTumblrTag))
     const candidates = rules.results.filter(rule => !rule.characterTag || tags.has(rule.characterTag)).map(rule => ({ characterId:rule.characterId, characterName:rule.characterName, characterTag:rule.characterTag }))
     const ownBlogs = characterId ? await scope.db.prepare('SELECT blog_identifier AS blogIdentifier FROM character_blogs WHERE workspace_id=? AND character_id=?').bind(scope.workspaceId,characterId).all<{blogIdentifier:string}>() : { results:[] as {blogIdentifier:string}[] }
     const ownBlogIdentifiers = new Set(ownBlogs.results.map(blog => canonicalBlogIdentifier(blog.blogIdentifier)))
-    const activities = await client.getThreadActivity(reference.blogIdentifier,reference.postId)
+    const activities = await client.getThreadActivity(clickedPost.rootBlogIdentifier, clickedPost.rootPostId)
     const participants = new Set(activities.map(activity => activity.blogIdentifier).filter(blog => !ownBlogIdentifiers.has(blog)))
-    if (!ownBlogIdentifiers.has(reference.blogIdentifier)) participants.add(reference.blogIdentifier)
+    if (!ownBlogIdentifiers.has(clickedPost.rootBlogIdentifier)) participants.add(clickedPost.rootBlogIdentifier)
     const selectedCharacter = characterId ? await scope.db.prepare('SELECT name FROM characters WHERE workspace_id=? AND id=?').bind(scope.workspaceId, characterId).first<{name:string}>() : null
     const parserSource = post.parserText ?? post.preview
     const who = parserSource?.match(/\bwho\s*:\s*(.+?)(?=\bwhere\s*:|$)/i)?.[1]?.trim()
@@ -73,7 +78,7 @@ export function starterRoutes() {
     const parsedCharacterNames = parseDeclaredCharacterNames(parserSource)
     const partnerNames = parsedCharacterNames.filter(name => name.localeCompare(selectedCharacter?.name ?? '', undefined, { sensitivity:'accent' }) !== 0)
     const parsedTitle = selectedCharacter?.name && partnerNames.length ? `${selectedCharacter.name} × ${partnerNames.join(' × ')}${where ? ` — ${where}` : ''}` : undefined
-    return { client, reference, tags:[...tags], candidates, title:post.title, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:post.rootPostId, threadRootBlogId:post.rootBlogIdentifier }
+    return { client, reference, tags:[...tags], candidates, title:post.title, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier }
   }
 
   async function findOrCreatePartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, blogIdentifier:string) {
@@ -123,7 +128,7 @@ export function starterRoutes() {
     const partnerBlog = found && (input.partnerBlogIdentifier ? canonicalBlogIdentifier(input.partnerBlogIdentifier) : found.participants.length === 1 ? found.participants[0] : null)
     if (found && found.participants.length > 1 && !partnerBlog) throw new HTTPException(400, { message:'Choose the writing partner for this thread' })
     if (found && partnerBlog && !found.participants.includes(partnerBlog)) throw new HTTPException(400, { message:'Choose a writing partner detected on this thread' })
-    const latest = found && partnerBlog ? latestDirectExchange(found.ownBlogIdentifiers,found.reference.blogIdentifier,partnerBlog,found.activities) : undefined
+    const latest = found && partnerBlog ? latestDirectExchange(found.ownBlogIdentifiers,found.threadRootBlogId,partnerBlog,found.activities) : undefined
     const latestPost = latest && found ? await found.client.getPost(latest.activity.blogIdentifier, latest.activity.postId).catch(() => null) : null
     const manualId=crypto.randomUUID()
     const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.suggestedTitle || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(latestPost?.preview ?? found?.preview) })
