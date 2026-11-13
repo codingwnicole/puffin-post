@@ -10,9 +10,10 @@ export const branchSchema = z.object({
 }).strict()
 export const starterSchema = z.object({
   characterId: reference, title: z.string().trim().max(300).optional(),
-  postUrl: z.string().trim().min(1).max(2000),
+  postUrl: z.string().trim().max(2000).optional(),
   groupId: reference.nullable().optional(),
   partnerBlogIdentifier: z.string().trim().max(200).nullable().optional(),
+  partnerName: z.string().trim().max(200).nullable().optional(),
   description: z.string().max(20000).optional(),
 }).strict()
 

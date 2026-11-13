@@ -30,7 +30,7 @@ export function replyDraftRoutes() {
   app.post('/:draftId/convert', async c => {
     const scope = await requireWorkspace(c)
     const input = conversionSchema.parse(await c.req.json())
-    const post = parseTumblrPostReference(input.starter.postUrl)
+    const post = input.starter.postUrl ? parseTumblrPostReference(input.starter.postUrl) : { blogIdentifier:'manual', postId:crypto.randomUUID() }
     return c.json(await convertReplyDraft(scope,c.req.param('draftId'),{ ...input, starter:{ ...input.starter, rootBlogId:post.blogIdentifier, rootPostId:post.postId } }))
   })
   return app

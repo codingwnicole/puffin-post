@@ -55,6 +55,15 @@ export function starterRoutes() {
     return id
   }
 
+  async function findOrCreateManualPartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, label:string) {
+    const displayLabel=label.trim()
+    const existing=await scope.db.prepare('SELECT id FROM partners WHERE workspace_id=? AND lower(display_label)=lower(?) LIMIT 1').bind(scope.workspaceId,displayLabel).first<{id:string}>()
+    if(existing)return existing.id
+    const id=crypto.randomUUID()
+    await scope.db.prepare('INSERT INTO partners (id,workspace_id,blog_identifier,display_label) VALUES (?,?,?,?)').bind(id,scope.workspaceId,`manual:${id}`,displayLabel).run()
+    return id
+  }
+
   app.get('/options', async c => {
     const scope = await requireWorkspace(c)
     const [characters, partners, groups] = await Promise.all([
@@ -70,7 +79,8 @@ export function starterRoutes() {
     const input = starterSchema.parse(await c.req.json())
     const character = await scope.db.prepare('SELECT id FROM characters WHERE workspace_id=? AND id=?').bind(scope.workspaceId,input.characterId).first()
     if (!character) throw new HTTPException(404, { message:'Character not found' })
-    const found = await findPost(scope, c.env, input.postUrl, input.characterId)
+    const found = input.postUrl ? await findPost(scope, c.env, input.postUrl, input.characterId) : null
+    if (!found && !input.title?.trim()) throw new HTTPException(400, { message:'Give this manual thread a scene label' })
     const memberships=await scope.db.prepare('SELECT group_id AS groupId FROM rp_group_characters WHERE workspace_id=? AND character_id=?').bind(scope.workspaceId,input.characterId).all<{groupId:string}>()
     const groupId=input.groupId ?? (memberships.results.length===1?memberships.results[0].groupId:null)
     if (groupId && !memberships.results.some(group=>group.groupId===groupId)) throw new HTTPException(400, { message:'Add this character to the RP section first' })
@@ -80,12 +90,14 @@ export function starterRoutes() {
     // character-blog rules help discover posts, but must never block that choice here.
     // Puffin can infer a sole participant. With several, it must ask which exchange
     // matters instead of silently tracking the wrong reblog chain.
-    const partnerBlog = input.partnerBlogIdentifier ? canonicalBlogIdentifier(input.partnerBlogIdentifier) : found.participants.length === 1 ? found.participants[0] : null
-    if (found.participants.length > 1 && !partnerBlog) throw new HTTPException(400, { message:'Choose the writing partner for this thread' })
-    if (partnerBlog && !found.participants.includes(partnerBlog)) throw new HTTPException(400, { message:'Choose a writing partner detected on this thread' })
-    const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found.title || 'Tumblr thread', rootBlogId:found.reference.blogIdentifier, rootPostId:found.reference.postId, threadRootId:found.threadRootId, threadRootBlogId:found.threadRootBlogId, description:input.description })
-    const latest = partnerBlog ? latestDirectExchange(found.ownBlogIdentifiers,found.reference.blogIdentifier,partnerBlog,found.activities) : undefined
-    const branch = partnerBlog ? await createReplyBranch({ ...scope, starterId:starter.id, partnerId:await findOrCreatePartner(scope,partnerBlog), status:latest?.status ?? 'your_turn', latestPostId:latest?.activity.postId, lastPoster:latest?.activity.blogIdentifier, lastActivityAt:latest?.activity.timestamp }) : null
+    const partnerBlog = found && (input.partnerBlogIdentifier ? canonicalBlogIdentifier(input.partnerBlogIdentifier) : found.participants.length === 1 ? found.participants[0] : null)
+    if (found && found.participants.length > 1 && !partnerBlog) throw new HTTPException(400, { message:'Choose the writing partner for this thread' })
+    if (found && partnerBlog && !found.participants.includes(partnerBlog)) throw new HTTPException(400, { message:'Choose a writing partner detected on this thread' })
+    const manualId=crypto.randomUUID()
+    const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description })
+    const latest = found && partnerBlog ? latestDirectExchange(found.ownBlogIdentifiers,found.reference.blogIdentifier,partnerBlog,found.activities) : undefined
+    const partnerId=partnerBlog ? await findOrCreatePartner(scope,partnerBlog) : input.partnerName?.trim() ? await findOrCreateManualPartner(scope,input.partnerName) : null
+    const branch = (partnerId || !found) ? await createReplyBranch({ ...scope, starterId:starter.id, partnerId, status:latest?.status ?? 'your_turn', latestPostId:latest?.activity.postId, lastPoster:latest?.activity.blogIdentifier, lastActivityAt:latest?.activity.timestamp }) : null
     return c.json({ ...starter, branch }, 201)
   })
 
