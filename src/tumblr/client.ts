@@ -1,16 +1,16 @@
 import { oauthAuthorizationHeader } from './oauth'
 
-function postPreview(content?: Array<{ text?: string }>, trail?: Array<{ content?: Array<{ text?: string }> }>, fallback?: string) {
+function postText(content?: Array<{ text?: string }>, trail?: Array<{ content?: Array<{ text?: string }> }>, fallback?: string) {
   const text = [...(content ?? []), ...(trail?.flatMap(item => item.content ?? []) ?? [])]
     .map(item => item.text ?? '')
     .filter(Boolean)
     .join(' ')
     .trim()
     .replace(/\s+/g, ' ')
-  return (text || fallback)?.slice(0, 700)
+  return (text || fallback)?.slice(0, 6000)
 }
 
-export interface TumblrPost { blogIdentifier: string; id: string; rootPostId: string; rootBlogIdentifier: string; tags: string[]; title?: string; preview?: string; postUrl?: string }
+export interface TumblrPost { blogIdentifier: string; id: string; rootPostId: string; rootBlogIdentifier: string; tags: string[]; title?: string; preview?: string; parserText?: string; postUrl?: string }
 export interface TumblrClient { getPost(blogIdentifier: string, postId: string): Promise<TumblrPost> }
 export interface TumblrClient { getRecentPosts(blogIdentifier: string): Promise<TumblrPost[]> }
 export interface TumblrClient { getBlogs(): Promise<string[]> }
@@ -28,9 +28,10 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
     const post = body.response
     if (!post?.blog?.name || !(post.id_string ?? post.id)) throw new Error('Tumblr post not found')
     const title = (post.title ?? post.summary)?.trim().replace(/\s+/g, ' ').slice(0, 300)
-    const preview = postPreview(post.content, post.trail, title)
+    const parserText = postText(post.content, post.trail, title)
+    const preview = parserText?.slice(0, 700)
     const returnedBlogIdentifier = `${post.blog.name}.tumblr.com`.toLowerCase()
-    return { blogIdentifier:returnedBlogIdentifier, id: String(post.id_string ?? post.id), rootPostId:String(post.reblogged_root_id ?? post.id_string ?? post.id), rootBlogIdentifier:post.reblogged_root_name ? `${post.reblogged_root_name}.tumblr.com`.toLowerCase() : returnedBlogIdentifier, tags: post.tags ?? [], title, preview, postUrl: post.post_url }
+    return { blogIdentifier:returnedBlogIdentifier, id: String(post.id_string ?? post.id), rootPostId:String(post.reblogged_root_id ?? post.id_string ?? post.id), rootBlogIdentifier:post.reblogged_root_name ? `${post.reblogged_root_name}.tumblr.com`.toLowerCase() : returnedBlogIdentifier, tags: post.tags ?? [], title, preview, parserText, postUrl: post.post_url }
   }, async getRecentPosts(blogIdentifier) {
     const url = `https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/posts?limit=20&npf=true`
     const response = await run(url, { headers: { Authorization: await oauthAuthorizationHeader('GET', url, config.consumerKey, config.consumerSecret, config.token, config.tokenSecret) } })
@@ -39,9 +40,10 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
     return (body.response?.posts ?? []).flatMap(post => {
       if (!post.blog_name || (post.id_string ?? post.id) == null) return []
       const title = (post.title ?? post.summary)?.trim().replace(/\s+/g, ' ').slice(0, 300)
-      const preview = postPreview(post.content, post.trail, title)
+      const parserText = postText(post.content, post.trail, title)
+      const preview = parserText?.slice(0, 700)
       const postIdentifier=`${post.blog_name}.tumblr.com`.toLowerCase()
-      return [{ blogIdentifier: postIdentifier, id: String(post.id_string ?? post.id), rootPostId:String(post.reblogged_root_id ?? post.id_string ?? post.id), rootBlogIdentifier:post.reblogged_root_name ? `${post.reblogged_root_name}.tumblr.com`.toLowerCase() : postIdentifier, tags: post.tags ?? [], title, preview, postUrl: post.post_url }]
+      return [{ blogIdentifier: postIdentifier, id: String(post.id_string ?? post.id), rootPostId:String(post.reblogged_root_id ?? post.id_string ?? post.id), rootBlogIdentifier:post.reblogged_root_name ? `${post.reblogged_root_name}.tumblr.com`.toLowerCase() : postIdentifier, tags: post.tags ?? [], title, preview, parserText, postUrl: post.post_url }]
     })
   }, async getThreadActivity(blogIdentifier, postId) {
     const url = `https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/notes?id=${encodeURIComponent(postId)}&mode=all`

@@ -66,10 +66,11 @@ export function starterRoutes() {
     const participants = new Set(activities.map(activity => activity.blogIdentifier).filter(blog => !ownBlogIdentifiers.has(blog)))
     if (!ownBlogIdentifiers.has(reference.blogIdentifier)) participants.add(reference.blogIdentifier)
     const selectedCharacter = characterId ? await scope.db.prepare('SELECT name FROM characters WHERE workspace_id=? AND id=?').bind(scope.workspaceId, characterId).first<{name:string}>() : null
-    const who = post.preview?.match(/\bwho\s*:\s*(.+?)(?=\bwhere\s*:|$)/i)?.[1]?.trim()
-    const where = post.preview?.match(/\bwhere\s*:\s*(.+?)(?=$)/i)?.[1]?.trim()
+    const parserSource = post.parserText ?? post.preview
+    const who = parserSource?.match(/\bwho\s*:\s*(.+?)(?=\bwhere\s*:|$)/i)?.[1]?.trim()
+    const where = parserSource?.match(/\bwhere\s*:\s*(.+?)(?=$)/i)?.[1]?.trim()
     const suggestedTitle = selectedCharacter?.name ? `${selectedCharacter.name}${who ? ` × ${who.replace(/@[^\s,]+/g, '').replace(/\bft\.?\b/i, '').replace(/\s+/g, ' ').replace(/^\W+|\W+$/g, '') || 'writing partner'}` : ''}${where ? ` — ${where}` : ''}` : post.title
-    const parsedCharacterNames = parseDeclaredCharacterNames(post.preview)
+    const parsedCharacterNames = parseDeclaredCharacterNames(parserSource)
     const partnerNames = parsedCharacterNames.filter(name => name.localeCompare(selectedCharacter?.name ?? '', undefined, { sensitivity:'accent' }) !== 0)
     const parsedTitle = selectedCharacter?.name && partnerNames.length ? `${selectedCharacter.name} × ${partnerNames.join(' × ')}${where ? ` — ${where}` : ''}` : undefined
     return { client, reference, tags:[...tags], candidates, title:post.title, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:post.rootPostId, threadRootBlogId:post.rootBlogIdentifier }
