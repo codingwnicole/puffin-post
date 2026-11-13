@@ -35,7 +35,7 @@ export default function TumblrActivityPage() {
     if (!url) { setError('Tumblr did not provide a usable post link for this tag'); return }
     setBusy(item.id); setError(''); setMessage('')
     try {
-      await api('/starters', 'POST', { title: 'Tagged starter from ' + item.actor.replace(/\.tumblr\.com$/i, ''), characterId, postUrl: url, partnerBlogIdentifier: item.id.startsWith('post:') || item.actor === 'anonymous' ? null : item.actor })
+      await api('/starters', 'POST', { characterId, postUrl: url, partnerBlogIdentifier: item.id.startsWith('post:') || item.actor === 'anonymous' ? null : item.actor })
       const isSameThread = (other: Activity) => item.threadKey ? other.threadKey === item.threadKey : other.id === item.id
       setMentions(current => current.filter(mention => !isSameThread(mention)))
       setThreadCandidates(current => current.filter(candidate => !isSameThread(candidate)))
