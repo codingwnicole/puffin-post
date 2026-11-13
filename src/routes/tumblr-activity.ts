@@ -23,12 +23,11 @@ export function tumblrActivityRoutes() {
       WHERE tc.workspace_id = ? AND tc.status = 'active'
     `).bind(scope.workspaceId).all<ConnectedBlog>()
     const tracked = await scope.db.prepare(`
-      SELECT root_blog_id AS blogIdentifier, root_post_id AS postId, thread_root_id AS threadRootId FROM starters WHERE workspace_id = ?
-      UNION
-      SELECT last_poster AS blogIdentifier, latest_post_id AS postId, latest_post_id AS threadRootId FROM reply_branches WHERE workspace_id = ? AND latest_post_id IS NOT NULL AND last_poster IS NOT NULL
-    `).bind(scope.workspaceId, scope.workspaceId).all<{ blogIdentifier: string; postId: string; threadRootId:string }>()
-    const trackedPosts = new Set(tracked.results.map(row => `${row.blogIdentifier.toLowerCase()}:${row.postId}`))
-    const trackedThreadRoots = new Set(tracked.results.map(row => row.threadRootId))
+      SELECT thread_root_blog_id AS rootBlogIdentifier, thread_root_id AS rootPostId
+      FROM starters WHERE workspace_id = ?
+    `).bind(scope.workspaceId).all<{ rootBlogIdentifier: string; rootPostId: string }>()
+    const threadKey = (blogIdentifier: string, postId: string) => `${blogIdentifier.toLowerCase()}:${postId}`
+    const trackedThreadRoots = new Set(tracked.results.map(row => threadKey(row.rootBlogIdentifier, row.rootPostId)))
     const dismissed = await scope.db.prepare(`
       SELECT blog_identifier AS blogIdentifier, post_id AS postId
       FROM activity_dismissals WHERE workspace_id = ?
@@ -39,10 +38,10 @@ export function tumblrActivityRoutes() {
       try {
         const notifications = await client.getNotifications(row.blogIdentifier)
         const enriched = await Promise.all(notifications.map(async notification => {
-          if (notification.preview || !notification.postId || notification.actor === 'anonymous') return notification
+          if (!notification.postId || notification.actor === 'anonymous') return notification
           try {
             const post = await client.getPost(notification.actor, notification.postId)
-            return { ...notification, preview: post.preview ?? post.title ?? null, sourceUrl: notification.sourceUrl ?? post.postUrl ?? null, rootPostId:post.rootPostId }
+            return { ...notification, preview: notification.preview ?? post.preview ?? post.title ?? null, sourceUrl: notification.sourceUrl ?? post.postUrl ?? null, rootPostId: post.rootPostId, rootBlogIdentifier: post.rootBlogIdentifier }
           } catch { return notification }
         }))
         return { notifications: enriched, recentPosts: await client.getRecentPosts(row.blogIdentifier), error: null }
@@ -52,13 +51,16 @@ export function tumblrActivityRoutes() {
     }))
     const diagnostics = responses.flatMap(response => response.error ? [response.error] : [])
     const notifications = responses.flatMap(response => response.notifications)
-      .filter(notification => !('rootPostId' in notification) || !notification.rootPostId || !trackedThreadRoots.has(notification.rootPostId))
+      .filter(notification => !('rootPostId' in notification) || !notification.rootPostId || !('rootBlogIdentifier' in notification) || !notification.rootBlogIdentifier || !trackedThreadRoots.has(threadKey(notification.rootBlogIdentifier, notification.rootPostId)))
       .filter((notification, index, all) => all.findIndex(other => other.type === notification.type && other.actor === notification.actor && other.postId === notification.postId) === index)
+      .map(notification => ({ ...notification, threadKey: 'rootPostId' in notification && notification.rootPostId && 'rootBlogIdentifier' in notification && notification.rootBlogIdentifier ? threadKey(notification.rootBlogIdentifier, notification.rootPostId) : notification.postId ? threadKey(notification.actor, notification.postId) : null }))
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     const mentionTypes = new Set(['mention', 'mention_in_post', 'mention_in_reply', 'user_mention', 'note_mention'])
-    const threadCandidates = responses.flatMap(response => response.recentPosts)
-      .filter(post => !trackedPosts.has(`${post.blogIdentifier.toLowerCase()}:${post.id}`) && !trackedThreadRoots.has(post.rootPostId) && !dismissedPosts.has(`${post.blogIdentifier.toLowerCase()}:${post.id}`))
-      .map(post => ({ id: `post:${post.blogIdentifier}:${post.id}`, blogIdentifier: post.blogIdentifier, actor: post.blogIdentifier, timestamp: new Date().toISOString(), postId: post.id, preview: post.preview ?? post.title ?? null, sourceUrl: post.postUrl ?? `https://www.tumblr.com/${post.blogIdentifier.replace(/\.tumblr\.com$/i, '')}/${post.id}` }))
+    const threadCandidates = [...new Map(responses.flatMap(response => response.recentPosts)
+      .filter(post => !trackedThreadRoots.has(threadKey(post.rootBlogIdentifier, post.rootPostId)) && !dismissedPosts.has(`${post.blogIdentifier.toLowerCase()}:${post.id}`))
+      // Recent posts arrive newest-first. Keep the current reblog, not an earlier copy of the same scene.
+      .map(post => [threadKey(post.rootBlogIdentifier, post.rootPostId), post] as const)).values()]
+      .map(post => ({ id: `post:${post.blogIdentifier}:${post.id}`, blogIdentifier: post.blogIdentifier, actor: post.blogIdentifier, timestamp: new Date().toISOString(), postId: post.id, preview: post.preview ?? post.title ?? null, sourceUrl: post.postUrl ?? `https://www.tumblr.com/${post.blogIdentifier.replace(/\.tumblr\.com$/i, '')}/${post.id}`, threadKey: threadKey(post.rootBlogIdentifier, post.rootPostId) }))
       .slice(0, 12)
     return c.json({ asks: notifications.filter(notification => notification.type === 'ask'), mentions: notifications.filter(notification => mentionTypes.has(notification.type)), threadCandidates, diagnostics })
   })

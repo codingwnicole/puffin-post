@@ -50,7 +50,7 @@ export function starterRoutes() {
     const who = post.preview?.match(/\bwho\s*:\s*(.+?)(?=\bwhere\s*:|$)/i)?.[1]?.trim()
     const where = post.preview?.match(/\bwhere\s*:\s*(.+?)(?=$)/i)?.[1]?.trim()
     const suggestedTitle = selectedCharacter?.name ? `${selectedCharacter.name}${who ? ` × ${who.replace(/@[^\s,]+/g, '').replace(/\bft\.?\b/i, '').replace(/\s+/g, ' ').replace(/^\W+|\W+$/g, '') || 'writing partner'}` : ''}${where ? ` — ${where}` : ''}` : post.title
-    return { reference, tags:[...tags], candidates, title:post.title, suggestedTitle, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:post.rootPostId, threadRootBlogId:post.rootBlogIdentifier }
+    return { client, reference, tags:[...tags], candidates, title:post.title, suggestedTitle, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:post.rootPostId, threadRootBlogId:post.rootBlogIdentifier }
   }
 
   async function findOrCreatePartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, blogIdentifier:string) {
@@ -100,9 +100,10 @@ export function starterRoutes() {
     const partnerBlog = found && (input.partnerBlogIdentifier ? canonicalBlogIdentifier(input.partnerBlogIdentifier) : found.participants.length === 1 ? found.participants[0] : null)
     if (found && found.participants.length > 1 && !partnerBlog) throw new HTTPException(400, { message:'Choose the writing partner for this thread' })
     if (found && partnerBlog && !found.participants.includes(partnerBlog)) throw new HTTPException(400, { message:'Choose a writing partner detected on this thread' })
-    const manualId=crypto.randomUUID()
-    const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(found?.preview) })
     const latest = found && partnerBlog ? latestDirectExchange(found.ownBlogIdentifiers,found.reference.blogIdentifier,partnerBlog,found.activities) : undefined
+    const latestPost = latest && found ? await found.client.getPost(latest.activity.blogIdentifier, latest.activity.postId).catch(() => null) : null
+    const manualId=crypto.randomUUID()
+    const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(latestPost?.preview ?? found?.preview) })
     const partnerId=partnerBlog ? await findOrCreatePartner(scope,partnerBlog) : input.partnerName?.trim() ? await findOrCreateManualPartner(scope,input.partnerName) : null
     const branch = (partnerId || !found) ? await createReplyBranch({ ...scope, starterId:starter.id, partnerId, status:latest?.status ?? 'your_turn', latestPostId:latest?.activity.postId, lastPoster:latest?.activity.blogIdentifier, lastActivityAt:latest?.activity.timestamp }) : null
     return c.json({ ...starter, branch }, 201)
@@ -112,7 +113,8 @@ export function starterRoutes() {
     const scope = await requireWorkspace(c)
     const body = await c.req.json<{ postUrl?:string; characterId?:string }>()
     if (!body.postUrl) throw new HTTPException(400, { message:'Paste a Tumblr post link' })
-    return c.json(await findPost(scope, c.env, body.postUrl, body.characterId))
+    const { client: _client, ...resolved } = await findPost(scope, c.env, body.postUrl, body.characterId)
+    return c.json(resolved)
   })
   app.patch('/:starterId', async c => {
     const scope = await requireWorkspace(c)

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
 
-type Activity = { id: string; blogIdentifier: string; actor: string; timestamp: string; postId: string | null; preview: string | null; sourceUrl: string | null }
+type Activity = { id: string; blogIdentifier: string; actor: string; timestamp: string; postId: string | null; preview: string | null; sourceUrl: string | null; threadKey?: string | null }
 type Character = { id: string; name: string }
 
 function blogLabel(value: string) { return value.replace(/\.tumblr\.com$/i, '') }
@@ -36,8 +36,9 @@ export default function TumblrActivityPage() {
     setBusy(item.id); setError(''); setMessage('')
     try {
       await api('/starters', 'POST', { title: 'Tagged starter from ' + item.actor.replace(/\.tumblr\.com$/i, ''), characterId, postUrl: url, partnerBlogIdentifier: item.id.startsWith('post:') || item.actor === 'anonymous' ? null : item.actor })
-      setMentions(current => current.filter(mention => mention.id !== item.id))
-      setThreadCandidates(current => current.filter(candidate => candidate.id !== item.id))
+      const isSameThread = (other: Activity) => item.threadKey ? other.threadKey === item.threadKey : other.id === item.id
+      setMentions(current => current.filter(mention => !isSameThread(mention)))
+      setThreadCandidates(current => current.filter(candidate => !isSameThread(candidate)))
       setMessage('Starter added to your tracker.')
     } catch (problem) { setError((problem as Error).message) } finally { setBusy('') }
   }
