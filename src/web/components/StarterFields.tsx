@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { api, type TrackingOptions } from '../lib/api'
 
-type Resolution = { title?:string; suggestedTitle?:string; preview?:string; sourceBlogAssigned:boolean; participants:string[]; candidates:{characterId:string;characterName:string;characterTag:string|null}[] }
+type Resolution = { title?:string; suggestedTitle?:string; parsedCharacterNames?:string[]; preview?:string; sourceBlogAssigned:boolean; participants:string[]; candidates:{characterId:string;characterName:string;characterTag:string|null}[] }
 const blogLabel=(value:string)=>value.replace(/\.tumblr\.com$/i,'')
 
 export default function StarterFields({options,title='',characterId=''}:{options:TrackingOptions;title?:string;characterId?:string}) {
-  const [selectedCharacter,setSelectedCharacter]=useState(characterId),[titleValue,setTitleValue]=useState(title),[postUrl,setPostUrl]=useState(''),[description,setDescription]=useState(''),[message,setMessage]=useState(''),[participants,setParticipants]=useState<string[]>([]),[selectedPartner,setSelectedPartner]=useState('')
+  const [selectedCharacter,setSelectedCharacter]=useState(characterId),[titleValue,setTitleValue]=useState(title),[postUrl,setPostUrl]=useState(''),[description,setDescription]=useState(''),[message,setMessage]=useState(''),[participants,setParticipants]=useState<string[]>([]),[selectedPartner,setSelectedPartner]=useState(''),[manualPartner,setManualPartner]=useState('')
   async function resolve(chosenCharacter=selectedCharacter) {
     if(!postUrl.trim()) return
     setMessage('Reading linked post…')
@@ -15,6 +15,7 @@ export default function StarterFields({options,title='',characterId=''}:{options
       if(!description&&result.preview)setDescription(result.preview)
       setParticipants(result.participants)
       setSelectedPartner(current=>result.participants.length===1?result.participants[0]:result.participants.includes(current)?current:'')
+      setManualPartner(current=>current||result.parsedCharacterNames?.find(name=>name.localeCompare(options.characters.find(character=>character.id===chosenCharacter)?.name??'',undefined,{sensitivity:'accent'})!==0)||'')
       if(result.candidates.length===1){setSelectedCharacter(result.candidates[0].characterId);setMessage(`Matched ${result.candidates[0].characterName}. Review the suggested details below.`)}
       else if(result.candidates.length)setMessage('More than one character matches this post. Choose the right one below.')
       else if(!result.sourceBlogAssigned)setMessage("This looks like another writer's starter. Choose the character who owes the reply.")
@@ -29,6 +30,6 @@ export default function StarterFields({options,title='',characterId=''}:{options
     <label>Scene premise<textarea name="description" maxLength={20000} value={description} onChange={event=>setDescription(event.target.value)} placeholder="Optional: what is happening in this scene?"/></label>
     <label>RP section<select name="groupId" defaultValue=""><option value="">Unsorted</option>{options.groups?.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
     <label>Character<select aria-label="Character" name="characterId" required value={selectedCharacter} onChange={event=>{setSelectedCharacter(event.target.value);void resolve(event.target.value)}}><option value="">Choose a character</option>{options.characters.map(character=><option value={character.id} key={character.id}>{character.name}</option>)}</select></label>
-    {participants.length>0?<label>Writing partner<select name="partnerBlogIdentifier" value={selectedPartner} onChange={event=>setSelectedPartner(event.target.value)} required><option value="">Choose who this exchange is with</option>{participants.map(blog=><option value={blog} key={blog}>{blogLabel(blog)}</option>)}</select></label>:<label>Writing partner <span className="field-help">(optional)</span><input name="partnerName" maxLength={200} placeholder="Their character or display name"/></label>}
+    {participants.length>0?<label>Writing partner<select name="partnerBlogIdentifier" value={selectedPartner} onChange={event=>setSelectedPartner(event.target.value)} required><option value="">Choose who this exchange is with</option>{participants.map(blog=><option value={blog} key={blog}>{blogLabel(blog)}</option>)}</select></label>:<label>Writing partner <span className="field-help">(optional)</span><input name="partnerName" maxLength={200} value={manualPartner} onChange={event=>setManualPartner(event.target.value)} placeholder="Their character or display name"/></label>}
   </>
 }

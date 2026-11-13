@@ -20,6 +20,19 @@ function compactThreadSummary(value?: string) {
   return sentences.length > 360 ? `${sentences.slice(0, 357).trimEnd()}…` : sentences
 }
 
+function parseDeclaredCharacterNames(value?: string) {
+  if (!value) return []
+  const header = value.match(/\b(?:who|muses?|characters?|cast)\s*:\s*([\s\S]{1,220}?)(?=\b(?:where|when|verse|setting|plot|notes?)\s*:|$)/i)?.[1]
+  if (!header) return []
+  return header
+    .replace(/@[\w-]+/g, '')
+    .replace(/\b(?:ft\.?|featuring|with)\b/gi, '')
+    .split(/\s*(?:\+|\/|&|\bx\b|\band\b|,)\s*/i)
+    .map(name => name.replace(/[()[\]{}]/g, '').replace(/\s+/g, ' ').trim())
+    .filter(name => /^[\p{L}][\p{L}' -]{1,60}$/u.test(name))
+    .filter((name, index, all) => all.findIndex(other => other.localeCompare(name, undefined, { sensitivity:'accent' }) === 0) === index)
+}
+
 export function starterRoutes() {
   const app = new Hono<{ Bindings:Env }>()
 
@@ -50,7 +63,10 @@ export function starterRoutes() {
     const who = post.preview?.match(/\bwho\s*:\s*(.+?)(?=\bwhere\s*:|$)/i)?.[1]?.trim()
     const where = post.preview?.match(/\bwhere\s*:\s*(.+?)(?=$)/i)?.[1]?.trim()
     const suggestedTitle = selectedCharacter?.name ? `${selectedCharacter.name}${who ? ` × ${who.replace(/@[^\s,]+/g, '').replace(/\bft\.?\b/i, '').replace(/\s+/g, ' ').replace(/^\W+|\W+$/g, '') || 'writing partner'}` : ''}${where ? ` — ${where}` : ''}` : post.title
-    return { client, reference, tags:[...tags], candidates, title:post.title, suggestedTitle, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:post.rootPostId, threadRootBlogId:post.rootBlogIdentifier }
+    const parsedCharacterNames = parseDeclaredCharacterNames(post.preview)
+    const partnerNames = parsedCharacterNames.filter(name => name.localeCompare(selectedCharacter?.name ?? '', undefined, { sensitivity:'accent' }) !== 0)
+    const parsedTitle = selectedCharacter?.name && partnerNames.length ? `${selectedCharacter.name} × ${partnerNames.join(' × ')}${where ? ` — ${where}` : ''}` : undefined
+    return { client, reference, tags:[...tags], candidates, title:post.title, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:post.rootPostId, threadRootBlogId:post.rootBlogIdentifier }
   }
 
   async function findOrCreatePartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, blogIdentifier:string) {
