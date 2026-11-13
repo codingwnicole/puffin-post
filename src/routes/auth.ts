@@ -2,10 +2,21 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { html } from 'hono/html'
 import type { Env } from '../worker'
-import { acceptInvite, normalizeEmail, provisionBootstrapOwner } from '../auth/invites'
+import { acceptInvite, normalizeEmail } from '../auth/invites'
 import { createMagicLinks, type MailSender } from '../auth/magic-links'
 import { endSession, requireWorkspace, startSession } from '../auth/sessions'
 import { hashPassword, validPassword, verifyPassword } from '../auth/passwords'
+
+async function provisionMagicLinkAccount(db: Env['DB'], email: string) {
+  const existing = await db.prepare('SELECT id FROM users WHERE email=?').bind(email).first<{id:string}>()
+  if (existing) return
+  const userId=crypto.randomUUID(),workspaceId=crypto.randomUUID(),displayName=email.split('@')[0]
+  await db.batch([
+    db.prepare('INSERT INTO users (id,email,display_name,auth_identity) VALUES (?,?,?,?)').bind(userId,email,displayName,`email:${email}`),
+    db.prepare('INSERT INTO workspaces (id,name,owner_user_id) VALUES (?,?,?)').bind(workspaceId,`${displayName}'s workspace`,userId),
+    db.prepare("INSERT INTO memberships (workspace_id,user_id,role) VALUES (?,?,'owner')").bind(workspaceId,userId),
+  ])
+}
 
 export function authRoutes(env: Env, sender: MailSender) {
   const app = new Hono<{ Bindings: Env }>()
@@ -15,18 +26,9 @@ export function authRoutes(env: Env, sender: MailSender) {
     const email = normalizeEmail(body?.email)
     const intent = body.intent ?? 'sign_in'
     if (intent !== 'sign_in' && intent !== 'accept_invite') throw new HTTPException(400, { message: 'Invalid intent' })
-    try {
-      await links.sendMagicLink(email, intent, intent === 'accept_invite'
-        ? { inviteToken: String(body.inviteToken ?? ''), workspaceId: String(body.workspaceId ?? '') } : undefined)
-    } catch (error) {
-      if (error instanceof Error && error.message === 'invalid magic link' && intent === 'sign_in') {
-        if (await provisionBootstrapOwner(env.DB, email, env.BOOTSTRAP_OWNER_EMAIL)) {
-          await links.sendMagicLink(email, 'sign_in')
-        }
-        return c.json({ message: 'If you have access, a sign-in link is on its way.' }, 202)
-      }
-      throw error
-    }
+    if (intent === 'sign_in') await provisionMagicLinkAccount(env.DB,email)
+    await links.sendMagicLink(email, intent, intent === 'accept_invite'
+      ? { inviteToken: String(body.inviteToken ?? ''), workspaceId: String(body.workspaceId ?? '') } : undefined)
     return c.json({ message: 'If you have access, a sign-in link is on its way.' }, 202)
   })
   app.get('/verify', async (c) => {
