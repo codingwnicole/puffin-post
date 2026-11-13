@@ -5,6 +5,7 @@ import type { Env } from '../worker'
 import { acceptInvite, normalizeEmail, provisionBootstrapOwner } from '../auth/invites'
 import { createMagicLinks, type MailSender } from '../auth/magic-links'
 import { endSession, requireWorkspace, startSession } from '../auth/sessions'
+import { hashPassword, validPassword, verifyPassword } from '../auth/passwords'
 
 export function authRoutes(env: Env, sender: MailSender) {
   const app = new Hono<{ Bindings: Env }>()
@@ -69,6 +70,32 @@ export function authRoutes(env: Env, sender: MailSender) {
   app.post('/sign-out', async (c) => {
     await endSession(c)
     return c.body(null, 204)
+  })
+  app.post('/password', async c => {
+    const scope=await requireWorkspace(c), body=await c.req.json<{password?:unknown}>()
+    if(!validPassword(body.password)) throw new HTTPException(400,{message:'Use a password between 8 and 200 characters'})
+    await scope.db.prepare('UPDATE users SET password_hash=? WHERE id=?').bind(await hashPassword(body.password),scope.userId).run()
+    return c.body(null,204)
+  })
+  app.post('/password-sign-in', async c => {
+    const body=await c.req.json<{email?:unknown;password?:unknown}>(), email=typeof body.email==='string' ? normalizeEmail(body.email) : ''
+    if(!email || !validPassword(body.password)) throw new HTTPException(401,{message:'Email or password is incorrect'})
+    const user=await env.DB.prepare('SELECT u.id,u.password_hash AS passwordHash,m.workspace_id AS workspaceId FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.email=? ORDER BY m.role=' + "'owner'" + ' DESC LIMIT 1').bind(email).first<{id:string;passwordHash:string|null;workspaceId:string}>()
+    if(!user || !await verifyPassword(body.password,user.passwordHash)) throw new HTTPException(401,{message:'Email or password is incorrect'})
+    await startSession(c,user.id,user.workspaceId); return c.json({message:'Signed in'})
+  })
+  app.post('/password-sign-up', async c => {
+    const body=await c.req.json<{email?:unknown;password?:unknown}>(),email=normalizeEmail(body.email)
+    if(!validPassword(body.password)) throw new HTTPException(400,{message:'Use a password between 8 and 200 characters'})
+    if(await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(email).first()) throw new HTTPException(409,{message:'An account already exists for this email. Sign in instead.'})
+    const userId=crypto.randomUUID(),workspaceId=crypto.randomUUID(),displayName=email.split('@')[0]
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO users (id,email,display_name,auth_identity,password_hash) VALUES (?,?,?,?,?)').bind(userId,email,displayName,`email:${email}`,await hashPassword(body.password)),
+      env.DB.prepare('INSERT INTO workspaces (id,name,owner_user_id) VALUES (?,?,?)').bind(workspaceId,`${displayName}'s workspace`,userId),
+      env.DB.prepare("INSERT INTO memberships (workspace_id,user_id,role) VALUES (?,?,'owner')").bind(workspaceId,userId),
+    ])
+    await startSession(c,userId,workspaceId)
+    return c.json({message:'Account created'},201)
   })
   return app
 }

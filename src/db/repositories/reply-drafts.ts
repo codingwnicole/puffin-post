@@ -5,13 +5,13 @@ import { listInboxBranches, type ReplyBranch } from './branches'
 import type { ReplyStatus } from '../../shared/domain'
 
 export interface ReplyDraft {
-  id: string; workspaceId: string; characterId: string | null; partnerId: string | null
-  title: string; notes: string; sourceUrl: string | null; reminderAt: string | null
+  id: string; workspaceId: string; characterId: string | null; characterIds: string[]; partnerId: string | null
+  title: string; notes: string; purpose: 'reply'|'plotting'|'starter_idea'|'note'; sourceUrl: string | null; reminderAt: string | null
   state: 'open' | 'converted' | 'archived'; convertedStarterId: string | null; convertedBranchId: string | null
   createdAt: string; updatedAt: string
 }
-type DraftInput = Pick<ReplyDraft,'title'> & Partial<Pick<ReplyDraft,'characterId'|'partnerId'|'notes'|'sourceUrl'|'reminderAt'>>
-const columns = `id,workspace_id AS workspaceId,character_id AS characterId,partner_id AS partnerId,title,notes,
+type DraftInput = Pick<ReplyDraft,'title'> & Partial<Pick<ReplyDraft,'characterId'|'characterIds'|'partnerId'|'notes'|'purpose'|'sourceUrl'|'reminderAt'>>
+const columns = `id,workspace_id AS workspaceId,character_id AS characterId,partner_id AS partnerId,title,notes,purpose,
   source_url AS sourceUrl,reminder_at AS reminderAt,state,converted_starter_id AS convertedStarterId,
   converted_branch_id AS convertedBranchId,created_at AS createdAt,updated_at AS updatedAt`
 
@@ -21,39 +21,53 @@ async function references(scope: WorkspaceScope, input: { characterId?: string |
       .bind(scope.workspaceId,id).first()) throw new Error(`${label} not found`)
   }
 }
+async function withCharacters(scope: WorkspaceScope, drafts: Omit<ReplyDraft,'characterIds'>[]) {
+  if (!drafts.length) return [] as ReplyDraft[]
+  const links=await scope.db.prepare(`SELECT draft_id AS draftId,character_id AS characterId FROM reply_draft_characters WHERE workspace_id=? AND draft_id IN (${drafts.map(()=>'?').join(',')})`).bind(scope.workspaceId,...drafts.map(draft=>draft.id)).all<{draftId:string;characterId:string}>()
+  return drafts.map(draft=>({ ...draft, characterIds:links.results.filter(link=>link.draftId===draft.id).map(link=>link.characterId) }))
+}
 export async function getReplyDraft(scope: WorkspaceScope, id: string): Promise<ReplyDraft> {
   await requireMembership(scope.db,scope.userId,scope.workspaceId)
   const draft = await scope.db.prepare(`SELECT ${columns} FROM reply_drafts WHERE workspace_id=? AND id=?`)
-    .bind(scope.workspaceId,id).first<ReplyDraft>()
+    .bind(scope.workspaceId,id).first<Omit<ReplyDraft,'characterIds'>>()
   if (!draft) throw new Error('Draft not found')
-  return draft
+  return (await withCharacters(scope,[draft]))[0]
 }
 export async function listReplyDrafts(scope: WorkspaceScope, state: ReplyDraft['state'] = 'open', overdue = false) {
   await requireMembership(scope.db,scope.userId,scope.workspaceId)
   const rows = await scope.db.prepare(`SELECT ${columns} FROM reply_drafts WHERE workspace_id=? AND state=?
     ${overdue ? 'AND reminder_at <= ?' : ''} ORDER BY reminder_at IS NULL,reminder_at,created_at DESC`)
-    .bind(scope.workspaceId,state,...(overdue ? [new Date().toISOString()] : [])).all<ReplyDraft>()
-  return rows.results
+    .bind(scope.workspaceId,state,...(overdue ? [new Date().toISOString()] : [])).all<Omit<ReplyDraft,'characterIds'>>()
+  return withCharacters(scope,rows.results)
 }
 export async function createReplyDraft(scope: WorkspaceScope, input: DraftInput) {
   await requireMembership(scope.db,scope.userId,scope.workspaceId)
-  await references(scope,input)
+  const characterIds=[...new Set(input.characterIds ?? (input.characterId ? [input.characterId] : []))]
+  await references(scope,{...input,characterId:characterIds[0]??null})
+  for (const characterId of characterIds.slice(1)) await references(scope,{characterId})
   const id = crypto.randomUUID(), now = new Date().toISOString()
-  await scope.db.prepare(`INSERT INTO reply_drafts (id,workspace_id,character_id,partner_id,title,notes,source_url,reminder_at,created_at,updated_at)
-    VALUES (?,?,?,?,?,?,?,?,?,?)`).bind(id,scope.workspaceId,input.characterId ?? null,input.partnerId ?? null,
-    input.title,input.notes ?? '',input.sourceUrl ?? null,input.reminderAt ?? null,now,now).run()
+  await scope.db.batch([scope.db.prepare(`INSERT INTO reply_drafts (id,workspace_id,character_id,partner_id,title,notes,purpose,source_url,reminder_at,created_at,updated_at)
+    VALUES (?,?,?,?,?,?,?,?,?,?,?)`).bind(id,scope.workspaceId,characterIds[0] ?? null,input.partnerId ?? null,
+    input.title,input.notes ?? '',input.purpose ?? 'reply',input.sourceUrl ?? null,input.reminderAt ?? null,now,now),...characterIds.map(characterId=>scope.db.prepare('INSERT INTO reply_draft_characters (workspace_id,draft_id,character_id) VALUES (?,?,?)').bind(scope.workspaceId,id,characterId))])
   return getReplyDraft(scope,id)
 }
 export async function updateReplyDraft(scope: WorkspaceScope, id: string, patch: Partial<DraftInput> & { state?: 'open'|'archived' }) {
   await getReplyDraft(scope,id)
   await references(scope,patch)
-  const mapping = { title:'title',notes:'notes',characterId:'character_id',partnerId:'partner_id',sourceUrl:'source_url',reminderAt:'reminder_at',state:'state' }
+  if (patch.characterIds) for (const characterId of patch.characterIds) await references(scope,{characterId})
+  const mapping = { title:'title',notes:'notes',purpose:'purpose',characterId:'character_id',partnerId:'partner_id',sourceUrl:'source_url',reminderAt:'reminder_at',state:'state' }
   const entries = Object.entries(mapping).filter(([key]) => key in patch)
   const result = await scope.db.prepare(`UPDATE reply_drafts SET ${entries.map(([,column]) => `${column}=?`).concat('updated_at=?').join(',')}
     WHERE workspace_id=? AND id=? AND state <> 'converted' RETURNING id`)
     .bind(...entries.map(([key]) => patch[key as keyof typeof patch] ?? null),new Date().toISOString(),scope.workspaceId,id).first()
   if (!result) throw new Error('Draft is already converted')
+  if (patch.characterIds) await scope.db.batch([scope.db.prepare('DELETE FROM reply_draft_characters WHERE workspace_id=? AND draft_id=?').bind(scope.workspaceId,id),...[...new Set(patch.characterIds)].map(characterId=>scope.db.prepare('INSERT INTO reply_draft_characters (workspace_id,draft_id,character_id) VALUES (?,?,?)').bind(scope.workspaceId,id,characterId))])
   return getReplyDraft(scope,id)
+}
+export async function deleteReplyDraft(scope: WorkspaceScope, id:string) {
+  await requireMembership(scope.db,scope.userId,scope.workspaceId)
+  const result=await scope.db.prepare('DELETE FROM reply_drafts WHERE workspace_id=? AND id=?').bind(scope.workspaceId,id).run()
+  if(!result.meta.changes) throw new Error('Draft not found')
 }
 export async function convertReplyDraft(scope: WorkspaceScope, id: string, input: {
   starter: Pick<Starter,'characterId'|'title'|'rootPostId'|'rootBlogId'> & { description?: string }

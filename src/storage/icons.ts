@@ -1,7 +1,7 @@
 import type { WorkspaceScope } from '../db/client'
 import { requireMembership } from '../db/repositories/workspaces'
 
-const ALLOWED = new Set(['image/jpeg','image/png','image/webp','image/gif'])
+const ALLOWED = new Set(['image/jpeg','image/png','image/webp'])
 const MAX_BYTES = 2 * 1024 * 1024
 
 export interface IconUploadInput extends WorkspaceScope { characterId:string; file:File }
@@ -32,7 +32,6 @@ export async function validatedRasterType(file: File): Promise<string> {
   const matches = (...signature:number[]) => signature.every((value,index) => bytes[index] === value)
   if (matches(0xff,0xd8,0xff)) return 'image/jpeg'
   if (matches(0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a)) return 'image/png'
-  if (matches(0x47,0x49,0x46,0x38,0x37,0x61) || matches(0x47,0x49,0x46,0x38,0x39,0x61)) return 'image/gif'
   if (matches(0x52,0x49,0x46,0x46) && matchesAt(bytes,8,0x57,0x45,0x42,0x50)) return 'image/webp'
   throw new Error('unsupported image type')
 }

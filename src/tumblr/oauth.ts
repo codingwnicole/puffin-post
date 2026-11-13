@@ -23,10 +23,16 @@ export async function createOauthState() { const value = randomToken(); return {
 
 function percent(value: string) { return encodeURIComponent(value).replace(/[!'()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`) }
 export async function oauthAuthorizationHeader(method: string, url: string, consumerKey: string, consumerSecret: string, token = '', tokenSecret = '', extra: Record<string,string> = {}) {
+  const requestUrl = new URL(url)
   const params: Record<string,string> = { oauth_consumer_key: consumerKey, oauth_nonce: randomToken(), oauth_signature_method: 'HMAC-SHA1', oauth_timestamp: String(Math.floor(Date.now()/1000)), oauth_version:'1.0', ...extra }
   if (token) params.oauth_token = token
-  const normalized = Object.entries(params).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => `${percent(k)}=${percent(v)}`).join('&')
-  const base = [method.toUpperCase(), percent(url), percent(normalized)].join('&')
+  // OAuth 1 signs query parameters, but the signature base URI must not include
+  // the query string. The old signer did the reverse, which breaks endpoints
+  // such as Tumblr's notifications feed.
+  const signed = [...requestUrl.searchParams.entries(), ...Object.entries(params)]
+  const normalized = signed.sort(([a,av],[b,bv]) => a.localeCompare(b) || av.localeCompare(bv)).map(([k,v]) => `${percent(k)}=${percent(v)}`).join('&')
+  const baseUrl = `${requestUrl.protocol}//${requestUrl.host}${requestUrl.pathname}`
+  const base = [method.toUpperCase(), percent(baseUrl), percent(normalized)].join('&')
   const signingKey = await crypto.subtle.importKey('raw', encoder.encode(`${percent(consumerSecret)}&${percent(tokenSecret)}`), { name:'HMAC', hash:'SHA-1' }, false, ['sign'])
   params.oauth_signature = b64(new Uint8Array(await crypto.subtle.sign('HMAC', signingKey, encoder.encode(base))))
   return 'OAuth ' + Object.entries(params).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => `${percent(k)}="${percent(v)}"`).join(', ')

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it } from 'vitest'
 import { trackingFixture, starterInput } from './tracking-fixture'
 import { runRefreshBatch } from '../../src/refresh/runner'
 import { rotateAfter } from '../../src/refresh/cursor'
+import { refreshStarterBranches } from '../../src/tumblr/refresh'
 
 let fixture: Awaited<ReturnType<typeof trackingFixture>>
 beforeEach(async () => { fixture = await trackingFixture() }, 30_000)
@@ -11,6 +12,16 @@ it('rotates an ordered bounded batch so active blogs do not starve', () => {
   const rows = [{id:'a'},{id:'b'},{id:'c'}]
   expect(rotateAfter(rows, null, 2).map(row => row.id)).toEqual(['a','b'])
   expect(rotateAfter(rows, 'b', 2).map(row => row.id)).toEqual(['c','a'])
+})
+
+it('uses the direct reblog chain instead of unrelated notes to decide whose turn it is', async () => {
+  const changes:Array<{postId:string;status:string}> = []
+  await refreshStarterBranches({ workspaceId:'a',starterId:'s',rootBlogIdentifier:'friend.tumblr.com',ownBlogIdentifiers:['a.tumblr.com'],branches:[{id:'branch',partnerBlogIdentifier:'friend.tumblr.com',latestPostId:null,status:'their_turn',statusManualOverrideAt:null}],activities:[
+    {postId:'mine',blogIdentifier:'a.tumblr.com',parentBlogIdentifier:'friend.tumblr.com',timestamp:'2026-01-01T00:00:00.000Z'},
+    {postId:'noise',blogIdentifier:'stranger.tumblr.com',parentBlogIdentifier:'friend.tumblr.com',timestamp:'2026-01-02T00:00:00.000Z'},
+    {postId:'theirs',blogIdentifier:'friend.tumblr.com',parentBlogIdentifier:'a.tumblr.com',timestamp:'2026-01-03T00:00:00.000Z'},
+  ],now:new Date() },async (_branch,activity,status) => { changes.push({postId:activity.postId,status}) })
+  expect(changes).toEqual([{postId:'theirs',status:'your_turn'}])
 })
 
 it('updates only the branch whose partner posted and preserves a manual status', async () => {
@@ -23,7 +34,7 @@ it('updates only the branch whose partner posted and preserves a manual status',
   const other = await (await fixture.request(`/api/starters/${starter.id}/branches`,'POST',{partnerId:'other'})).json() as { id:string }
   await fixture.request(`/api/branches/${friend.id}`,'PATCH',{status:'queued'})
   const originalFetch = globalThis.fetch
-  globalThis.fetch = async () => new Response(JSON.stringify({ response:{ notes:[{blog_name:'friend',post_id:'reply-1',timestamp:100}] } }),{status:200,headers:{'content-type':'application/json'}})
+  globalThis.fetch = async () => new Response(JSON.stringify({ response:{ notes:[{type:'reblog',blog_name:'friend',post_id:'reply-1',reblog_parent_blog_name:'a',timestamp:100}] } }),{status:200,headers:{'content-type':'application/json'}})
   try { await runRefreshBatch(fixture.env,new Date('2026-01-01T00:00:00Z'),10) } finally { globalThis.fetch=originalFetch }
   const branches = await (await fixture.request(`/api/starters/${starter.id}`)).json() as { branches:Array<any> }
   expect(branches.branches.find(branch => branch.id === friend.id)).toMatchObject({status:'queued',latestPostId:'reply-1',refreshError:null})

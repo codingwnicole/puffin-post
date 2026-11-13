@@ -2,8 +2,9 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import type { Env } from '../worker'
 import { requireWorkspace } from '../auth/sessions'
-import { createReplyDraft, updateReplyDraft, listReplyDrafts, convertReplyDraft } from '../db/repositories/reply-drafts'
+import { createReplyDraft, updateReplyDraft, listReplyDrafts, convertReplyDraft, deleteReplyDraft } from '../db/repositories/reply-drafts'
 import { conversionSchema, draftPatchSchema, draftSchema } from './tracking-validation'
+import { parseTumblrPostReference } from '../tumblr/normalize'
 
 export function replyDraftRoutes() {
   const app = new Hono<{ Bindings: Env }>()
@@ -21,9 +22,16 @@ export function replyDraftRoutes() {
     const scope = await requireWorkspace(c)
     return c.json(await updateReplyDraft(scope,c.req.param('draftId'),draftPatchSchema.parse(await c.req.json())))
   })
+  app.delete('/:draftId', async c => {
+    const scope=await requireWorkspace(c)
+    await deleteReplyDraft(scope,c.req.param('draftId'))
+    return c.body(null,204)
+  })
   app.post('/:draftId/convert', async c => {
     const scope = await requireWorkspace(c)
-    return c.json(await convertReplyDraft(scope,c.req.param('draftId'),conversionSchema.parse(await c.req.json())))
+    const input = conversionSchema.parse(await c.req.json())
+    const post = parseTumblrPostReference(input.starter.postUrl)
+    return c.json(await convertReplyDraft(scope,c.req.param('draftId'),{ ...input, starter:{ ...input.starter, rootBlogId:post.blogIdentifier, rootPostId:post.postId } }))
   })
   return app
 }

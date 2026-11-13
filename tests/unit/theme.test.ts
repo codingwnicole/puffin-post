@@ -8,22 +8,22 @@ describe('theme preferences', () => {
   it('follows the system until a valid preference is saved', () => {
     const storage = new Map<string, string>()
     const local = { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value) } }
-    expect(readThemePreference(local)).toEqual({ mode: 'system', palette: 'rose' })
+    expect(readThemePreference(local)).toEqual({ mode: 'system' })
     expect(resolveTheme('system', true)).toBe('dark')
     expect(resolveTheme('system', false)).toBe('light')
     expect(resolveTheme('light', true)).toBe('light')
     expect(resolveTheme('dark', false)).toBe('dark')
-    saveThemePreference({ mode: 'light', palette: 'ocean' }, local)
-    expect(readThemePreference(local)).toEqual({ mode: 'light', palette: 'ocean' })
+    saveThemePreference({ mode: 'light' }, local)
+    expect(readThemePreference(local)).toEqual({ mode: 'light' })
   })
 
-  it.each(['{', 'null', '[]', '{"mode":"sepia","palette":"rose"}', '{"mode":"dark","palette":"neon"}', '{"mode":["dark"],"palette":"rose"}', '{"mode":"dark","palette":["ocean"]}'])('ignores invalid saved preferences: %s', value => {
-    expect(readThemePreference({ getItem: () => value })).toEqual({ mode: 'system', palette: 'rose' })
+  it.each(['{', 'null', '[]', '{"mode":"sepia"}', '{"mode":["dark"]}'])('ignores invalid saved preferences: %s', value => {
+    expect(readThemePreference({ getItem: () => value })).toEqual({ mode: 'system' })
   })
 
   it('works when local storage is unavailable', () => {
-    expect(readThemePreference({ getItem: () => { throw new Error('blocked') } })).toEqual({ mode: 'system', palette: 'rose' })
-    expect(() => saveThemePreference({ mode: 'dark', palette: 'violet' }, { setItem: () => { throw new Error('full') } })).not.toThrow()
+    expect(readThemePreference({ getItem: () => { throw new Error('blocked') } })).toEqual({ mode: 'system' })
+    expect(() => saveThemePreference({ mode: 'dark' }, { setItem: () => { throw new Error('full') } })).not.toThrow()
   })
 })
 

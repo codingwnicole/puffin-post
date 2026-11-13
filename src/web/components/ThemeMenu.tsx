@@ -8,7 +8,7 @@ export default function ThemeMenu() {
     const apply = () => {
       const mode = resolveTheme(preference.mode, media.matches)
       document.documentElement.dataset.theme = mode
-      document.documentElement.dataset.palette = preference.palette
+      delete document.documentElement.dataset.palette
       document.documentElement.style.colorScheme = mode
     }
     apply()
@@ -29,16 +29,6 @@ export default function ThemeMenu() {
           <option value="system">Use system</option>
           <option value="light">Light</option>
           <option value="dark">Dark</option>
-        </select>
-      </label>
-      <label>Palette
-        <select value={preference.palette} onChange={event => change({ ...preference, palette: event.target.value as ThemePreference['palette'] })}>
-          <option value="rose">Rose</option>
-          <option value="violet">Violet</option>
-          <option value="ocean">Ocean</option>
-          <option value="sage">Sage</option>
-          <option value="ember">Ember</option>
-          <option value="midnight">Midnight</option>
         </select>
       </label>
     </fieldset>

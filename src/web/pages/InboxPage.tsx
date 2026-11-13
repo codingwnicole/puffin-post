@@ -1,47 +1,49 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import type { InboxBranch } from '../../db/repositories/branches'
 import { api, type TrackingOptions } from '../lib/api'
-import BranchRow, { statusLabel } from '../components/BranchRow'
+import BranchRow from '../components/BranchRow'
+import InitialsAvatar from '../components/InitialsAvatar'
 import StarterFields from '../components/StarterFields'
 import FilterBar, { type InboxFilters } from '../components/FilterBar'
 
+type GroupedBranches = Record<string, InboxBranch[]>
+
+function ReplyRun({ branches }: { branches: InboxBranch[] }) {
+  const active = branches.filter(branch => branch.status !== 'archived')
+  const owed = active.filter(branch => branch.status === 'your_turn').length
+  const waiting = active.length - owed
+  const owedPercent = active.length ? Math.round((owed / active.length) * 100) : 0
+  return <aside className="reply-run" aria-label={`${owed} replies owed and ${waiting} waiting on someone else`}>
+    <div className="reply-donut" style={{ '--owed': `${owedPercent}%` } as CSSProperties}><strong>{owed}</strong><span>owed</span></div>
+    <div><p className="eyebrow">Reply run</p><strong>{owed ? `${owed} scene${owed === 1 ? '' : 's'} on your desk` : 'Your desk is clear'}</strong><p>{waiting ? `${waiting} waiting on a partner` : 'Nothing else is in motion right now.'}</p></div>
+  </aside>
+}
+
+function QuickAdd({options,busy,onSubmit}:{options:TrackingOptions;busy:boolean;onSubmit:(event:React.FormEvent<HTMLFormElement>)=>void}) {
+  return <aside className="quick-add-panel quick-add-panel-inline" id="quick-add" aria-labelledby="quick-add-title" tabIndex={-1}><div><p className="eyebrow">New scene</p><h3 id="quick-add-title">Add a Tumblr thread</h3><p>Paste a starter or reply link. Puffin Post reads what it can, then asks only when a choice matters.</p></div><form className="tracking-form" onSubmit={onSubmit}><StarterFields options={options}/><label>Shared description<textarea name="description" maxLength={20000}/></label><div className="actions"><button disabled={busy}>{busy?'Adding thread...':'Add thread'}</button><a className="button secondary-button" href="#inbox">Cancel</a></div></form><div className="quick-add-help"><strong>What happens?</strong><span>We fetch the post, identify its chain and possible partners, then create the first reply branch when the match is clear.</span></div></aside>
+}
+
+function GuestSignIn({busy,setBusy,error,setError,sentLink,setSentLink}:{busy:boolean;setBusy:(value:boolean)=>void;error:string;setError:(value:string)=>void;sentLink:boolean;setSentLink:(value:boolean)=>void}) {
+  if(sentLink)return <><h2>Check your email</h2><p>We sent a one-time sign-in link. It expires soon and works once.</p><button onClick={()=>setSentLink(false)}>Use a different email</button></>
+  const submit=(path:string,after:()=>void)=>async(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();setBusy(true);setError('');const form=new FormData(event.currentTarget);try{await api(path,'POST',{email:form.get('email'),password:form.get('password')});after()}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
+  return <><h2>Sign in</h2><form className="tracking-form" onSubmit={async event=>{event.preventDefault();setBusy(true);setError('');try{await api('/auth/magic-link','POST',{email:new FormData(event.currentTarget).get('email')});setSentLink(true)}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}}><label>Email address<input name="email" type="email" autoComplete="email" required/></label><button disabled={busy}>{busy?'Sending...':'Email me a sign-in link'}</button></form><details className="password-option"><summary>Use a password instead</summary><form className="tracking-form" onSubmit={submit('/auth/password-sign-in',()=>window.location.reload())}><label>Email address<input name="email" type="email" autoComplete="email" required/></label><label>Password<input name="password" type="password" minLength={8} autoComplete="current-password" required/></label><button disabled={busy}>Sign in</button></form></details><details className="password-option"><summary>Create an account with a password</summary><form className="tracking-form" onSubmit={submit('/auth/password-sign-up',()=>window.location.reload())}><label>Email address<input name="email" type="email" autoComplete="email" required/></label><label>Password<input name="password" type="password" minLength={8} maxLength={200} autoComplete="new-password" required/></label><p className="field-help">At least 8 characters. No email link required.</p><button disabled={busy}>Create account</button></form></details>{error&&<p role="alert">{error}</p>}</>
+}
+
 export default function InboxPage() {
-  const [inbox,setInbox] = useState<{ branches:InboxBranch[]; yourTurnCount:number }>({ branches:[],yourTurnCount:0 })
-  const [filters,setFilters] = useState<InboxFilters>({status:'',characterId:'',tagId:'',q:''}), [error,setError] = useState(''), [loaded,setLoaded] = useState(false), [busy,setBusy] = useState(false)
-  const [tags,setTags] = useState<{id:string;displayLabel:string}[]>([])
-  const [options,setOptions] = useState<TrackingOptions>({ characters:[],partners:[] })
-  const query = new URLSearchParams(Object.entries(filters).filter(([,value])=>value))
-  async function reload() { setInbox(await api(`/inbox${query.size ? `?${query}` : ''}`)) }
-  useEffect(() => {
-    let active = true
-    setError('')
-    Promise.all([api<typeof inbox>(`/inbox${query.size ? `?${query}` : ''}`),api<TrackingOptions>('/starters/options'),api<{id:string;displayLabel:string}[]>('/tags').catch(() => [])])
-      .then(([inbox,options,tags]) => { if (active) { setInbox(inbox); setOptions(options); setTags(tags); setLoaded(true) } }).catch(e => { if (active) setError(e.message) })
-    return () => { active = false }
-  },[filters.status,filters.characterId,filters.tagId,filters.q])
-  const needsSignIn = error === 'Sign in to see your writing space.'
-  return <section aria-labelledby="inbox-title">
-    <h2 id="inbox-title" className="page-heading">Inbox</h2>
-    <p className="page-description">See what needs your words next, then get out of the way and write.</p>
-    {error && <p role="alert">{error}</p>}
-    {!loaded && <div className="empty-state inbox-welcome"><span className="empty-mark" aria-hidden="true">t</span><h3>{needsSignIn ? 'Your threads stay yours.' : 'Opening your writing space…'}</h3><p>{needsSignIn ? 'Sign in with a one-time link to pick up exactly where you left off.' : 'Gathering the scenes that need you.'}</p></div>}
-    {needsSignIn && <form className="tracking-form sign-in-form" onSubmit={async event => {
-      event.preventDefault(); setError(''); setBusy(true)
-      const email = new FormData(event.currentTarget).get('email')
-      try { await api('/auth/magic-link', 'POST', { email }); setError('Check your email for a one-time sign-in link.') }
-      catch (error) { setError((error as Error).message) } finally { setBusy(false) }
-    }}><label>Email address<input name="email" type="email" autoComplete="email" required /></label><button disabled={busy}>{busy ? 'Sending link...' : 'Email me a sign-in link'}</button></form>}
-    {loaded && <><div className="inbox-summary"><div><p className="eyebrow">At a glance</p><p className="reply-count" aria-live="polite">{inbox.yourTurnCount} {inbox.yourTurnCount === 1 ? 'reply needs' : 'replies need'} you</p></div><a className="text-action" href="#parking-lot">Park an owed reply</a></div>
-      <FilterBar filters={filters} options={options} tags={tags} onChange={setFilters}/>
-      {inbox.branches.map(branch => <BranchRow key={`${branch.id}:${branch.status}:${branch.notes}:${branch.partnerId}`} branch={branch} options={options} onChange={reload} />)}
-      {!inbox.branches.length && <div className="empty-state onboarding"><p className="eyebrow">Start your first thread</p><h3>Build a space that keeps up with your stories.</h3><p>Connect Tumblr, add a character, then save an open starter once. Every participant gets their own reply branch.</p><ol><li><a href="#connections">Connect your Tumblr</a></li><li><a href="#characters">Add a character</a></li><li>Return here to track a starter</li></ol></div>}
-      <details className="tracking-card"><summary>Add Tumblr starter</summary>
-        <form className="tracking-form" onSubmit={async event => {
-          event.preventDefault(); setError(''); setBusy(true)
-          const data = new FormData(event.currentTarget)
-          try { const starter = await api<{ id:string }>('/starters','POST',Object.fromEntries(data)); window.location.hash = `starter/${starter.id}` }
-          catch(e) { setError((e as Error).message) } finally { setBusy(false) }
-        }}><StarterFields options={options} /><label>Shared description<textarea name="description" maxLength={20000} /></label><button disabled={busy}>Create starter</button></form>
-      </details></>}
+  const [inbox,setInbox]=useState<{branches:InboxBranch[];yourTurnCount:number;overdueDraftCount:number;dueSoonCount:number}>({branches:[],yourTurnCount:0,overdueDraftCount:0,dueSoonCount:0})
+  const [filters,setFilters]=useState<InboxFilters>({status:'',characterId:'',tagId:'',q:'',oldestFirst:false}),[focusMode,setFocusMode]=useState(false),[error,setError]=useState(''),[loaded,setLoaded]=useState(false),[busy,setBusy]=useState(false),[sentLink,setSentLink]=useState(false)
+  const [tags,setTags]=useState<{id:string;displayLabel:string}[]>([]),[options,setOptions]=useState<TrackingOptions>({characters:[],partners:[]})
+  const query=new URLSearchParams([...Object.entries(filters).filter(([,value])=>value && value!==false).map(([key,value])=>[key,value===true?'true':String(value)]),...(focusMode?[['doNext','true']]:[])])
+  async function reload(){setInbox(await api(`/inbox${query.size?`?${query}`:''}`))}
+  async function createStarter(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setError('');setBusy(true);const payload:Record<string,FormDataEntryValue|null>=Object.fromEntries(new FormData(event.currentTarget));payload.groupId=payload.groupId||null;payload.partnerBlogIdentifier=payload.partnerBlogIdentifier||null;try{const starter=await api<{id:string}>('/starters','POST',payload);window.location.hash=`starter/${starter.id}`}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
+  useEffect(()=>{let active=true;setError('');Promise.all([api<typeof inbox>(`/inbox${query.size?`?${query}`:''}`),api<TrackingOptions>('/starters/options'),api<{id:string;displayLabel:string}[]>('/tags').catch(()=>[])]).then(([nextInbox,nextOptions,nextTags])=>{if(active){setInbox(nextInbox);setOptions(nextOptions);setTags(nextTags);setLoaded(true)}}).catch(problem=>{if(active)setError(problem.message)});return()=>{active=false}},[filters.status,filters.characterId,filters.tagId,filters.q,filters.oldestFirst,focusMode])
+  const needsSignIn=error==='Sign in to see your writing space.'
+  if(needsSignIn||sentLink)return <section className="guest-landing" aria-labelledby="sign-in-title"><div className="guest-copy"><span className="guest-puffin" aria-hidden="true"><svg viewBox="0 0 64 64"><path className="puffin-body" d="M13 46c0-18 10-31 25-31 10 0 17 6 17 16 0 13-11 22-26 22-7 0-12-2-16-7Z"/><path className="puffin-face" d="M30 16c12 0 20 8 20 18 0 8-7 14-16 14-10 0-17-7-17-16 0-9 5-16 13-16Z"/><path className="puffin-beak" d="M45 31c8 0 13 3 15 7-4 6-10 8-17 7l2-14Z"/><circle cx="38" cy="27" r="2.3" className="puffin-eye"/></svg></span><p className="eyebrow">Your new favorite RP companion</p><h1 id="sign-in-title">Keep track of what you owe.</h1><p>Threads, starter ideas, character notes, and the little things that used to live in fifteen open tabs.</p><div className="guest-feature-preview" aria-label="Puffin Post features"><div className="guest-preview-card"><p className="eyebrow">Your turn</p><strong>Two replies are waiting.</strong><span>Avast &middot; Catherine</span></div><ul><li><strong>Know what is next</strong><span>Replies are organized by character and RP.</span></li><li><strong>Save every good idea</strong><span>Park plotting notes, asks, and starters for later.</span></li><li><strong>Stay in your writing flow</strong><span>One calm place to check threads and plan what comes next.</span></li></ul></div></div><div className="guest-card"><GuestSignIn busy={busy} setBusy={setBusy} error={needsSignIn?'':error} setError={setError} sentLink={sentLink} setSentLink={setSentLink}/></div></section>
+  const grouped=inbox.branches.reduce<GroupedBranches>((all,branch)=>{const name=branch.groupName??'Unsorted';(all[name]??=[]).push(branch);return all},{})
+  return <section aria-labelledby="inbox-title"><div className="inbox-hero"><div><p className="eyebrow">Reply desk</p><h2 id="inbox-title" className="page-heading">Your turn <span className="count-pill">{inbox.yourTurnCount} {inbox.yourTurnCount===1?'reply':'replies'}</span></h2><p className="page-description">The scenes waiting on you, sorted by RP and character.</p></div><a className="quick-add-link" href="#quick-add">+ Add a Tumblr thread</a></div>
+    {error&&<p role="alert">{error}</p>}{!loaded&&<div className="empty-state inbox-welcome"><span className="empty-mark" aria-hidden="true">p</span><h3>Opening your writing space.</h3><p>Gathering the scenes that need you.</p></div>}
+    {loaded&&<><div className="inbox-summary"><div><p className="reply-count" aria-live="polite">{focusMode?'Oldest owed replies first.':'Nothing gets lost in the reblog void.'}</p><button className="do-next" type="button" aria-pressed={focusMode} onClick={()=>setFocusMode(!focusMode)}>{focusMode?'Show all active':'Do next'}</button></div><div className="reminder-summary">{inbox.overdueDraftCount>0&&<a href="#parking-lot">{inbox.overdueDraftCount} overdue {inbox.overdueDraftCount===1?'note':'notes'}</a>}{inbox.dueSoonCount>0&&<span>{inbox.dueSoonCount} check-ins this week</span>}</div><a className="text-action" href="#parking-lot">Use the Parking Lot for ideas & DMs</a></div><ReplyRun branches={inbox.branches}/><FilterBar filters={filters} options={options} tags={tags} onChange={setFilters}/>
+      <div className="inbox-workspace"><div className="rp-groups">{Object.entries(grouped).map(([group,branches])=><details className="rp-group" key={group} open><summary><span className="rp-group-badge" aria-hidden="true">{group.slice(0,1)}</span><span><span className="rp-group-name">{group}</span><small>RP section</small></span><span className="group-count">{branches.length} {branches.length===1?'thread':'threads'}</span></summary><div className="character-stacks">{Object.entries(branches.reduce<GroupedBranches>((all,branch)=>{(all[branch.characterName]??=[]).push(branch);return all},{})).map(([character,items])=>{const lead=items[0];return <details key={character} className="character-stack" open><summary><InitialsAvatar name={character} imageUrl={lead.iconObjectKey?`/api/characters/${lead.characterId}/icon`:null}/><span><strong>{character}</strong><small>{items.length} {items.length===1?'reply':'replies'}</small></span></summary><div className="branch-list">{items.map(branch=><BranchRow key={`${branch.id}:${branch.status}:${branch.notes}:${branch.partnerId}`} branch={branch} options={options} onChange={reload}/>)}</div></details>})}</div></details>)}</div><QuickAdd options={options} busy={busy} onSubmit={createStarter}/></div>
+      {!inbox.branches.length&&<div className="empty-state onboarding"><p className="eyebrow">Start your first thread</p><h3>Build a space that keeps up with your stories.</h3><p>Connect Tumblr, add a character, then save an open starter once. Every participant gets their own reply branch.</p><ol><li><a href="#connections">Connect your Tumblr</a></li><li><a href="#characters">Add a character</a></li><li>Return here to track a starter</li></ol></div>}</>}
   </section>
 }

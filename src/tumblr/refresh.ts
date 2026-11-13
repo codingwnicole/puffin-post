@@ -12,27 +12,35 @@ export interface RefreshInput {
   workspaceId: string
   starterId: string
   rootBlogIdentifier: string
+  ownBlogIdentifiers: string[]
   branches: RefreshBranch[]
   activities: TumblrActivity[]
   now: Date
 }
 
-export interface RefreshResult { updatedBranchIds: string[]; detectedActivityCount: number }
+export interface RefreshResult { updatedBranchIds:string[]; detectedActivityCount:number }
 
-/** Applies remote partner activity to its own branch only. Manual statuses always win. */
-export async function refreshStarterBranches(input: RefreshInput, apply: (branch: RefreshBranch, activity: TumblrActivity) => Promise<void>): Promise<RefreshResult> {
-  const latestByPartner = new Map<string, TumblrActivity>()
-  for (const activity of input.activities) {
-    if (activity.blogIdentifier === input.rootBlogIdentifier || !activity.postId) continue
-    const current = latestByPartner.get(activity.blogIdentifier)
-    if (!current || activity.timestamp > current.timestamp) latestByPartner.set(activity.blogIdentifier, activity)
+export function latestDirectExchange(ownBlogIdentifiers:string[], rootBlogIdentifier:string, partnerBlogIdentifier:string, activities:TumblrActivity[]) {
+  const ownBlogs = new Set(ownBlogIdentifiers)
+  let latest: { activity:TumblrActivity; status:'your_turn'|'their_turn' } | undefined
+  for (const activity of [...activities].sort((left,right) => left.timestamp.localeCompare(right.timestamp))) {
+    // A partner reblogging from you means their turn is over; you owe the next reply.
+    if (activity.blogIdentifier === partnerBlogIdentifier && (ownBlogs.has(activity.parentBlogIdentifier ?? '') || activity.parentBlogIdentifier === rootBlogIdentifier && ownBlogs.has(rootBlogIdentifier))) latest = { activity, status:'your_turn' }
+    // Your reblog from that partner means you have replied and are waiting on them.
+    if (ownBlogs.has(activity.blogIdentifier) && activity.parentBlogIdentifier === partnerBlogIdentifier) latest = { activity, status:'their_turn' }
   }
-  const updatedBranchIds: string[] = []
+  return latest
+}
+
+/** Finds the latest direct exchange between a tracked partner and one of the character's blogs. */
+export async function refreshStarterBranches(input:RefreshInput, apply:(branch:RefreshBranch, activity:TumblrActivity, status:'your_turn'|'their_turn') => Promise<void>):Promise<RefreshResult> {
+  const updatedBranchIds:string[] = []
   for (const branch of input.branches) {
-    const activity = branch.partnerBlogIdentifier ? latestByPartner.get(branch.partnerBlogIdentifier) : undefined
-    if (!activity || activity.postId === branch.latestPostId) continue
-    await apply(branch, activity)
+    if (!branch.partnerBlogIdentifier) continue
+    const latest = latestDirectExchange(input.ownBlogIdentifiers,input.rootBlogIdentifier,branch.partnerBlogIdentifier,input.activities)
+    if (!latest || latest.activity.postId === branch.latestPostId) continue
+    await apply(branch, latest.activity, latest.status)
     updatedBranchIds.push(branch.id)
   }
-  return { updatedBranchIds, detectedActivityCount: latestByPartner.size }
+  return { updatedBranchIds, detectedActivityCount:input.activities.length }
 }

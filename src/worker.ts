@@ -15,6 +15,14 @@ import { partnerRoutes } from './routes/partners'
 import { tagRoutes } from './routes/tags'
 import { exportRoutes } from './routes/export'
 import { settingsRoutes } from './routes/settings'
+import { groupRoutes } from './routes/groups'
+import { pushRoutes } from './routes/push'
+import { sendDuePushes } from './routes/push'
+import { titleStyleRoutes } from './routes/title-styles'
+import { tumblrActivityRoutes } from './routes/tumblr-activity'
+import { characterPlannerRoutes } from './routes/character-planner'
+import { featureSuggestionRoutes } from './routes/feature-suggestions'
+import { supportRoutes } from './routes/support'
 
 export interface Env {
   DB: D1Database
@@ -26,6 +34,7 @@ export interface Env {
   TUMBLR_CONSUMER_SECRET: string
   RESEND_API_KEY: string
   MAIL_FROM: string
+  PUSH_VAPID_PRIVATE_KEY?: string
   BOOTSTRAP_OWNER_EMAIL?: string
 }
 
@@ -56,7 +65,8 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
     if (error instanceof ZodError) return c.json({ error: 'Invalid request body or query' },400)
     if (['Starter not found','Branch not found','Draft not found','Character not found','Partner not found'].includes(error.message)) return c.json({ error: error.message },404)
     if (['Draft is archived','Draft is already converted'].includes(error.message)) return c.json({ error: error.message },409)
-    return c.json({ error: 'Request failed' }, 500)
+    console.error('Unhandled request error', { path:c.req.path, method:c.req.method, message:error instanceof Error ? error.message : String(error) })
+    return c.json({ error: error instanceof Error ? error.message : 'Request failed' }, 500)
   })
   const sender = options.mailSender ?? resendMailSender(env)
   app.route('/api/auth', authRoutes(env, sender))
@@ -71,6 +81,13 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   app.route('/api/tags', tagRoutes())
   app.route('/api', exportRoutes())
   app.route('/api/settings', settingsRoutes())
+  app.route('/api/rp-groups', groupRoutes())
+  app.route('/api/push',pushRoutes())
+  app.route('/api/title-styles',titleStyleRoutes())
+  app.route('/api/tumblr-activity',tumblrActivityRoutes())
+  app.route('/api/character-planner',characterPlannerRoutes())
+  app.route('/api/feature-suggestions',featureSuggestionRoutes())
+  app.route('/api/support',supportRoutes())
   return app
 }
 
@@ -79,6 +96,6 @@ export default {
     return createApp(env).fetch(request, env, ctx)
   },
   scheduled(_event, env, ctx) {
-    ctx.waitUntil(runRefreshBatch(env, new Date(), 20))
+    ctx.waitUntil(Promise.all([runRefreshBatch(env, new Date(), 20),sendDuePushes(env)]))
   },
 } satisfies ExportedHandler<Env>

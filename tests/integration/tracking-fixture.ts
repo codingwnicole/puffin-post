@@ -47,4 +47,4 @@ export async function trackingFixture() {
   }
 }
 
-export const starterInput = { characterId: 'character-a', title: 'Open starter', rootPostId: '12345', rootBlogId: 'a.tumblr.com', description: 'Shared scene' }
+export const starterInput = { characterId: 'character-a', title: 'Open starter', postUrl: 'https://a.tumblr.com/post/12345', description: 'Shared scene' }

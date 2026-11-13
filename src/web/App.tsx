@@ -6,9 +6,13 @@ import ReplyParkingLotPage from './pages/ReplyParkingLotPage'
 import ConnectionsPage from './pages/ConnectionsPage'
 import CharactersPage from './pages/CharactersPage'
 import SettingsPage from './pages/SettingsPage'
+import WritingToolsPage from './pages/WritingToolsPage'
+import TumblrActivityPage from './pages/TumblrActivityPage'
+import CharacterPlannerPage from './pages/CharacterPlannerPage'
+import SupportPage from './pages/SupportPage'
 
 function pageForRoute(route: string): AppPage {
-  return route.startsWith('starter/') ? 'starter' : route === 'characters' || route === 'settings' || route === 'parking-lot' || route === 'connections' ? route : 'inbox'
+  return route.startsWith('starter/') ? 'starter' : route === 'characters' || route === 'planner' || route === 'settings' || route === 'parking-lot' || route === 'connections' || route === 'tools' || route === 'activity' || route === 'support' ? route : 'inbox'
 }
 
 export default function App() {
@@ -23,7 +27,7 @@ export default function App() {
 
   return (
     <AppShell page={page}>
-      {page === 'inbox' ? <InboxPage /> : page === 'parking-lot' ? <ReplyParkingLotPage /> : page === 'connections' ? <ConnectionsPage /> : page === 'characters' ? <CharactersPage /> : page === 'settings' ? <SettingsPage /> : page === 'starter' ? <StarterPage key={starterId} id={starterId} /> : (
+      {page === 'inbox' ? <InboxPage /> : page === 'parking-lot' ? <ReplyParkingLotPage /> : page === 'connections' ? <ConnectionsPage /> : page === 'characters' ? <CharactersPage /> : page === 'planner' ? <CharacterPlannerPage /> : page === 'tools' ? <WritingToolsPage /> : page === 'activity' ? <TumblrActivityPage /> : page === 'support' ? <SupportPage /> : page === 'settings' ? <SettingsPage /> : page === 'starter' ? <StarterPage key={starterId} id={starterId} /> : (
         <section aria-labelledby="page-title">
           <h2 id="page-title" className="page-heading">{page === 'settings' ? 'Settings' : 'Characters'}</h2>
           <p className="page-description">{page === 'settings'

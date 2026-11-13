@@ -17,6 +17,7 @@ export interface ReplyBranch {
   statusManualOverrideAt: string | null
   archivedAt: string | null
   createdAt: string
+  nextCheckAt: string | null
 }
 
 export interface CreateReplyBranchInput extends WorkspaceScope {
@@ -36,12 +37,16 @@ export interface InboxQuery extends WorkspaceScope {
   characterId?: string
   tagId?: string
   q?: string
+  oldestFirst?: boolean
 }
 
 export interface InboxBranch extends ReplyBranch {
   title: string
+  description: string
   characterId: string
   characterName: string
+  groupId: string | null
+  groupName: string | null
   iconObjectKey: string | null
   source: 'tumblr'
   rootPostId: string
@@ -68,7 +73,7 @@ export async function createReplyBranch(input: CreateReplyBranchInput): Promise<
     status, notes: input.notes ?? '', latestPostId: input.latestPostId ?? null,
     lastPoster: input.lastPoster ?? null, lastActivityAt: input.lastActivityAt ?? null,
     lastRefreshAt: null, refreshError: null, statusManualOverrideAt: null,
-    archivedAt: status === 'archived' ? createdAt : null, createdAt,
+    archivedAt: status === 'archived' ? createdAt : null, createdAt, nextCheckAt: null,
   }
   await db.prepare(`
     INSERT INTO reply_branches (id, workspace_id, starter_id, partner_id, status, notes,
@@ -88,25 +93,26 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
       b.status, b.notes, b.latest_post_id AS latestPostId, b.last_poster AS lastPoster,
       b.last_activity_at AS lastActivityAt, b.last_refresh_at AS lastRefreshAt,
       b.refresh_error AS refreshError, b.status_manual_override_at AS statusManualOverrideAt,
-      b.archived_at AS archivedAt, b.created_at AS createdAt, s.title, s.character_id AS characterId,
-      c.name AS characterName, c.icon_object_key AS iconObjectKey,
+      b.archived_at AS archivedAt, b.created_at AS createdAt, b.next_check_at AS nextCheckAt, s.title, s.description, s.character_id AS characterId,
+      c.name AS characterName, c.icon_object_key AS iconObjectKey, s.rp_group_id AS groupId, g.name AS groupName,
       s.source, s.root_post_id AS rootPostId, s.root_blog_id AS rootBlogId, p.display_label AS partnerLabel
     FROM reply_branches b
     JOIN starters s ON s.workspace_id = b.workspace_id AND s.id = b.starter_id
     JOIN characters c ON c.workspace_id = s.workspace_id AND c.id = s.character_id
+    LEFT JOIN rp_groups g ON g.workspace_id=s.workspace_id AND g.id=s.rp_group_id
     LEFT JOIN partners p ON p.workspace_id = b.workspace_id AND p.id = b.partner_id
     WHERE b.workspace_id = ? AND ${status === undefined ? (input.includeArchived ? '1 = 1' : 'b.archived_at IS NULL') : 'b.status = ?'}
       ${input.starterId ? 'AND b.starter_id = ?' : ''}
       ${input.characterId ? 'AND s.character_id = ?' : ''}
       ${input.tagId ? 'AND EXISTS (SELECT 1 FROM starter_tags st WHERE st.workspace_id=b.workspace_id AND st.starter_id=b.starter_id AND st.tag_id=?)' : ''}
       ${input.q ? "AND (lower(s.title) LIKE ? OR lower(c.name) LIKE ? OR lower(COALESCE(p.display_label,'')) LIKE ?)" : ''}
-    ORDER BY COALESCE(b.last_activity_at, b.created_at) DESC, b.id
+    ORDER BY COALESCE(b.last_activity_at, b.created_at) ${input.oldestFirst ? 'ASC' : 'DESC'}, b.id
   `).bind(...[workspaceId, ...(status === undefined ? [] : [status]), ...(input.starterId ? [input.starterId] : []), ...(input.characterId ? [input.characterId] : []), ...(input.tagId ? [input.tagId] : []), ...(input.q ? Array(3).fill(`%${input.q.toLocaleLowerCase()}%`) : [])]).all<InboxBranch>()
   return result.results
 }
 
 export async function updateReplyBranch(scope: WorkspaceScope, id: string,
-  patch: { partnerId?: string | null; status?: ReplyStatus; notes?: string }): Promise<ReplyBranch> {
+  patch: { partnerId?: string | null; status?: ReplyStatus; notes?: string; nextCheckAt?: string | null }): Promise<ReplyBranch> {
   await requireMembership(scope.db,scope.userId,scope.workspaceId)
   if (patch.partnerId != null && !await scope.db.prepare('SELECT id FROM partners WHERE workspace_id=? AND id=?')
     .bind(scope.workspaceId,patch.partnerId).first()) throw new Error('Partner not found')
@@ -115,11 +121,12 @@ export async function updateReplyBranch(scope: WorkspaceScope, id: string,
     partner_id = CASE WHEN ? THEN ? ELSE partner_id END,
     notes = CASE WHEN ? THEN ? ELSE notes END,
     status = COALESCE(?,status),
+    next_check_at = CASE WHEN ? THEN ? ELSE next_check_at END,
     archived_at = CASE WHEN ? = 'archived' THEN COALESCE(archived_at,?) WHEN ? IS NOT NULL THEN NULL ELSE archived_at END,
     status_manual_override_at = CASE WHEN ? IS NOT NULL THEN ? ELSE status_manual_override_at END
     WHERE workspace_id=? AND id=? RETURNING id`)
     .bind(patch.partnerId !== undefined,patch.partnerId ?? null,patch.notes !== undefined,patch.notes ?? null,
-      patch.status ?? null,patch.status ?? null,new Date().toISOString(),patch.status ?? null,patch.status ?? null,new Date().toISOString(),scope.workspaceId,id).first()
+      patch.status ?? null,patch.nextCheckAt !== undefined,patch.nextCheckAt ?? null,patch.status ?? null,new Date().toISOString(),patch.status ?? null,patch.status ?? null,new Date().toISOString(),scope.workspaceId,id).first()
   if (!result) throw new Error('Branch not found')
   return (await listInboxBranches({ ...scope, includeArchived: true })).find(b => b.id === id)!
 }

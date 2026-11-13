@@ -1,32 +1,18 @@
-import { useEffect, useState, type FormEvent } from 'react'
-import { api, type TrackingOptions } from '../lib/api'
+import { useEffect,useState,type FormEvent } from 'react'
+import { api,type TrackingOptions } from '../lib/api'
 
-type Assignment = { id:string; characterId:string; characterName:string; blogIdentifier:string; displayLabel:string }
-type Connection = { id:string; status:string; blogs:string[]; assignments:Assignment[] }
-export default function ConnectionsPage() {
-  const [connections,setConnections] = useState<Connection[]>([]), [options,setOptions] = useState<TrackingOptions>({ characters:[],partners:[] }), [characterId,setCharacterId] = useState(''), [connectionId,setConnectionId] = useState(''), [blog,setBlog] = useState(''), [error,setError] = useState(''), [notice,setNotice] = useState('')
-  useEffect(() => { Promise.all([api<Connection[]>('/connections'),api<TrackingOptions>('/starters/options')]).then(([connections,options]) => { setConnections(connections); setOptions(options); setConnectionId(connections[0]?.id ?? ''); setBlog(connections[0]?.blogs[0] ?? ''); setCharacterId(options.characters[0]?.id ?? '') }).catch(error => setError(error.message)) },[])
-  const active = connections.find(connection => connection.id === connectionId)
-  function chooseConnection(id:string) { setConnectionId(id); setBlog(connections.find(connection => connection.id === id)?.blogs[0] ?? '') }
-  async function assign(event:FormEvent) { event.preventDefault(); setError(''); setNotice(''); try { await api(`/connections/${connectionId}/blogs`,'POST',{ characterId,blogIdentifier:blog,displayLabel:blog }); setNotice('Tumblr blog assigned to this character.') } catch (error) { setError(error instanceof Error ? error.message : 'Could not assign Tumblr blog.') } }
-  return <section aria-labelledby="page-title"><h2 id="page-title" className="page-heading">Tumblr connections</h2>
-    <p className="page-description">Connect as many Tumblr accounts as you use. Every returned blog can be assigned separately, including multiple blogs to the same character.</p>
-    <a className="button" href="/api/tumblr/connect">Connect a Tumblr account</a>
-    {error && <p role="alert">{error}</p>}
-    <div className="connection-list">{connections.map((connection,index) => <article className="tracking-card connection-card" key={connection.id}>
-      <div><p className="eyebrow">Tumblr account {index + 1}</p><h3>{connection.status === 'active' ? 'Connected' : connection.status}</h3></div>
-      {connection.blogs.length > 0 ? <ul className="blog-list" aria-label={`Blogs on Tumblr account ${index + 1}`}>{connection.blogs.map(blog => {
-        const assignment = connection.assignments.find(item => item.blogIdentifier === blog)
-        return <li key={blog}><code>{blog}</code>{assignment ? <span>Assigned to {assignment.characterName}</span> : <span>Available to assign</span>}</li>
-      })}</ul> : <p>No blogs were returned by Tumblr. Try reconnecting the account.</p>}
-    </article>)}</div>
-    {connections.length > 0 && options.characters.length > 0 && <form onSubmit={assign} className="stack-form">
-      <h3>Assign a blog to a character</h3><p className="field-help">Repeat this for every blog you want the character to track.</p>
-      <label>Character<select value={characterId} onChange={event => setCharacterId(event.target.value)}>{options.characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select></label>
-      <label>Tumblr account<select value={connectionId} onChange={event => chooseConnection(event.target.value)}>{connections.map((connection,index) => <option key={connection.id} value={connection.id}>Tumblr account {index + 1}</option>)}</select></label>
-      <label>Blog<select value={blog} onChange={event => setBlog(event.target.value)}>{active?.blogs.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
-      <button className="button" disabled={!characterId || !blog}>Assign this blog</button>
-    </form>}
-    {notice && <p role="status">{notice}</p>}
-  </section>
+type Assignment={id:string;characterId:string;characterName:string;blogIdentifier:string;displayLabel:string;characterTag:string|null}
+type Connection={id:string;status:string;blogs:string[];assignments:Assignment[]}
+const blogLabel=(value:string)=>value.replace(/\.tumblr\.com$/i,'')
+export default function ConnectionsPage(){
+ const [connections,setConnections]=useState<Connection[]>([]),[options,setOptions]=useState<TrackingOptions>({characters:[],partners:[]}),[characterId,setCharacterId]=useState(''),[connectionId,setConnectionId]=useState(''),[blog,setBlog]=useState(''),[error,setError]=useState(''),[notice,setNotice]=useState('')
+ const load=()=>Promise.all([api<Connection[]>('/connections'),api<TrackingOptions>('/starters/options')]).then(([nextConnections,nextOptions])=>{setConnections(nextConnections);setOptions(nextOptions);setConnectionId(current=>current||nextConnections[0]?.id||'');setBlog(current=>current||nextConnections[0]?.blogs[0]||'');setCharacterId(current=>current||nextOptions.characters[0]?.id||'')})
+ useEffect(()=>{void load().catch(problem=>setError(problem.message))},[])
+ const active=connections.find(connection=>connection.id===connectionId)
+ function chooseConnection(id:string){setConnectionId(id);setBlog(connections.find(connection=>connection.id===id)?.blogs[0]??'')}
+ async function assign(event:FormEvent<HTMLFormElement>){event.preventDefault();setError('');setNotice('');const data=new FormData(event.currentTarget);try{await api(`/connections/${connectionId}/blogs`,'POST',{characterId,blogIdentifier:blog,displayLabel:blog,characterTag:data.get('characterTag')});await load();setNotice('Tumblr assignment saved.')}catch(problem){setError((problem as Error).message)}}
+ return <section aria-labelledby="page-title"><h2 id="page-title" className="page-heading">Connected accounts</h2><p className="page-description">Connect the accounts you write from. Tumblr is first; other writing spaces can join later.</p><a className="button" href="/api/tumblr/connect">Connect a Tumblr account</a>{error&&<p role="alert">{error}</p>}
+ <div className="connection-list">{connections.map((connection,index)=><article className="tracking-card connection-card" key={connection.id}><div><p className="eyebrow">Tumblr account {index+1}</p><h3>{connection.status==='active'?'Connected':connection.status}</h3><button type="button" className="danger-button connection-remove" onClick={async()=>{if(!window.confirm('Remove this Tumblr account and all of its character assignments? Existing threads will stay, but they will no longer refresh.'))return;try{setError('');await api(`/connections/${connection.id}`,'DELETE');setNotice('Tumblr account removed.');await load()}catch(problem){setError((problem as Error).message)}}}>Remove account</button></div>{connection.blogs.length?<ul className="blog-list">{connection.blogs.map(value=>{const assigned=connection.assignments.filter(item=>item.blogIdentifier===value);return <li key={value}><div className="connected-blog-heading"><code>{blogLabel(value)}</code><span>{assigned.length?`${assigned.length} ${assigned.length===1?'character':'characters'} assigned`:'Available to assign'}</span></div>{assigned.length>0&&<ul className="connection-assignment-list">{assigned.map(item=><li key={item.id}><span>Assigned to <strong>{item.characterName}</strong>{item.characterTag?` via #${item.characterTag}`:' for every post'}</span><button type="button" className="secondary-button" onClick={()=>void api(`/connections/${connection.id}/blogs/${item.id}`,'DELETE').then(load).catch(problem=>setError(problem.message))}>Remove</button></li>)}</ul>}</li>})}</ul>:<p>No blogs were returned by Tumblr. Try reconnecting the account.</p>}</article>)}</div>
+ {connections.length>0&&options.characters.length>0&&<form onSubmit={assign} className="stack-form connection-assignment"><h3>Assign a character to a blog</h3><p className="field-help">Most setups need only these three choices. Puffin will use the whole blog for that character.</p><label>Character<select value={characterId} onChange={event=>setCharacterId(event.target.value)}>{options.characters.map(character=><option key={character.id} value={character.id}>{character.name}</option>)}</select></label><label>Tumblr account<select value={connectionId} onChange={event=>chooseConnection(event.target.value)}>{connections.map((connection,index)=><option key={connection.id} value={connection.id}>Tumblr account {index+1}</option>)}</select></label><label>Blog<select value={blog} onChange={event=>setBlog(event.target.value)}>{active?.blogs.map(value=><option key={value} value={value}>{blogLabel(value)}</option>)}</select></label><details className="shared-blog-option"><summary>Several characters use this same blog?</summary><p>Give each character the Tumblr tag they use on their posts. Puffin checks that tag to decide whose thread it is.</p><label>Character tag<input name="characterTag" maxLength={200} placeholder="#character-tag"/></label></details><button className="button" disabled={!characterId||!blog}>Save assignment</button></form>}{notice&&<p role="status">{notice}</p>}
+ </section>
 }

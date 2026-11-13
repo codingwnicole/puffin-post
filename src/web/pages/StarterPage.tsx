@@ -16,7 +16,7 @@ export default function StarterPage({ id }: { id:string }) {
   return <section aria-labelledby="starter-title"><a href="#inbox">Back to Inbox</a>
     <h2 className="page-heading" id="starter-title">{detail?.starter.title ?? 'Starter'}</h2>
     {error && <p role="alert">{error}</p>}
-    {detail && <><p>{options.characters.find(c => c.id === detail.starter.characterId)?.name}</p>
+    {detail && <><div className="actions"><p>{options.characters.find(c => c.id === detail.starter.characterId)?.name}</p><button className="danger-button" onClick={async()=>{if(!window.confirm('Delete this whole thread and every reply branch permanently?'))return;try{await api(`/starters/${id}`,'DELETE');window.location.hash='inbox'}catch(problem){setError((problem as Error).message)}}}>Delete thread</button></div>
       <p className="preserve-lines">{detail.starter.description}</p><p>Tumblr: {detail.starter.rootBlogId} · Post {detail.starter.rootPostId}</p>
       <StarterBranches starterId={id} branches={detail.branches} options={options} reload={reload} /></>}
   </section>
