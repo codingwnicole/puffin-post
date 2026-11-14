@@ -5,7 +5,7 @@ import type { Env } from '../worker'
 import type { WorkspaceScope } from '../db/client'
 import { requireWorkspace } from '../auth/sessions'
 import { createStarter, getStarter, updateStarterTitle } from '../db/repositories/starters'
-import { createReplyBranch, listInboxBranches } from '../db/repositories/branches'
+import { createReplyBranch, listInboxBranches, upsertReplyBranch } from '../db/repositories/branches'
 import { branchSchema, starterSchema } from './tracking-validation'
 import { canonicalBlogIdentifier, normalizeTumblrTag, parseTumblrPostReference } from '../tumblr/normalize'
 import { createTumblrClient } from '../tumblr/client'
@@ -174,7 +174,9 @@ export function starterRoutes() {
     const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.suggestedTitle || characterTitle(found?.characterName, found?.parsedCharacterNames) || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(latestPost?.preview ?? found?.preview) })
     const partnerId=partnerBlog ? await findOrCreatePartner(scope,partnerBlog) : input.partnerName?.trim() ? await findOrCreateManualPartner(scope,input.partnerName) : null
     if (found?.tags?.length) await applyPostTags(scope, starter.id, found.tags)
-    const branch = (partnerId || !found) ? await createReplyBranch({ ...scope, starterId:starter.id, partnerId, status:latest?.status ?? 'your_turn', latestPostId:latest?.activity.postId, lastPoster:latest?.activity.blogIdentifier, lastActivityAt:latest?.activity.timestamp }) : null
+    const branch = (partnerId || !found)
+      ? await upsertReplyBranch({ ...scope, starterId: starter.id, partnerId, status: latest?.status ?? 'your_turn', latestPostId: latest?.activity.postId, lastPoster: latest?.activity.blogIdentifier, lastActivityAt: latest?.activity.timestamp })
+      : null
     return c.json({ ...starter, branch }, 201)
   })
 

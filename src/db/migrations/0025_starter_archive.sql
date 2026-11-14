@@ -1,0 +1,2 @@
+ALTER TABLE starters ADD COLUMN archived INTEGER NOT NULL DEFAULT 0 CHECK (archived IN (0, 1));
+ALTER TABLE starters ADD COLUMN archived_at TEXT;

@@ -54,6 +54,47 @@ export interface InboxBranch extends ReplyBranch {
   partnerLabel: string | null
 }
 
+export async function upsertReplyBranch(input: CreateReplyBranchInput): Promise<ReplyBranch> {
+  const { db, workspaceId } = input
+  const inputPartner = input.partnerId ?? null
+  const existing = await db.prepare(`SELECT id, workspace_id AS workspaceId, starter_id AS starterId, partner_id AS partnerId,
+    status, notes, latest_post_id AS latestPostId, last_poster AS lastPoster, last_activity_at AS lastActivityAt,
+    last_refresh_at AS lastRefreshAt, refresh_error AS refreshError, status_manual_override_at AS statusManualOverrideAt,
+    archived_at AS archivedAt, created_at AS createdAt, next_check_at AS nextCheckAt
+    FROM reply_branches
+    WHERE workspace_id = ? AND starter_id = ? AND archived_at IS NULL
+      AND ((? IS NULL AND partner_id IS NULL) OR partner_id = ?)
+    ORDER BY created_at DESC LIMIT 1`)
+    .bind(workspaceId, input.starterId, inputPartner, inputPartner).first<ReplyBranch>()
+  if (existing) {
+    const nextStatus: ReplyStatus = input.status ?? existing.status
+    const updatedAt = new Date().toISOString()
+    await db.prepare(`UPDATE reply_branches SET
+      status = ?,
+      latest_post_id = CASE WHEN ? THEN ? ELSE latest_post_id END,
+      last_poster = CASE WHEN ? THEN ? ELSE last_poster END,
+      last_activity_at = CASE WHEN ? THEN ? ELSE last_activity_at END,
+      status_manual_override_at = CASE WHEN ? = 'archived' THEN ? ELSE status_manual_override_at END,
+      archived_at = CASE WHEN ? = 'archived' THEN COALESCE(archived_at, ?) WHEN ? IS NOT NULL THEN NULL ELSE archived_at END
+      WHERE workspace_id = ? AND id = ?`)
+      .bind(nextStatus,
+        input.latestPostId != null, input.latestPostId ?? null,
+        input.lastPoster != null, input.lastPoster ?? null,
+        input.lastActivityAt != null, input.lastActivityAt ?? null,
+        nextStatus, updatedAt,
+        nextStatus, updatedAt, nextStatus,
+        workspaceId, existing.id).run()
+    const merged = await db.prepare(`SELECT id, workspace_id AS workspaceId, starter_id AS starterId, partner_id AS partnerId,
+      status, notes, latest_post_id AS latestPostId, last_poster AS lastPoster, last_activity_at AS lastActivityAt,
+      last_refresh_at AS lastRefreshAt, refresh_error AS refreshError, status_manual_override_at AS statusManualOverrideAt,
+      archived_at AS archivedAt, created_at AS createdAt, next_check_at AS nextCheckAt
+      FROM reply_branches WHERE workspace_id = ? AND id = ?`)
+      .bind(workspaceId, existing.id).first<ReplyBranch>()
+    return merged!
+  }
+  return createReplyBranch(input)
+}
+
 export async function createReplyBranch(input: CreateReplyBranchInput): Promise<ReplyBranch> {
   const { db, userId, workspaceId } = input
   await requireMembership(db, userId, workspaceId)
