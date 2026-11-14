@@ -148,3 +148,14 @@ it('exports only active workspace rows with formula-safe cells', async () => {
   expect(response.headers.get('content-type')).toContain('text/csv')
   expect(await response.text()).toContain("'=not-a-formula")
 })
+
+it('auto-applies the post’s Tumblr tags to the new starter', async () => {
+  const response = await fixture.request('/api/starters','POST',starterInput)
+  expect(response.status).toBe(201)
+  const starter = await response.json() as any
+  const linked = await fixture.env.DB.prepare('SELECT t.display_label FROM starter_tags st JOIN tags t ON t.id=st.tag_id WHERE st.starter_id=? ORDER BY t.normalized_label').bind(starter.id).all<{display_label:string}>()
+  expect(linked.results.map(row => row.display_label)).toEqual(['a/o', 'ooc', 'open'])
+  // Re-adding the same post must not duplicate the tag links.
+  const duplicate = await fixture.request('/api/starters','POST',{ ...starterInput, title:'Second pass' })
+  expect(duplicate.status).toBe(201)
+})

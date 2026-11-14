@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
 import type { Env } from '../worker'
+import type { WorkspaceScope } from '../db/client'
 import { requireWorkspace } from '../auth/sessions'
 import { createStarter, getStarter, updateStarterTitle } from '../db/repositories/starters'
 import { createReplyBranch, listInboxBranches } from '../db/repositories/branches'
@@ -48,6 +49,22 @@ function parseDeclaredCharacterNames(value?: string) {
     .map(name => name.replace(/[()[\]{}]/g, '').replace(/\s+/g, ' ').trim())
     .filter(name => /^[\p{L}][\p{L}' -]{1,60}$/u.test(name)))
     .filter((name, index, all) => all.findIndex(other => other.localeCompare(name, undefined, { sensitivity:'accent' }) === 0) === index)
+}
+
+async function applyPostTags(scope: WorkspaceScope, starterId: string, postTags: string[]) {
+  for (const raw of postTags) {
+    const label = raw?.trim()
+    if (!label) continue
+    const normalized = label.toLocaleLowerCase()
+    let tag = await scope.db.prepare('SELECT id FROM tags WHERE workspace_id=? AND normalized_label=?').bind(scope.workspaceId, normalized).first<{ id: string }>()
+    if (!tag) {
+      const id = crypto.randomUUID()
+      await scope.db.prepare('INSERT OR IGNORE INTO tags (id, workspace_id, normalized_label, display_label, color) VALUES (?,?,?,?,?)').bind(id, scope.workspaceId, normalized, label, null).run()
+      tag = await scope.db.prepare('SELECT id FROM tags WHERE workspace_id=? AND normalized_label=?').bind(scope.workspaceId, normalized).first<{ id: string }>()
+      if (!tag) continue
+    }
+    await scope.db.prepare('INSERT OR IGNORE INTO starter_tags (workspace_id, starter_id, tag_id) VALUES (?,?,?)').bind(scope.workspaceId, starterId, tag.id).run()
+  }
 }
 
 export function starterRoutes() {
@@ -156,6 +173,7 @@ export function starterRoutes() {
     const manualId=crypto.randomUUID()
     const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.suggestedTitle || characterTitle(found?.characterName, found?.parsedCharacterNames) || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(latestPost?.preview ?? found?.preview) })
     const partnerId=partnerBlog ? await findOrCreatePartner(scope,partnerBlog) : input.partnerName?.trim() ? await findOrCreateManualPartner(scope,input.partnerName) : null
+    if (found?.tags?.length) await applyPostTags(scope, starter.id, found.tags)
     const branch = (partnerId || !found) ? await createReplyBranch({ ...scope, starterId:starter.id, partnerId, status:latest?.status ?? 'your_turn', latestPostId:latest?.activity.postId, lastPoster:latest?.activity.blogIdentifier, lastActivityAt:latest?.activity.timestamp }) : null
     return c.json({ ...starter, branch }, 201)
   })
