@@ -130,13 +130,25 @@ describe('invite-only authentication against local D1', () => {
     await expect(links.consumeMagicLink(expired)).rejects.toThrow('invalid magic link')
   })
 
-  it('does not register strangers or disclose which emails have accounts', async () => {
+  it('registers any email via magic link without disclosing which emails exist', async () => {
     const unknown = await request('/api/auth/magic-link', { email: 'stranger@example.com' })
     const known = await request('/api/auth/magic-link', { email: 'owner@example.com' })
     expect(unknown.status).toBe(202)
+    expect(known.status).toBe(202)
+    // Identical response bodies: no signal tells a stranger whether their address already exists.
     expect(await unknown.json()).toEqual(await known.json())
-    expect(sent.map((message) => message.to)).toEqual(['owner@example.com'])
-    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>())!.n).toBe(1)
+    // Public self-signup: a brand-new account is provisioned (user + own workspace) and a link is sent.
+    expect(sent.map((message) => message.to).sort()).toEqual(['owner@example.com', 'stranger@example.com'])
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>())!.n).toBe(2)
+    const stranger = await env.DB.prepare("SELECT u.id, u.email, m.workspace_id, m.role FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.email='stranger@example.com'").first<{ id: string; email: string; workspace_id: string; role: string }>()
+    expect(stranger).toMatchObject({ email: 'stranger@example.com', role: 'owner' })
+    expect(stranger!.workspace_id).not.toBe('home')
+    // Redeeming the stranger's link yields a working session in their own workspace.
+    const strangerLink = sent.find((message) => message.to === 'stranger@example.com')!.url
+    const accepted = await confirmMagicLink(strangerLink)
+    expect(accepted.status).toBe(302)
+    const session = await (await request('/api/auth/session', undefined, accepted.headers.get('set-cookie')!.split(';')[0])).json() as any
+    expect(session).toMatchObject({ userId: stranger!.id, workspaceId: stranger!.workspace_id })
   })
 
   it('creates secure signed sessions, rejects tampering and invalidates logout', async () => {
@@ -157,19 +169,23 @@ describe('invite-only authentication against local D1', () => {
     expect((await request('/api/auth/session', undefined, cookie)).status).toBe(401)
   })
 
-  it('provisions only the secret-designated first owner, then remains invite-only', async () => {
+  it('allows public magic-link sign-up for any email and sends each a link', async () => {
     await env.DB.batch(['sessions', 'magic_links', 'memberships', 'workspaces', 'users'].map(table => env.DB.prepare(`DELETE FROM ${table}`)))
-    env.BOOTSTRAP_OWNER_EMAIL = 'first@example.com'
+    // Public self-signup: both the first user and any later stranger get a full account + workspace,
+    // and every request returns an identical body so existence is never disclosed.
     const first = await request('/api/auth/magic-link', { email: 'first@example.com' })
     const stranger = await request('/api/auth/magic-link', { email: 'stranger@example.com' })
     expect(first.status).toBe(202)
     expect(stranger.status).toBe(202)
-    expect(sent.map(message => message.to)).toEqual(['first@example.com'])
-    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>())!.n).toBe(1)
-    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM workspaces').first<{ n: number }>())!.n).toBe(1)
-    expect((await confirmMagicLink(sent[0].url)).status).toBe(302)
+    expect(await first.json()).toEqual(await stranger.json())
+    expect(sent.map(message => message.to).sort()).toEqual(['first@example.com', 'stranger@example.com'])
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM users').first<{ n: number }>())!.n).toBe(2)
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM workspaces').first<{ n: number }>())!.n).toBe(2)
+    // Redeeming the first user's link gives a working owner session in their own workspace.
+    expect((await confirmMagicLink(sent.find(m => m.to === 'first@example.com')!.url)).status).toBe(302)
+    // A third request still succeeds and sends (public sign-up is not gated by account count).
     await request('/api/auth/magic-link', { email: 'another@example.com' })
-    expect(sent.map(message => message.to)).toEqual(['first@example.com'])
+    expect(sent.map(message => message.to).sort()).toEqual(['another@example.com', 'first@example.com', 'stranger@example.com'])
   })
 
   it('expires sessions and rejects cross-origin state changes', async () => {

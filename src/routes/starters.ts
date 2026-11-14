@@ -20,6 +20,17 @@ function compactThreadSummary(value?: string) {
   return sentences.length > 360 ? `${sentences.slice(0, 357).trimEnd()}…` : sentences
 }
 
+// Build an auto-title from the character names Puffin parsed off the post.
+// Used when there is no declared "who:" header, so adding a thread from
+// anywhere still yields a real character name rather than a bare placeholder.
+function characterTitle(own?: string | null, partners: string[] = []) {
+  const ownName = own?.trim()
+  if (ownName && partners.length) return [ownName, ...partners].join(' × ')
+  if (partners.length) return partners.join(' × ')
+  if (ownName) return ownName
+  return undefined
+}
+
 function parseDeclaredCharacterNames(value?: string) {
   if (!value) return []
   const snippets: string[] = []
@@ -80,7 +91,7 @@ export function starterRoutes() {
     const parsedCharacterNames = parseDeclaredCharacterNames(parserSource)
     const partnerNames = parsedCharacterNames.filter(name => name.localeCompare(selectedCharacter?.name ?? '', undefined, { sensitivity:'accent' }) !== 0)
     const parsedTitle = selectedCharacter?.name && partnerNames.length ? `${selectedCharacter.name} × ${partnerNames.join(' × ')}${where ? ` — ${where}` : ''}` : undefined
-    return { client, reference, tags:[...tags], candidates, title:post.title, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier }
+    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:selectedCharacter?.name, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier }
   }
 
   async function findOrCreatePartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, blogIdentifier:string) {
@@ -133,7 +144,7 @@ export function starterRoutes() {
     const latest = found && partnerBlog ? latestDirectExchange(found.ownBlogIdentifiers,found.threadRootBlogId,partnerBlog,found.activities) : undefined
     const latestPost = latest && found ? await found.client.getPost(latest.activity.blogIdentifier, latest.activity.postId).catch(() => null) : null
     const manualId=crypto.randomUUID()
-    const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.suggestedTitle || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(latestPost?.preview ?? found?.preview) })
+    const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.suggestedTitle || characterTitle(found?.characterName, found?.parsedCharacterNames) || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(latestPost?.preview ?? found?.preview) })
     const partnerId=partnerBlog ? await findOrCreatePartner(scope,partnerBlog) : input.partnerName?.trim() ? await findOrCreateManualPartner(scope,input.partnerName) : null
     const branch = (partnerId || !found) ? await createReplyBranch({ ...scope, starterId:starter.id, partnerId, status:latest?.status ?? 'your_turn', latestPostId:latest?.activity.postId, lastPoster:latest?.activity.blogIdentifier, lastActivityAt:latest?.activity.timestamp }) : null
     return c.json({ ...starter, branch }, 201)

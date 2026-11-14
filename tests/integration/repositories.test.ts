@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { getPlatformProxy } from 'wrangler'
 import type { Env } from '../../src/worker'
@@ -14,10 +14,10 @@ describe('tenant-safe repositories against local D1', () => {
     const platform = await getPlatformProxy<Env>({ persist: false })
     db = platform.env.DB
     dispose = platform.dispose
-    const migration = await readFile('src/db/migrations/0001_initial.sql', 'utf8')
-    await db.batch(migration.split(';').filter((sql) => sql.trim()).map((sql) => db.prepare(sql)))
-    const refreshMigration = await readFile('src/db/migrations/0005_refresh.sql', 'utf8')
-    await db.batch(refreshMigration.split(';').filter((sql) => sql.trim()).map((sql) => db.prepare(sql)))
+    for (const file of (await readdir('src/db/migrations')).sort()) {
+      const sql = await readFile(`src/db/migrations/${file}`, 'utf8')
+      await db.batch(sql.split(';').filter((s) => s.trim()).map((s) => db.prepare(s)))
+    }
     for (const tenant of ['a', 'b']) {
       await db.prepare('INSERT INTO users (id, email, display_name, auth_identity) VALUES (?, ?, ?, ?)')
         .bind(`member-${tenant}`, `${tenant}@example.com`, tenant, `identity-${tenant}`).run()
