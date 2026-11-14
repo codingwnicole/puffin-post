@@ -46,11 +46,21 @@ it('validates payloads and denies foreign references and anonymous requests', as
   expect((await fixture.request('/api/inbox?status=invalid')).status).toBe(400)
 })
 
-it('requires a selected connection and verifies its remote blog before starter creation', async () => {
+it('verifies the selected connection before starter creation but allows a manual scene without one', async () => {
   expect((await fixture.request('/api/starters','POST',{ ...starterInput, rootBlogId:'other.tumblr.com' })).status).toBe(400)
   expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(201)
   await fixture.env.DB.prepare("DELETE FROM character_blogs WHERE id='blog-a'").run()
+  // A post link still requires the character's Tumblr blog for verification…
   expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(400)
+  // …but a link-less manual scene (Discord, etc.) tracks without any Tumblr access.
+  const manual = await fixture.request('/api/starters','POST',{ characterId:'character-a', title:'Discord scene' })
+  expect(manual.status).toBe(201)
+  const manualStarter = await manual.json() as any
+  expect(manualStarter).toMatchObject({ characterId:'character-a', title:'Discord scene' })
+  // Manual scenes are flagged with the 'manual' sentinel (not a Tumblr blog id).
+  expect(manualStarter.rootBlogId).toBe('manual')
+  expect(manualStarter.threadRootBlogId).toBe('manual')
+  expect(manualStarter.postUrl).toContain('manual/')
 })
 
 it('tracks another writer’s starter for an assigned character', async () => {

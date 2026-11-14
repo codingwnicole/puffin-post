@@ -59,14 +59,15 @@ export function starterRoutes() {
       FROM tumblr_connections tc ${characterId ? 'JOIN character_blogs access_blog ON access_blog.workspace_id=tc.workspace_id AND access_blog.tumblr_connection_id=tc.id' : ''}
       WHERE tc.workspace_id=? AND tc.status='active' ${characterId ? 'AND access_blog.character_id=?' : ''} LIMIT 1`)
       .bind(...[scope.workspaceId, ...(characterId ? [characterId] : [])]).first<{tokenEncrypted:string;tokenSecretEncrypted:string}>()
-    if (!access) throw new HTTPException(400, { message:characterId ? 'Assign a Tumblr blog to this character before tracking a thread' : 'Connect a Tumblr account before tracking posts' })
+    if (!access && postUrl) throw new HTTPException(400, { message:characterId ? 'Assign a Tumblr blog to this character before tracking a thread' : 'Connect a Tumblr account before tracking posts' })
+    const connection = access as {tokenEncrypted:string;tokenSecretEncrypted:string}
 
     const rules = await scope.db.prepare(`SELECT cb.id, cb.character_id AS characterId, cb.character_tag AS characterTag, c.name AS characterName
       FROM character_blogs cb JOIN characters c ON c.workspace_id=cb.workspace_id AND c.id=cb.character_id
       JOIN tumblr_connections tc ON tc.workspace_id=cb.workspace_id AND tc.id=cb.tumblr_connection_id
       WHERE cb.workspace_id=? AND cb.blog_identifier=? AND tc.status='active'`).bind(scope.workspaceId, reference.blogIdentifier).all<Assignment>()
     const client = createTumblrClient({ consumerKey:env.TUMBLR_CONSUMER_KEY, consumerSecret:env.TUMBLR_CONSUMER_SECRET,
-      token:await decryptToken(access.tokenEncrypted,env.TOKEN_ENCRYPTION_KEY), tokenSecret:await decryptToken(access.tokenSecretEncrypted,env.TOKEN_ENCRYPTION_KEY) })
+      token:await decryptToken(connection.tokenEncrypted,env.TOKEN_ENCRYPTION_KEY), tokenSecret:await decryptToken(connection.tokenSecretEncrypted,env.TOKEN_ENCRYPTION_KEY) })
     const clickedPost = await client.getPost(reference.blogIdentifier, reference.postId)
     if (canonicalBlogIdentifier(clickedPost.blogIdentifier) !== reference.blogIdentifier || clickedPost.id !== reference.postId) throw new HTTPException(400, { message:'Tumblr post could not be verified' })
     // Activity can point at the user's own reblog. Its wrapper often has no RP
