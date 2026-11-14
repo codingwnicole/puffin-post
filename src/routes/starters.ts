@@ -59,8 +59,11 @@ export function starterRoutes() {
       FROM tumblr_connections tc ${characterId ? 'JOIN character_blogs access_blog ON access_blog.workspace_id=tc.workspace_id AND access_blog.tumblr_connection_id=tc.id' : ''}
       WHERE tc.workspace_id=? AND tc.status='active' ${characterId ? 'AND access_blog.character_id=?' : ''} LIMIT 1`)
       .bind(...[scope.workspaceId, ...(characterId ? [characterId] : [])]).first<{tokenEncrypted:string;tokenSecretEncrypted:string}>()
-    if (!access && postUrl) throw new HTTPException(400, { message:characterId ? 'Assign a Tumblr blog to this character before tracking a thread' : 'Connect a Tumblr account before tracking posts' })
-    const connection = access as {tokenEncrypted:string;tokenSecretEncrypted:string}
+    // Without an active connection we can't read the post from Tumblr. A
+    // link-less (manual) scene never calls findPost, so reaching here with no
+    // connection is a programming error — fail loudly rather than casting null.
+    if (!access) throw new HTTPException(500, { message:'No active Tumblr connection' })
+    const connection: {tokenEncrypted:string;tokenSecretEncrypted:string} = access
 
     const rules = await scope.db.prepare(`SELECT cb.id, cb.character_id AS characterId, cb.character_tag AS characterTag, c.name AS characterName
       FROM character_blogs cb JOIN characters c ON c.workspace_id=cb.workspace_id AND c.id=cb.character_id
@@ -128,6 +131,12 @@ export function starterRoutes() {
     const input = starterSchema.parse(await c.req.json())
     const character = await scope.db.prepare('SELECT id FROM characters WHERE workspace_id=? AND id=?').bind(scope.workspaceId,input.characterId).first()
     if (!character) throw new HTTPException(404, { message:'Character not found' })
+    // A post link needs the character's Tumblr blog to verify the post. A
+    // link-less (manual) scene never touches Tumblr, so it is allowed through.
+    if (input.postUrl) {
+      const hasBlog = await scope.db.prepare('SELECT 1 FROM character_blogs WHERE workspace_id=? AND character_id=?').bind(scope.workspaceId,input.characterId).first()
+      if (!hasBlog) throw new HTTPException(400, { message:input.characterId ? 'Assign a Tumblr blog to this character before tracking a thread' : 'Connect a Tumblr account before tracking posts' })
+    }
     const found = input.postUrl ? await findPost(scope, c.env, input.postUrl, input.characterId) : null
     if (!found && !input.title?.trim()) throw new HTTPException(400, { message:'Give this manual thread a scene label' })
     const memberships=await scope.db.prepare('SELECT group_id AS groupId FROM rp_group_characters WHERE workspace_id=? AND character_id=?').bind(scope.workspaceId,input.characterId).all<{groupId:string}>()
