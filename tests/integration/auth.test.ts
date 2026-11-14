@@ -5,7 +5,7 @@ import { createApp, type Env } from '../../src/worker'
 import { createMagicLinks, type MailSender } from '../../src/auth/magic-links'
 import { createInvite } from '../../src/auth/invites'
 
-describe('invite-only authentication against local D1', () => {
+describe('public magic-link sign-up and invites against local D1', () => {
   let env: Env
   let dispose: () => Promise<void>
   let sent: { to: string; url: string }[]
