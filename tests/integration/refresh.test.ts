@@ -41,6 +41,26 @@ it('updates only the branch whose partner posted and preserves a manual status',
   expect(branches.branches.find(branch => branch.id === other.id)).toMatchObject({latestPostId:null})
 })
 
+it('moves branch to their_turn when user reblogs partner reply to clear obligation', async () => {
+  const changes: Array<{ postId: string; status: string }> = []
+  await refreshStarterBranches({
+    workspaceId: 'a',
+    starterId: 's',
+    rootBlogIdentifier: 'friend.tumblr.com',
+    ownBlogIdentifiers: ['a.tumblr.com'],
+    branches: [{ id: 'branch', partnerBlogIdentifier: 'friend.tumblr.com', latestPostId: null, status: 'your_turn', statusManualOverrideAt: null }],
+    activities: [
+      // Partner replies to user (user's turn)
+      { postId: 'partner-reply-1', blogIdentifier: 'friend.tumblr.com', parentBlogIdentifier: 'a.tumblr.com', timestamp: '2026-01-01T00:00:00.000Z' },
+      // User reblogs partner's reply (clears obligation, their turn)
+      { postId: 'user-reblog-1', blogIdentifier: 'a.tumblr.com', parentBlogIdentifier: 'friend.tumblr.com', timestamp: '2026-01-02T00:00:00.000Z' },
+    ],
+    now: new Date(),
+  }, async (_branch, activity, status) => { changes.push({ postId: activity.postId, status }) })
+  // The latest activity should set status to 'their_turn'
+  expect(changes).toEqual([{ postId: 'user-reblog-1', status: 'their_turn' }])
+})
+
 it('keeps the last known branch state and records a refresh error when Tumblr fails', async () => {
   await fixture.env.DB.prepare("UPDATE partners SET blog_identifier='friend.tumblr.com' WHERE id='partner-a'").run()
   const starter = await (await fixture.request('/api/starters','POST',starterInput)).json() as { id:string }

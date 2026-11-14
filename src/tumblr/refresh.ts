@@ -24,10 +24,15 @@ export function latestDirectExchange(ownBlogIdentifiers:string[], rootBlogIdenti
   const ownBlogs = new Set(ownBlogIdentifiers)
   let latest: { activity:TumblrActivity; status:'your_turn'|'their_turn' } | undefined
   for (const activity of [...activities].sort((left,right) => left.timestamp.localeCompare(right.timestamp))) {
-    // A partner reblogging from you means their turn is over; you owe the next reply.
-    if (activity.blogIdentifier === partnerBlogIdentifier && (ownBlogs.has(activity.parentBlogIdentifier ?? '') || activity.parentBlogIdentifier === rootBlogIdentifier && ownBlogs.has(rootBlogIdentifier))) latest = { activity, status:'your_turn' }
+    const isPartnerActivity = activity.blogIdentifier === partnerBlogIdentifier
+    const isOwnActivity = ownBlogs.has(activity.blogIdentifier)
+    const parent = activity.parentBlogIdentifier ?? ''
+    // A partner reblogging from you (or from your root) means their turn is over; you owe the next reply.
+    if (isPartnerActivity && (ownBlogs.has(parent) || parent === rootBlogIdentifier && ownBlogs.has(rootBlogIdentifier))) latest = { activity, status:'your_turn' }
     // Your reblog from that partner means you have replied and are waiting on them.
-    if (ownBlogs.has(activity.blogIdentifier) && activity.parentBlogIdentifier === partnerBlogIdentifier) latest = { activity, status:'their_turn' }
+    if (isOwnActivity && parent === partnerBlogIdentifier) latest = { activity, status:'their_turn' }
+    // Your reblog from the root post also clears your obligation if the partner is the original poster.
+    if (isOwnActivity && parent === rootBlogIdentifier && partnerBlogIdentifier === rootBlogIdentifier) latest = { activity, status:'their_turn' }
   }
   return latest
 }
