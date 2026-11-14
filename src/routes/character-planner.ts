@@ -45,15 +45,27 @@ export function characterPlannerRoutes() {
 
   app.post('/:id/add-to-cast', async c => {
     const s = await requirePlan(c, c.req.param('id'))
-    const plan = await s.db.prepare('SELECT name,notes,icon_object_key AS iconObjectKey FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId,c.req.param('id')).first<{name:string;notes:string;iconObjectKey:string|null}>()
+    const plan = await s.db.prepare('SELECT name,notes,icon_object_key AS iconObjectKey,source_character_id AS sourceCharacterId FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId,c.req.param('id')).first<{name:string;notes:string;iconObjectKey:string|null;sourceCharacterId:string|null}>()
     if (!plan) throw new HTTPException(404,{message:'Character plan not found'})
     const resources = await s.db.prepare('SELECT label,url FROM character_plan_resources WHERE workspace_id=? AND plan_id=?').bind(s.workspaceId,c.req.param('id')).all<{label:string;url:string}>()
-    const characterId=crypto.randomUUID()
-    await s.db.batch([
-      s.db.prepare('INSERT INTO characters (id,workspace_id,name,icon_object_key,state,notes) VALUES (?,?,?,?,?,?)').bind(characterId,s.workspaceId,plan.name,plan.iconObjectKey,'active',plan.notes),
-      ...resources.results.map(resource=>s.db.prepare('INSERT INTO character_quicklinks (id,workspace_id,character_id,label,url) VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),s.workspaceId,characterId,resource.label,resource.url)),
-      s.db.prepare('DELETE FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId,c.req.param('id')),
-    ])
+    let characterId: string
+    const batch: ReturnType<typeof s.db.prepare>[] = []
+    if (plan.sourceCharacterId) {
+      characterId = plan.sourceCharacterId
+      batch.push(s.db.prepare('UPDATE characters SET name=?,icon_object_key=COALESCE(?,icon_object_key),state=\'active\',notes=? WHERE workspace_id=? AND id=?').bind(plan.name,plan.iconObjectKey,plan.notes,s.workspaceId,plan.sourceCharacterId))
+      for (const resource of resources.results) {
+        const existing = await s.db.prepare('SELECT id FROM character_quicklinks WHERE workspace_id=? AND character_id=? AND url=?').bind(s.workspaceId,characterId,resource.url).first()
+        if (!existing) batch.push(s.db.prepare('INSERT INTO character_quicklinks (id,workspace_id,character_id,label,url) VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),s.workspaceId,characterId,resource.label,resource.url))
+      }
+    } else {
+      characterId = crypto.randomUUID()
+      batch.push(s.db.prepare('INSERT INTO characters (id,workspace_id,name,icon_object_key,state,notes) VALUES (?,?,?,?,?,?)').bind(characterId,s.workspaceId,plan.name,plan.iconObjectKey,'active',plan.notes))
+      for (const resource of resources.results) {
+        batch.push(s.db.prepare('INSERT INTO character_quicklinks (id,workspace_id,character_id,label,url) VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),s.workspaceId,characterId,resource.label,resource.url))
+      }
+    }
+    batch.push(s.db.prepare('DELETE FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId,c.req.param('id')))
+    await s.db.batch(batch)
     return c.json({id:characterId,name:plan.name},201)
   })
 
