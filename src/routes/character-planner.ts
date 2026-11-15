@@ -71,8 +71,13 @@ export function characterPlannerRoutes() {
 
   app.delete('/:id', async c => {
     const s = await requirePlan(c, c.req.param('id'))
-    const plan=await s.db.prepare('SELECT icon_object_key AS iconObjectKey FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId,c.req.param('id')).first<{iconObjectKey:string|null}>()
-    await s.db.prepare('DELETE FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId, c.req.param('id')).run()
+    const plan=await s.db.prepare('SELECT icon_object_key AS iconObjectKey,source_character_id AS sourceCharacterId FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId,c.req.param('id')).first<{iconObjectKey:string|null;sourceCharacterId:string|null}>()
+    // A plan returned from the cast still owns a hidden (hiatus) character. Deleting the idea must not
+    // strand it as an invisible ghost: move it to Archived, where it stays visible and restorable.
+    await s.db.batch([
+      ...(plan?.sourceCharacterId ? [s.db.prepare("UPDATE characters SET state='archived' WHERE workspace_id=? AND id=? AND state='hiatus'").bind(s.workspaceId,plan.sourceCharacterId)] : []),
+      s.db.prepare('DELETE FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId, c.req.param('id')),
+    ])
     if(plan?.iconObjectKey)c.executionCtx.waitUntil(c.env.ICONS.delete(plan.iconObjectKey))
     return c.body(null, 204)
   })

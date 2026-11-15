@@ -72,4 +72,36 @@ describe('B01/B02 stable character identity across planner round-trip', () => {
     expect(afterChars.length).toBe(beforeCount + 1)
     expect(afterChars.some(c => c.id === newCharacterId)).toBe(true)
   })
+
+  it('a double return-to-planner reuses the same planner idea (no second plan)', async () => {
+    const { id } = await (await fixture.request('/api/characters', 'POST', { name: 'Double Click' })).json() as { id: string }
+    const first = await (await fixture.request(`/api/characters/${id}/return-to-planner`, 'POST')).json() as { id: string }
+    const again = await fixture.request(`/api/characters/${id}/return-to-planner`, 'POST')
+    expect(again.status).toBe(200)
+    expect(((await again.json()) as { id: string }).id).toBe(first.id)
+    const n = await fixture.env.DB.prepare('SELECT count(*) AS n FROM character_plans WHERE source_character_id=?').bind(id).first<{ n: number }>()
+    expect(n?.n).toBe(1)
+  })
+
+  it('deleting a returned idea archives its hidden character instead of leaving a ghost', async () => {
+    const { id } = await (await fixture.request('/api/characters', 'POST', { name: 'Would Be Ghost' })).json() as { id: string }
+    const plan = await (await fixture.request(`/api/characters/${id}/return-to-planner`, 'POST')).json() as { id: string }
+    expect((await fixture.request(`/api/character-planner/${plan.id}`, 'DELETE')).status).toBe(204)
+    const row = await fixture.env.DB.prepare('SELECT state FROM characters WHERE id=?').bind(id).first<{ state: string }>()
+    expect(row?.state).toBe('archived')
+    const archived = await (await fixture.request('/api/characters/archived')).json() as Array<{ id: string }>
+    expect(archived.some(c => c.id === id)).toBe(true)
+  })
+
+  it('migration 0027 links a pre-fix planner idea to its single hidden character', async () => {
+    const { readFileSync } = await import('node:fs')
+    await fixture.env.DB.prepare("INSERT INTO characters (id,workspace_id,name,state) VALUES ('legacy-hiatus','a','Legacy Deva','hiatus')").run()
+    await fixture.env.DB.prepare("INSERT INTO character_plans (id,workspace_id,name,notes,state) VALUES ('legacy-plan','a','legacy deva ','','developing')").run()
+    const sql = readFileSync('src/db/migrations/0027_backfill_plan_source.sql', 'utf8').replace(/^--.*$/gm, '').trim().replace(/;$/, '')
+    await fixture.env.DB.prepare(sql).run()
+    const plan = await fixture.env.DB.prepare("SELECT source_character_id AS s FROM character_plans WHERE id='legacy-plan'").first<{ s: string | null }>()
+    expect(plan?.s).toBe('legacy-hiatus')
+    const cast = await (await fixture.request('/api/character-planner/legacy-plan/add-to-cast', 'POST')).json() as { id: string }
+    expect(cast.id).toBe('legacy-hiatus')
+  })
 })
