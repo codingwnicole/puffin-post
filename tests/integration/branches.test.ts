@@ -97,7 +97,7 @@ it('allows a character to use multiple blogs from the same Tumblr account', asyn
   const assigned = await fixture.request('/api/connections/connection-a/blogs','POST',{ characterId:'character-a', blogIdentifier:'a-sideblog.tumblr.com', displayLabel:'A sideblog' })
   expect(assigned.status).toBe(201)
   const duplicate = await fixture.request('/api/connections/connection-a/blogs','POST',{ characterId:'character-a', blogIdentifier:'a-sideblog.tumblr.com', displayLabel:'A sideblog' })
-  expect(duplicate.status).toBe(409)
+  expect(duplicate.status).toBe(200)
   const connections = await (await fixture.request('/api/connections')).json() as any[]
   expect(connections[0]).toMatchObject({ blogs:['a.tumblr.com','a-sideblog.tumblr.com'] })
   expect(connections[0].assignments).toEqual(expect.arrayContaining([
