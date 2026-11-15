@@ -66,6 +66,7 @@ export function tumblrActivityRoutes() {
     }))
     const diagnostics = responses.flatMap(response => response.error ? [response.error] : [])
     const notifications = responses.flatMap(response => response.notifications)
+      .filter(notification => !notification.postId || !dismissedPosts.has(`${notification.blogIdentifier.toLowerCase()}:${notification.postId}`))
       .filter(notification => !('rootPostId' in notification) || !notification.rootPostId || !('rootBlogIdentifier' in notification) || !notification.rootBlogIdentifier || !trackedThreadRoots.has(threadKey(notification.rootBlogIdentifier, notification.rootPostId)))
       .filter((notification, index, all) => all.findIndex(other => other.type === notification.type && other.actor === notification.actor && other.postId === notification.postId) === index)
       .map(notification => ({ ...notification, threadKey: 'rootPostId' in notification && notification.rootPostId && 'rootBlogIdentifier' in notification && notification.rootBlogIdentifier ? threadKey(notification.rootBlogIdentifier, notification.rootPostId) : notification.postId ? threadKey(notification.actor, notification.postId) : null }))

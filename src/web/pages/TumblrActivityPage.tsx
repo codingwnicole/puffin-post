@@ -110,6 +110,7 @@ export default function TumblrActivityPage() {
       await api('/tumblr-activity/dismissals', 'POST', { blogIdentifier: item.blogIdentifier, postId: item.postId })
       // Remove only the dismissed candidate; no full reload.
       setThreadCandidates(current => current.filter(candidate => candidate.id !== item.id))
+      setMentions(current => current.filter(mention => mention.id !== item.id))
       setMessage('Post dismissed from this review list.')
     } catch (problem) { setError((problem as Error).message) } finally { setBusy('') }
   }

@@ -119,3 +119,15 @@ it('fetches a blog shared by two characters only once', async () => {
   expect(result.blogs.filter(blog => blog.blogIdentifier === 'a.tumblr.com')).toHaveLength(1)
   expect(result.blogs.map(blog => blog.blogIdentifier).sort()).toEqual(['a.tumblr.com'])
 })
+
+it('a dismissed tagged post stays hidden on the next load (B09)', async () => {
+  const stub = (url: RequestInfo | URL) => String(url).includes('/posts?')
+    ? new Response(JSON.stringify({ response: { posts: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    : notificationsResponse('a.tumblr.com', [{ type: 'mention', timestamp: 100, post_id: 77, from_tumblelog_name: 'tagger' }])
+  const before = await fetchActivity('/api/tumblr-activity', stub)
+  expect(before.mentions).toHaveLength(1)
+  const mention = before.mentions[0] as { blogIdentifier: string; postId: string }
+  expect((await fixture.request('/api/tumblr-activity/dismissals', 'POST', { blogIdentifier: mention.blogIdentifier, postId: mention.postId })).status).toBeLessThan(300)
+  const after = await fetchActivity('/api/tumblr-activity', stub)
+  expect(after.mentions).toHaveLength(0)
+})
