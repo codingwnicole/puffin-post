@@ -15,13 +15,24 @@ export function tumblrActivityRoutes() {
 
   app.get('/', async c => {
     const scope = await requireWorkspace(c)
+    // ?blog= filters to one canonical blog; ?before=<unix seconds> pages to older items.
+    const blogFilter = c.req.query('blog') || null
+    const beforeParam = c.req.query('before')
+    const before = beforeParam === undefined ? null : Number(beforeParam)
+    // De-duplicate by canonical blog: a blog linked by two characters/connections must be fetched once.
     const rows = await scope.db.prepare(`
-      SELECT tc.token_encrypted AS tokenEncrypted, tc.token_secret_encrypted AS tokenSecretEncrypted,
-        cb.blog_identifier AS blogIdentifier
-      FROM tumblr_connections tc
-      JOIN character_blogs cb ON cb.workspace_id = tc.workspace_id AND cb.tumblr_connection_id = tc.id
-      WHERE tc.workspace_id = ? AND tc.status = 'active'
-    `).bind(scope.workspaceId).all<ConnectedBlog>()
+      SELECT cb.blog_identifier AS blogIdentifier,
+        (SELECT tc.token_encrypted FROM tumblr_connections tc
+           WHERE tc.workspace_id = cb.workspace_id AND tc.id = cb.tumblr_connection_id AND tc.status = 'active'
+           ORDER BY tc.created_at LIMIT 1) AS tokenEncrypted,
+        (SELECT tc.token_secret_encrypted FROM tumblr_connections tc
+           WHERE tc.workspace_id = cb.workspace_id AND tc.id = cb.tumblr_connection_id AND tc.status = 'active'
+           ORDER BY tc.created_at LIMIT 1) AS tokenSecretEncrypted
+      FROM character_blogs cb
+      WHERE cb.workspace_id = ?${blogFilter ? ' AND cb.blog_identifier = ?' : ''}
+        AND EXISTS (SELECT 1 FROM tumblr_connections tc WHERE tc.workspace_id = cb.workspace_id AND tc.id = cb.tumblr_connection_id AND tc.status = 'active')
+      GROUP BY cb.blog_identifier
+    `).bind(...(blogFilter ? [scope.workspaceId, blogFilter] : [scope.workspaceId])).all<ConnectedBlog>()
     const tracked = await scope.db.prepare(`
       SELECT thread_root_blog_id AS rootBlogIdentifier, thread_root_id AS rootPostId
       FROM starters WHERE workspace_id = ?
@@ -36,7 +47,7 @@ export function tumblrActivityRoutes() {
     const responses = await Promise.all(rows.results.map(async row => {
       const client = createTumblrClient({ consumerKey: c.env.TUMBLR_CONSUMER_KEY, consumerSecret: c.env.TUMBLR_CONSUMER_SECRET, token: await decryptToken(row.tokenEncrypted, c.env.TOKEN_ENCRYPTION_KEY), tokenSecret: await decryptToken(row.tokenSecretEncrypted, c.env.TOKEN_ENCRYPTION_KEY) })
       try {
-        const notifications = await client.getNotifications(row.blogIdentifier)
+        const notifications = await client.getNotifications(row.blogIdentifier, before)
         const enriched = await Promise.all(notifications.map(async notification => {
           if (!notification.postId || notification.actor === 'anonymous') return notification
           try {
@@ -44,9 +55,10 @@ export function tumblrActivityRoutes() {
             return { ...notification, preview: notification.preview ?? post.preview ?? post.title ?? null, sourceUrl: notification.sourceUrl ?? post.postUrl ?? null, rootPostId: post.rootPostId, rootBlogIdentifier: post.rootBlogIdentifier }
           } catch { return notification }
         }))
-        return { notifications: enriched, recentPosts: await client.getRecentPosts(row.blogIdentifier), error: null }
+        // Tumblr's default notifications page is 20 items; a short page means no older items exist.
+        return { blogIdentifier: row.blogIdentifier, status: 'ok' as const, error: null as string | null, notifications: enriched, recentPosts: await client.getRecentPosts(row.blogIdentifier), oldestTimestamp: enriched.length > 0 ? new Date(Math.min(...enriched.map(notification => new Date(notification.timestamp).getTime()))).toISOString() : null, exhausted: enriched.length === 0 }
       } catch (error) {
-        return { notifications: [] as TumblrNotification[], recentPosts: [] as TumblrPost[], error: `${row.blogIdentifier}: ${error instanceof Error ? error.message : 'Tumblr activity request failed'}` }
+        return { blogIdentifier: row.blogIdentifier, status: 'error' as const, error: `${row.blogIdentifier}: ${error instanceof Error ? error.message : 'Tumblr activity request failed'}`, notifications: [] as TumblrNotification[], recentPosts: [] as TumblrPost[], oldestTimestamp: null, exhausted: true }
       }
     }))
     const diagnostics = responses.flatMap(response => response.error ? [response.error] : [])
@@ -62,7 +74,7 @@ export function tumblrActivityRoutes() {
       .map(post => [threadKey(post.rootBlogIdentifier, post.rootPostId), post] as const)).values()]
       .map(post => ({ id: `post:${post.blogIdentifier}:${post.id}`, blogIdentifier: post.blogIdentifier, actor: post.blogIdentifier, timestamp: new Date().toISOString(), postId: post.id, preview: post.preview ?? post.title ?? null, sourceUrl: post.postUrl ?? `https://www.tumblr.com/${post.blogIdentifier.replace(/\.tumblr\.com$/i, '')}/${post.id}`, threadKey: threadKey(post.rootBlogIdentifier, post.rootPostId) }))
       .slice(0, 12)
-    return c.json({ asks: notifications.filter(notification => notification.type === 'ask'), mentions: notifications.filter(notification => mentionTypes.has(notification.type)), threadCandidates, diagnostics })
+    return c.json({ asks: notifications.filter(notification => notification.type === 'ask'), mentions: notifications.filter(notification => mentionTypes.has(notification.type)), threadCandidates, blogs: responses.map(response => ({ blogIdentifier: response.blogIdentifier, status: response.status, error: response.error, oldestTimestamp: response.oldestTimestamp, exhausted: response.exhausted })), diagnostics })
   })
   app.post('/dismissals', async c => {
     const scope = await requireWorkspace(c)

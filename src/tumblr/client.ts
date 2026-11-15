@@ -18,7 +18,7 @@ export interface TumblrClient { getBlogs(): Promise<string[]> }
 export interface TumblrActivity { postId: string; blogIdentifier: string; parentBlogIdentifier: string | null; timestamp: string }
 export interface TumblrClient { getThreadActivity(blogIdentifier: string, postId: string): Promise<TumblrActivity[]> }
 export interface TumblrNotification { id:string; type:string; blogIdentifier:string; actor:string; timestamp:string; postId:string|null; preview:string|null; sourceUrl:string|null }
-export interface TumblrClient { getNotifications(blogIdentifier:string):Promise<TumblrNotification[]> }
+export interface TumblrClient { getNotifications(blogIdentifier:string,before?:number|null):Promise<TumblrNotification[]> }
 export function createTumblrClient(config: { consumerKey: string; consumerSecret: string; token: string; tokenSecret: string; fetch?: typeof fetch }): TumblrClient {
   const run = config.fetch ?? fetch
   const safeRun = (url: string, init?: RequestInit) => {
@@ -61,10 +61,12 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
       if (!note.blog_name || note.post_id == null) return []
       return [{ postId:String(note.post_id), blogIdentifier:`${note.blog_name}.tumblr.com`.toLowerCase(), parentBlogIdentifier:note.reblog_parent_blog_name ? `${note.reblog_parent_blog_name}.tumblr.com`.toLowerCase() : null, timestamp:new Date((note.timestamp ?? 0) * 1000).toISOString() }]
     })
-  }, async getNotifications(blogIdentifier) {
+  }, async getNotifications(blogIdentifier,before) {
     // Tumblr has renamed mention notification types over time. Request the
     // activity feed unfiltered, then keep every known current or legacy label.
-    const url=`https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/notifications?rollups=false`
+    const params=new URLSearchParams({rollups:'false'})
+    if(before!==null&&before!==undefined)params.set('before',String(before))
+    const url=`https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/notifications?${params.toString()}`
     const response=await safeRun(url,{headers:{Authorization:await oauthAuthorizationHeader('GET',url,config.consumerKey,config.consumerSecret,config.token,config.tokenSecret)}})
     if(!response.ok) throw new Error(`Tumblr activity failed (${response.status})`)
     const body=await response.json() as {response?:{notifications?:Array<{type?:string;timestamp?:number;blog_name?:string;from_tumblelog_name?:string;from_blog_name?:string;post_id?:string|number;target_post_id?:string|number;id?:string|number;summary?:string;added_text?:string;reply_text?:string;post_url?:string;from_tumblelog?:{name?:string};from_blog?:{name?:string};blog?:{name?:string};post?:{blog_name?:string;summary?:string;title?:string;post_url?:string}}>} }
