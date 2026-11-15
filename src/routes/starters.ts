@@ -14,6 +14,8 @@ import { latestDirectExchange } from '../tumblr/refresh'
 
 type Assignment = { id:string; characterId:string; characterTag:string|null; characterName:string }
 
+const premiseSchema = z.object({ premise: z.string().max(20000) })
+
 function compactThreadSummary(value?: string) {
   if (!value) return ''
   const cleaned = value.replace(/\s+/g, ' ').trim()
@@ -193,6 +195,31 @@ export function starterRoutes() {
     return c.json(await updateStarterTitle(scope, c.req.param('starterId'), body.title, body.description ?? ''))
   })
   app.get('/:starterId', async c => { const scope = await requireWorkspace(c), id = c.req.param('starterId'); return c.json({ starter:await getStarter(scope,id), branches:await listInboxBranches({ ...scope,starterId:id,includeArchived:true }) }) })
+
+  app.post('/:starterId/archive', async c => {
+    const scope=await requireWorkspace(c)
+    const starterId=c.req.param('starterId')
+    if(!await scope.db.prepare('SELECT id FROM starters WHERE workspace_id=? AND id=?').bind(scope.workspaceId,starterId).first()) throw new HTTPException(404,{message:'Starter not found'})
+    await scope.db.prepare('UPDATE starters SET archived=1, archived_at=? WHERE workspace_id=? AND id=?').bind(new Date().toISOString(),scope.workspaceId,starterId).run()
+    return c.json({ starter: await getStarter(scope,starterId) },200)
+  })
+
+  app.post('/:starterId/restore', async c => {
+    const scope=await requireWorkspace(c)
+    const starterId=c.req.param('starterId')
+    if(!await scope.db.prepare('SELECT id FROM starters WHERE workspace_id=? AND id=?').bind(scope.workspaceId,starterId).first()) throw new HTTPException(404,{message:'Starter not found'})
+    await scope.db.prepare('UPDATE starters SET archived=0, archived_at=NULL WHERE workspace_id=? AND id=?').bind(scope.workspaceId,starterId).run()
+    return c.json({ starter: await getStarter(scope,starterId) },200)
+  })
+
+  app.patch('/:starterId/premise', async c => {
+    const scope=await requireWorkspace(c)
+    const starterId=c.req.param('starterId')
+    const body=premiseSchema.parse(await c.req.json().catch(()=>({})))
+    if(!await scope.db.prepare('SELECT id FROM starters WHERE workspace_id=? AND id=?').bind(scope.workspaceId,starterId).first()) throw new HTTPException(404,{message:'Starter not found'})
+    await scope.db.prepare('UPDATE starters SET premise=? WHERE workspace_id=? AND id=?').bind(body.premise,scope.workspaceId,starterId).run()
+    return c.json(await getStarter(scope,starterId),200)
+  })
   app.post('/:starterId/reparse', async c => {
     const scope = await requireWorkspace(c)
     const starter = await getStarter(scope, c.req.param('starterId'))

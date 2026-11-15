@@ -66,4 +66,66 @@ main{max-width:94rem;margin-left:18rem;padding:2.5rem clamp(1.5rem,4vw,5rem) 5re
 
 /* The public screen is an entrance, not a pretend version of the workspace. */
 .app-shell-guest{display:grid;min-height:100dvh;place-items:center}.app-shell-guest .brand{position:fixed;top:1.5rem;left:clamp(1.25rem,4vw,3.5rem);z-index:2;width:auto;height:auto;padding:0;border:0;background:transparent}.app-shell-guest .brand-home{color:var(--text);font-size:1.25rem}.app-shell-guest .brand-mark{width:2.35rem;height:2.35rem;border:1px solid var(--border);background:#dce8e9}.app-shell-guest main{width:min(100% - 3rem,68rem);max-width:none;margin:0;padding:5rem 0 3rem}.guest-landing{display:grid;grid-template-columns:minmax(0,1fr) minmax(19rem,25rem);align-items:center;gap:clamp(2.5rem,8vw,7rem)}.guest-copy{max-width:37rem}.guest-copy h1{max-width:10ch;margin:.65rem 0 1.15rem;font:600 clamp(2.8rem,5.6vw,5rem)/.95 Georgia,"Times New Roman",serif;letter-spacing:-.055em}.guest-copy>p:last-child{max-width:31rem;margin:0;color:var(--muted);font-size:1.05rem;line-height:1.65}.guest-card{padding:1.5rem;border:1px solid var(--border);border-radius:1rem;background:var(--surface);box-shadow:0 1rem 2.5rem rgba(23,36,42,.08)}.guest-card h2{margin:0 0 .45rem;font:600 1.75rem Georgia,"Times New Roman",serif}.guest-card>p{margin:0 0 1.25rem;color:var(--muted);line-height:1.55}.guest-card .tracking-form{margin-top:1.15rem}.guest-card .tracking-form button{width:100%}.password-option{margin-top:1.1rem;padding-top:1.1rem;border-top:1px solid var(--border)}.password-option summary{color:var(--muted);font-size:.88rem;font-weight:700}.password-option .tracking-form{margin-top:1rem}.guest-card [role="alert"]{margin:.8rem 0 0;color:var(--coral);font-size:.9rem;font-weight:700}
-@media (max-width:760px){.app-shell-guest{display:block}.app-shell-guest .brand{position:relative!important;top:auto;left:auto;width:100%!important;height:auto!important;padding:1.1rem 1.15rem!important;background:transparent!important}.app-shell-guest main{width:100%;padding:3.25rem 1.25rem 2rem!important}.guest-landing{display:block}.guest-copy h1{font-size:clamp(2.65rem,14vw,3.7rem)}.guest-card{margin-top:2.25rem;padding:1.25rem}.app-shell-guest .brand-home{font-size:1.2rem}}
+@media (max-width:760px){.app-shell-guest{display:block}.app-shell-guest .brand{position:relative!important;top:auto!important;left:auto!important;width:100%!important;height:auto!important;padding:1.1rem 1.15rem!important;background:transparent!important}.app-shell-guest main{width:100%;padding:3.25rem 1.25rem 2rem!important}.guest-landing{display:block}.guest-copy h1{font-size:clamp(2.65rem,14vw,3.7rem)}.guest-card{margin-top:2.25rem;padding:1.15rem 1.25rem 1.25rem}.app-shell-guest .brand-home{font-size:1.2rem}}
+
+/* B13/B14 — sidebar nav scrolls instead of overlapping its footer; character/planner cards shrink & wrap at narrow widths */
+.primary-nav{overflow-y:auto;padding-bottom:5.5rem;overscroll-behavior:contain}
+.nav-note{position:sticky;bottom:0;background:linear-gradient(to top, var(--canvas) 70%, transparent)}
+.character-card,.character-stack{overflow:hidden}
+.character-card-top{display:flex;gap:.85rem;min-width:0}
+.character-card-top h3,.character-card h3{min-width:0;overflow-wrap:anywhere}
+.character-stats{display:flex;flex-wrap:wrap;gap:.35rem 1rem;min-width:0}
+.character-stats a,.character-stats span{min-width:0}
+.character-actions,.character-lifecycle{display:flex;flex-wrap:wrap;gap:.5rem}
+.character-actions .icon-picker,.character-actions button,.character-lifecycle button{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.preserve-lines{overflow-wrap:anywhere;word-break:break-word}
+@media (max-width:1100px){.character-grid{grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))}}
+
+/* Motion layer: a single coherent rhythm, 160–220ms, transform/opacity only, GPU-composited, fully opt-out via prefers-reduced-motion. */
+:root{--motion-fast:.16s;--motion-med:.22s;--motion-slow:.28s;--ease-out:cubic-bezier(.2,.7,.3,1);--ease-spring:cubic-bezier(.34,1.56,.64,1)}
+@keyframes fade-in{from{opacity:0}to{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(.55rem)}to{opacity:1;transform:translateY(0)}}
+@keyframes sheet-up{from{opacity:0;transform:translateY(.5rem) scaleY(.985)}to{opacity:1;transform:translateY(0) scaleY(1)}}
+@keyframes sheet-down{from{opacity:0;transform:translateY(-.4rem) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes pulse-ring{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}70%{box-shadow:0 0 0 .5rem color-mix(in srgb,var(--accent) 0%,transparent)}100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 0%,transparent)}}
+@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+@keyframes toast-in{from{opacity:0;transform:translateY(.6rem) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+
+/* Micro-interactions: buttons, inputs, cards. transform/opacity/filter only. */
+button,.button,a,.quick-add-link,.icon-picker,.do-next{transition:transform var(--motion-fast) var(--ease-out),background-color var(--motion-fast) linear,border-color var(--motion-fast) linear,box-shadow var(--motion-fast) linear,filter var(--motion-fast) linear,color var(--motion-fast) linear}
+button:active,.button:active,.do-next[aria-pressed="true"]:active{transform:translateY(.06rem) scale(.99)}
+.branch-card,.tracking-card,.settings-section,.character-card,.rp-group,.connection-card,.empty-state{transition:box-shadow var(--motion-med) var(--ease-out),border-color var(--motion-med) linear,transform var(--motion-med) var(--ease-out)}
+.branch-card:hover,.character-card:hover,.connection-card:hover{box-shadow:0 .5rem 1.2rem rgba(23,36,42,.07)}
+.branch-card:focus-within,.character-card:focus-within{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent)}
+input,select,textarea{transition:border-color var(--motion-fast) linear,box-shadow var(--motion-fast) linear,background-color var(--motion-fast) linear}
+input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent);border-color:var(--accent)}
+
+/* List entry: staggered rise via CSS custom property --i set inline. Scoped to the
+   elements that actually carry a --i index (RP groups + character stacks); the
+   per-row cards inside them ride along via the parent's reveal. transform+opacity only. */
+.rp-group,.character-stack,.character-card,.connection-card{animation:rise var(--motion-med) var(--ease-out) both;animation-delay:calc(var(--i,0)*45ms)}
+/* Chevron rotate for the real <details> summaries (mobile nav, options, tools). */
+.mobile-more>summary::after,.shared-blog-option>summary::after,.password-option>summary::after,.parking-add>summary::after,.more-styles>summary::after{content:"";width:.5rem;height:.5rem;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform var(--motion-fast) var(--ease-out);margin-left:auto}
+.mobile-more[open]>summary::after,.shared-blog-option[open]>summary::after,.password-option[open]>summary::after,.parking-add[open]>summary::after,.more-styles[open]>summary::after{transform:rotate(225deg)}
+/* Collapse: <details> content fades+rises when opened. */
+.mobile-more div,.shared-blog-option label,.password-option form,.parking-add form,.more-styles div{animation:sheet-up var(--motion-med) var(--ease-out) both}
+
+/* Toast / alert entrance. */
+[role="alert"]{animation:toast-in var(--motion-med) var(--ease-out) both}
+
+/* Skeleton shimmer for loading states. */
+.skeleton{background:linear-gradient(90deg,var(--surface-muted) 25%,color-mix(in srgb,var(--surface) 60%,var(--surface-muted)) 50%,var(--surface-muted) 75%);background-size:200% 100%;animation:shimmer 1.1s linear infinite;border-radius:.5rem}
+
+/* Refresh progress ring: a single element that pulses while a fetch is in flight. */
+.refresh-ring{width:1.1rem;height:1.1rem;border-radius:50%;border:.14rem solid color-mix(in srgb,var(--accent) 25%,transparent);border-top-color:var(--accent);display:inline-block;vertical-align:middle;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Attention pulse for the "do next" affordance when a reply is waiting. */
+.do-next.is-waiting{animation:pulse-ring 2.4s var(--ease-out) infinite}
+
+/* Reduced motion: every animation above collapses to a no-op; color/state changes are preserved. */
+@media (prefers-reduced-motion:reduce){
+  :root{--motion-fast:0s;--motion-med:0s;--motion-slow:0s}
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  .rp-group,.character-stack,.branch-card,.character-card,.connection-card{animation:none}
+  .refresh-ring,.skeleton,.do-next.is-waiting{animation:none}
+}

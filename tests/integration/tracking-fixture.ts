@@ -11,6 +11,7 @@ export async function trackingFixture() {
     const url = String(input)
     const match = /\/blog\/([^/]+)\/posts\/(\d+)/.exec(url)
     if (match) return new Response(JSON.stringify({ response:{ blog:{ name:decodeURIComponent(match[1]).replace(/\.tumblr\.com$/,'' ) }, id_string:match[2], tags:['ooc','open','a/o'] } }), { status:200, headers:{'content-type':'application/json'} })
+    if (url.includes('/notes?')) return new Response(JSON.stringify({ response:{ notes:[] } }), { status:200, headers:{'content-type':'application/json'} })
     return new Response(JSON.stringify({ response:{ user:{ blogs:[{ name:'a' },{ name:'b' }] } } }), { status:200, headers:{'content-type':'application/json'} })
   }
   const platform = await getPlatformProxy<Env>({ persist: false })

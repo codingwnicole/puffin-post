@@ -4,7 +4,8 @@ import { requireMembership } from './workspaces'
 export async function getStarter(scope: WorkspaceScope, id: string): Promise<Starter> {
   await requireMembership(scope.db, scope.userId, scope.workspaceId)
   const starter = await scope.db.prepare(`SELECT id, workspace_id AS workspaceId, character_id AS characterId, rp_group_id AS groupId,
-    title, source, root_post_id AS rootPostId, root_blog_id AS rootBlogId, thread_root_id AS threadRootId, thread_root_blog_id AS threadRootBlogId, description, created_at AS createdAt
+    title, source, root_post_id AS rootPostId, root_blog_id AS rootBlogId, thread_root_id AS threadRootId, thread_root_blog_id AS threadRootBlogId, description, created_at AS createdAt,
+    premise, archived, archived_at AS archivedAt
     FROM starters WHERE workspace_id = ? AND id = ?`).bind(scope.workspaceId,id).first<Starter>()
   if (!starter) throw new Error('Starter not found')
   return starter ? { ...starter, postUrl: `https://${starter.rootBlogId}/post/${starter.rootPostId}` } : starter
@@ -24,6 +25,9 @@ export interface Starter {
   postUrl: string
   description: string
   createdAt: string
+  premise: string
+  archived: number
+  archivedAt: string | null
 }
 
 export interface CreateStarterInput extends WorkspaceScope {
@@ -66,7 +70,7 @@ export async function createStarter(input: CreateStarterInput): Promise<Starter>
   const starter: Starter = {
     id: crypto.randomUUID(), workspaceId, characterId: input.characterId, groupId:input.groupId ?? null, title: input.title.trim(),
     source: 'tumblr', rootPostId: input.rootPostId, rootBlogId: input.rootBlogId, threadRootId, threadRootBlogId, postUrl: `https://${input.rootBlogId}/post/${input.rootPostId}`,
-    description: input.description ?? '', createdAt: new Date().toISOString(),
+    description: input.description ?? '', createdAt: new Date().toISOString(), premise: '', archived: 0, archivedAt: null,
   }
   await db.prepare(`
     INSERT INTO starters (id, workspace_id, character_id, rp_group_id, title, source, root_post_id, root_blog_id, thread_root_id, thread_root_blog_id, description, created_at)
