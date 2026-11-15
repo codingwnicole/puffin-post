@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../lib/api'
+import { api, staleGet } from '../lib/api'
 
 type Activity = { id: string; blogIdentifier: string; actor: string; timestamp: string; postId: string | null; preview: string | null; sourceUrl: string | null; threadKey?: string | null }
 type Character = { id: string; name: string }
@@ -38,6 +38,7 @@ export default function TumblrActivityPage() {
   const [needsBlog, setNeedsBlog] = useState<Record<string, boolean>>({})
   const [hasMore, setHasMore] = useState(false)
   const [oldestShown, setOldestShown] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
 
   function applyResponse(response: ActivityResponse, replace: boolean) {
     setBlogs(response.blogs)
@@ -59,10 +60,11 @@ export default function TumblrActivityPage() {
   useEffect(() => {
     let active = true
     setError(''); setMessage('')
-    void fetchActivity(blogFilter || null)
-      .then(response => { if (active) applyResponse(response, true) })
-      .catch(problem => { if (active) setError(problem.message) })
-    if (!blogFilter) api<Character[]>('/characters').then(setCharacters).catch(() => undefined)
+    if (!blogFilter) setLoaded(false)
+    void (blogFilter ? api<ActivityResponse>(`/tumblr-activity?blog=${encodeURIComponent(blogFilter)}`) : staleGet<ActivityResponse>('/tumblr-activity'))
+      .then(response => { if (active) { applyResponse(response, true); setLoaded(true) } })
+      .catch(problem => { if (active) { setError(problem.message); if (!blogFilter) setLoaded(true) } })
+    if (!blogFilter) staleGet<Character[]>('/characters').then(setCharacters).catch(() => undefined)
     return () => { active = false }
   }, [blogFilter])
 
@@ -122,13 +124,21 @@ export default function TumblrActivityPage() {
   return <section aria-labelledby="activity-title">
     <h2 className="page-heading" id="activity-title">Tumblr activity</h2>
     <p className="page-description">New asks and tagged starters from the blogs assigned to your characters, in one small review queue.</p>
-    {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
+    {error && <p role="alert">{error}</p>}{message && <p role="status" className="success-pulse">{message}</p>}
     {failedBlogs.length > 0 && <p role="alert" className="refresh-warning">Could not load: {failedBlogs.map(blog => blogLabel(blog.blogIdentifier)).join(', ')}. Items from those blogs are missing from this list.</p>}
     {diagnostics.length > 0 && <p role="alert" className="refresh-warning">Could not check {diagnostics.join('; ')}</p>}
     <div className="activity-controls">
       <label>Blog<select value={blogFilter} onChange={event => setBlogFilter(event.target.value)}><option value="">All blogs</option>{blogs.map(blog => <option key={blog.blogIdentifier} value={blog.blogIdentifier}>{blogLabel(blog.blogIdentifier)}</option>)}</select></label>
       {hasMore && <button className="secondary-button" disabled={busy === 'older'} onClick={loadOlder}>{busy === 'older' ? 'Loading...' : 'Load older'}</button>}
     </div>
+    {!loaded ? (
+      <div className="skeletons" aria-hidden="true">
+        <div className="skeleton-row"><div className="skeleton-line skeleton-line-avatar" /><div className="skeleton-lines"><div className="skeleton-line" /><div className="skeleton-line skeleton-line-short" /></div></div>
+        <div className="skeleton-row"><div className="skeleton-line skeleton-line-avatar" /><div className="skeleton-lines"><div className="skeleton-line" /><div className="skeleton-line skeleton-line-short" /></div></div>
+        <div className="skeleton-row"><div className="skeleton-line skeleton-line-avatar" /><div className="skeleton-lines"><div className="skeleton-line" /><div className="skeleton-line skeleton-line-short" /></div></div>
+      </div>
+    ) : (
+    <>
     <section className="tracking-card">
       <h3>Did you mean to track these?</h3>
       <p className="field-help">Recent posts from your connected blogs that are not in Puffin Post yet. Save the ones that are actually scenes; ignore the rest.</p>
@@ -142,5 +152,7 @@ export default function TumblrActivityPage() {
       <h3>Asks</h3>
       {asks.length ? asks.map(ask => <article className="activity-row" key={ask.blogIdentifier + ':' + ask.id}><div><strong>{ask.actor === 'anonymous' ? 'Anonymous ask' : blogLabel(ask.actor)}</strong><p>to {blogLabel(ask.blogIdentifier)} &middot; {new Date(ask.timestamp).toLocaleString()}</p></div><button onClick={async () => { try { await api('/reply-drafts', 'POST', { title: 'Answer ask from ' + (ask.actor === 'anonymous' ? 'anonymous' : blogLabel(ask.actor)), purpose: 'note', notes: 'Tumblr ask received on ' + blogLabel(ask.blogIdentifier) + '.', sourceUrl: 'https://www.tumblr.com/inbox', reminderAt: new Date(Date.now() + 86400000).toISOString() }); window.location.hash = 'parking-lot' } catch (problem) { setError((problem as Error).message) } }}>Remind me tomorrow</button></article>) : <p>{incomplete ? 'Asks from the failed blogs are missing.' : 'No new asks found for the connected character blogs.'}</p>}
     </section>
+    </>
+    )}
   </section>
 }

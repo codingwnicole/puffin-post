@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
-import { api } from '../lib/api'
+import { api, staleGet } from '../lib/api'
+import { initialsFor } from '../components/InitialsAvatar'
 
 type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null }
 type ArchivedCharacter = { id: string; name: string; color: string | null; notes: string | null; iconObjectKey: string | null; createdAt: string; rpGroupNames: string[]; threadCount: number }
@@ -85,7 +86,7 @@ function CharacterCard({ row, index, assignments, groups, stat, iconVersion, bus
   const characterGroups = groups.filter(group => group.characterIds.includes(row.id))
   const availableGroups = groups.filter(group => !group.characterIds.includes(row.id))
   return <article className="character-card tracking-card" style={{'--i':index ?? 0} as CSSProperties}>
-    <div className="character-card-top"><img className="character-avatar" alt="" src={row.iconObjectKey ? '/api/characters/' + row.id + '/icon?v=' + (iconVersion ?? row.iconObjectKey) : undefined} hidden={!row.iconObjectKey} /><div><p className="eyebrow">{row.state}</p><h3>{row.name}</h3>{characterAssignments.length ? <p className="field-help"><strong>Tumblr assigned:</strong> {characterAssignments.map(assignment => blogLabel(assignment.blogIdentifier)).join(', ')}</p> : <p className="field-help">Next: <a href="#connections">assign Tumblr</a></p>}</div></div>
+    <div className="character-card-top"><img className="character-avatar" alt="" src={row.iconObjectKey ? '/api/characters/' + row.id + '/icon?v=' + (iconVersion ?? row.iconObjectKey) : undefined} hidden={!row.iconObjectKey} onError={event => event.currentTarget.classList.add('avatar-fallback')} data-initials={initialsFor(row.name)} /><div><p className="eyebrow">{row.state}</p><h3>{row.name}</h3>{characterAssignments.length ? <p className="field-help"><strong>Tumblr assigned:</strong> {characterAssignments.map(assignment => blogLabel(assignment.blogIdentifier)).join(', ')}</p> : <p className="field-help">Next: <a href="#connections">assign Tumblr</a></p>}</div></div>
     <div className="character-rps"><strong>RP sections</strong>{characterGroups.length ? <span>{characterGroups.map(group => group.name).join(' / ')}</span> : <span>Not sorted yet</span>}{!characterGroups.length && availableGroups.length > 0 ? <label>Add {row.name} to an RP section<select className="character-rp-picker" value="" disabled={busy} onChange={event => { if (event.target.value) void addToGroup(event.target.value, row.id) }}><option value="">Add to RP.</option>{availableGroups.map(group => <option value={group.id} key={group.id}>{group.name}</option>)}</select></label> : !characterGroups.length ? <button type="button" className="text-button" onClick={showCreateGroup}>Create an RP</button> : null}</div>
     <div className="character-stats"><a href={'#inbox?characterId=' + row.id}><strong>{stat.total}</strong> threads</a><span><strong>{stat.mine}</strong> my turn</span><span><strong>{stat.theirs}</strong> their turn</span></div>
     <Quicklinks characterId={row.id} />
@@ -100,7 +101,8 @@ export default function CharactersPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; threads: number } | null>(null)
   const [deleteStep, setDeleteStep] = useState<'choose' | 'confirm'>('choose')
   const [deleteBusy, setDeleteBusy] = useState(false)
-  const load = () => Promise.all([api<Character[]>('/characters'), api<Connection[]>('/connections'), api<Group[]>('/rp-groups'), api<{ branches: InboxBranch[] }>('/inbox')]).then(([characters, connections, nextGroups, inbox]) => { setRows(characters); setAssignments(connections.flatMap(connection => connection.assignments)); setGroups(nextGroups); setBranches(inbox.branches) }).catch(problem => setError(problem.message))
+  const [loaded, setLoaded] = useState(false)
+  const load = () => Promise.all([staleGet<Character[]>('/characters'), staleGet<Connection[]>('/connections'), staleGet<Group[]>('/rp-groups'), staleGet<{ branches: InboxBranch[] }>('/inbox')]).then(([characters, connections, nextGroups, inbox]) => { setRows(characters); setAssignments(connections.flatMap(connection => connection.assignments)); setGroups(nextGroups); setBranches(inbox.branches); setLoaded(true) }).catch(problem => { setError(problem.message); setLoaded(true) })
   useEffect(() => { void load() }, [])
   const counts = useMemo(() => Object.fromEntries(rows.map(character => { const current = branches.filter(branch => branch.characterId === character.id); return [character.id, { total: current.length, mine: current.filter(branch => branch.status === 'your_turn').length, theirs: current.filter(branch => branch.status === 'their_turn').length }] })), [rows, branches]) as Record<string, Counts>
   const groupedCharacters = useMemo(() => groups.map(group => ({ group, characters: rows.filter(row => group.characterIds.includes(row.id)) })).filter(section => section.characters.length > 0), [groups, rows])
@@ -116,9 +118,19 @@ export default function CharactersPage() {
     {error && <p role="alert">{error}</p>}
     {addingGroup && <form className="character-create tracking-card" onSubmit={async event => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement, name = form ? new FormData(form).get('name') : null; try { setError(''); await api('/rp-groups', 'POST', { name }); if (form) form.reset(); setAddingGroup(false); await load() } catch (problem) { setError((problem as Error).message) } }}><label>RP name<input name="name" required maxLength={120} autoFocus placeholder="e.g. avast" /></label><button>Add RP</button></form>}
     {adding && <form className="character-create tracking-card" onSubmit={async event => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement, name = form ? new FormData(form).get('name') : null; try { setError(''); await api('/characters', 'POST', { name, state: 'active' }); if (form) form.reset(); setAdding(false); await load() } catch (problem) { setError((problem as Error).message) } }}><label>Name<input name="name" required maxLength={200} autoFocus placeholder="Character name" /></label><button>Add to cast</button></form>}
+    {!loaded ? (
+      <div className="skeletons character-skeletons" aria-hidden="true">
+        <div className="skeleton-card"><div className="skeleton-line skeleton-line-avatar" /><div className="skeleton-lines"><div className="skeleton-line" /><div className="skeleton-line skeleton-line-short" /><div className="skeleton-line skeleton-line-short" /></div></div>
+        <div className="skeleton-card"><div className="skeleton-line skeleton-line-avatar" /><div className="skeleton-lines"><div className="skeleton-line" /><div className="skeleton-line skeleton-line-short" /><div className="skeleton-line skeleton-line-short" /></div></div>
+        <div className="skeleton-card"><div className="skeleton-line skeleton-line-avatar" /><div className="skeleton-lines"><div className="skeleton-line" /><div className="skeleton-line skeleton-line-short" /><div className="skeleton-line skeleton-line-short" /></div></div>
+      </div>
+    ) : (
+    <>
     {groupedCharacters.map(({ group, characters }) => <section className="character-rp-section" key={group.id} aria-labelledby={'rp-' + group.id}><div className="character-rp-heading"><div><p className="eyebrow">RP section</p><h3 id={'rp-' + group.id}>{group.name}</h3></div><div className="character-rp-actions"><span>{characters.length} {characters.length === 1 ? 'character' : 'characters'}</span>{characters.length > 1 && <button type="button" className="secondary-button" onClick={() => void exportRpStats(group, characters, counts).catch(problem => setError(problem.message))}>Export RP stats</button>}</div></div><ScrollableRow>{characters.map((row, index) => card(row, index))}</ScrollableRow></section>)}
     {unassignedCharacters.length > 0 && <section className="character-rp-section character-unsorted"><div className="character-rp-heading"><div><p className="eyebrow">Needs sorting</p><h3>Characters without an RP section</h3></div><span>{unassignedCharacters.length} {unassignedCharacters.length === 1 ? 'character' : 'characters'}</span></div><ScrollableRow>{unassignedCharacters.map((row, index) => card(row, index))}</ScrollableRow></section>}
     {!rows.length && <p>No characters yet. Add your first one above.</p>}
+    </>
+    )}
     {deleteTarget && (
       <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
         <div className="modal-card">

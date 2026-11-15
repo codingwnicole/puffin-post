@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
+import { initialsFor } from '../components/InitialsAvatar'
 
 type ArchivedCharacter = { id: string; name: string; color: string | null; notes: string | null; iconObjectKey: string | null; createdAt: string; rpGroupNames: string[]; threadCount: number }
 type InboxBranch = { id: string; title: string; description: string | null; status: string; characterId: string; lastActivityAt: string | null; notes: string | null }
@@ -42,7 +43,7 @@ export default function CharacterShortcutPage({ id }: { id: string }) {
   return (
     <section aria-labelledby="shortcut-title">
       <div className="shortcut-header">
-        <img className="shortcut-avatar" alt="" hidden={!character.iconObjectKey} src={character.iconObjectKey ? '/api/characters/' + character.id + '/icon?v=' + character.iconObjectKey : undefined} />
+        <img className="shortcut-avatar" alt="" hidden={!character.iconObjectKey} src={character.iconObjectKey ? '/api/characters/' + character.id + '/icon?v=' + character.iconObjectKey : undefined} onError={event => event.currentTarget.classList.add('avatar-fallback')} data-initials={initialsFor(character.name)} />
         <div>
           <h2 id="shortcut-title" className="page-heading">{character.name}</h2>
           <p className="page-description">

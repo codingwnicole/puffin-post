@@ -10,6 +10,7 @@ export function initialsFor(name: string): string {
 
 export function InitialsAvatar({ name, imageUrl, color }: { name: string; imageUrl?: string | null; color?: string }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
   let style
   // Only opaque hex colors have a stable contrast independent of the surrounding theme.
   if (color && /^#(?:[\da-f]{3}|[\da-f]{6})$/i.test(color)) {
@@ -23,10 +24,11 @@ export function InitialsAvatar({ name, imageUrl, color }: { name: string; imageU
     const whiteContrast = 1.05 / (luminance + .05)
     style = { backgroundColor: color, color: blackContrast >= whiteContrast ? '#000000' : '#ffffff' }
   }
+  const showImage = Boolean(imageUrl) && imageUrl !== failedUrl
   return (
     <span className="initials-avatar" style={style}>
-      {imageUrl && imageUrl !== failedUrl
-        ? <img src={imageUrl} alt={name} onError={() => setFailedUrl(imageUrl)} />
+      {showImage
+        ? <img src={imageUrl!} alt={name} className={loaded ? 'avatar-img-loaded' : 'avatar-img-pending'} onError={() => { setFailedUrl(imageUrl ?? null); setLoaded(false) }} onLoad={() => setLoaded(true)} />
         : <span role="img" aria-label={name || 'Unnamed character'}>{initialsFor(name)}</span>}
     </span>
   )

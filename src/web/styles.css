@@ -147,6 +147,26 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,v
 /* Attention pulse for the "do next" affordance when a reply is waiting. */
 .do-next.is-waiting{animation:pulse-ring 2.4s var(--ease-out) infinite}
 
+/* Item 8: one short pulse when a success message appears. opacity+scale, runs once. */
+@keyframes success-pulse{0%{opacity:.35;transform:scale(.97)}45%{opacity:1;transform:scale(1.015)}100%{opacity:1;transform:scale(1)}}
+.success-pulse{animation:success-pulse .3s var(--ease-out) both}
+
+/* Item 21: skeleton blocks that reserve the height of the real row/card while the first load is pending. */
+.skeletons{display:grid;gap:.85rem;margin:1.25rem 0}
+.skeleton-row{display:flex;align-items:center;gap:.85rem;padding:1rem 1.1rem;border:1px solid var(--border);border-radius:.85rem;background:var(--surface);min-height:4.5rem}
+.skeleton-card{display:flex;align-items:center;gap:.85rem;padding:1rem 1.15rem;border:1px solid var(--border);border-radius:1rem;background:var(--surface);min-height:5.5rem}
+.skeleton-line{height:.85rem;border-radius:.4rem;flex:1 1 auto}
+.skeleton-line-short{flex:0 1 40%;max-width:40%}
+.skeleton-line-avatar{flex:0 0 2.75rem;width:2.75rem;height:2.75rem;border-radius:50%}
+.skeleton-lines{display:grid;gap:.55rem;flex:1 1 auto;min-width:0}
+.character-skeletons{grid-template-columns:repeat(auto-fill,minmax(15rem,1fr));gap:1rem}
+/* Item 28: avatar <img> states. Pending shows a neutral circle (box already reserved); loaded fades the image in. */
+.avatar-img-pending{opacity:0}
+.avatar-img-loaded{opacity:1;transition:opacity var(--motion-med) var(--ease-out)}
+/* Broken icon: keep the reserved box, show a neutral circle with the character's initials. */
+img.avatar-fallback{object-fit:cover;background:var(--surface-3);display:grid;place-items:center}
+img.avatar-fallback::after{content:attr(data-initials);font-weight:600;font-size:.75rem;letter-spacing:.02em;color:var(--text-2);text-transform:uppercase}
+
 /* Reduced motion: every animation above collapses to a no-op; color/state changes are preserved. */
 @media (prefers-reduced-motion:reduce){
   :root{--motion-fast:0s;--motion-med:0s;--motion-slow:0s}
@@ -154,6 +174,9 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,v
   .rp-group,.character-stack,.branch-card,.character-card,.connection-card{animation:none}
   section[aria-labelledby],.modal-overlay,.modal-card{animation:none}
   .refresh-ring,.skeleton,.do-next.is-waiting{animation:none}
+  .success-pulse{animation:none}
+  .avatar-img-pending{opacity:1}
+  .avatar-img-loaded{transition:none}
 }
 /* B03 delete/archive dialog */
 .modal-overlay { position:fixed; inset:0; z-index:50; display:grid; place-items:center; padding:16px; background:rgb(0 0 0 / .45); }
