@@ -96,9 +96,20 @@ main{max-width:94rem;margin-left:18rem;padding:2.5rem clamp(1.5rem,4vw,5rem) 5re
 @media (max-width:1100px){.character-grid{grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))}.planner-grid{grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))}}
 
 /* Motion layer: a single coherent rhythm, 160–220ms, transform/opacity only, GPU-composited, fully opt-out via prefers-reduced-motion. */
-:root{--motion-fast:.16s;--motion-med:.22s;--motion-slow:.28s;--ease-out:cubic-bezier(.2,.7,.3,1);--ease-spring:cubic-bezier(.34,1.56,.64,1)}
+:root{--motion-fast:.16s;--motion-med:.22s;--motion-slow:.28s;--motion-stagger:.03s;--motion-stagger-max:.3s;--ease-out:cubic-bezier(.2,.7,.3,1);--ease-in-out:cubic-bezier(.45,0,.25,1);--ease-spring:cubic-bezier(.34,1.56,.64,1)}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes rise{from{opacity:0;transform:translateY(.55rem)}to{opacity:1;transform:translateY(0)}}
+/* Item 1: ease-out entrance for page sections (rise is already defined above). */
+section[aria-labelledby]{animation:rise var(--motion-med) var(--ease-out) both}
+/* Item 4: :active press feedback for the plain <a> "buttons" the base button rule (line 120)
+   doesn't cover. transform-only, :active, so it snaps on press and restores on release. */
+a.button:active,.text-action:active,.text-button:active,.quick-add-link:active{transform:scale(.97)}
+/* Item 10-12: the delete/archive modal settles from .95 toward its center-top anchor.
+   Exit is a state unmount (no CSS transition) so there is no separate exit duration (item 15 N/A). */
+.modal-overlay{animation:fade-in var(--motion-fast) var(--ease-out) both}
+.modal-card{animation:rise var(--motion-med) var(--ease-out) both;transform-origin:50% 0}
+/* Item 18: crossfade icon swaps in place, alignment stable. */
+.icon,.scene-card-hint{transition:opacity var(--motion-fast) var(--ease-in-out)}
 @keyframes sheet-up{from{opacity:0;transform:translateY(.5rem) scaleY(.985)}to{opacity:1;transform:translateY(0) scaleY(1)}}
 @keyframes sheet-down{from{opacity:0;transform:translateY(-.4rem) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
 @keyframes pulse-ring{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 55%,transparent)}70%{box-shadow:0 0 0 .5rem color-mix(in srgb,var(--accent) 0%,transparent)}100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 0%,transparent)}}
@@ -114,10 +125,10 @@ button:active,.button:active,.do-next[aria-pressed="true"]:active{transform:tran
 input,select,textarea{transition:border-color var(--motion-fast) linear,box-shadow var(--motion-fast) linear,background-color var(--motion-fast) linear}
 input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent);border-color:var(--accent)}
 
-/* List entry: staggered rise via CSS custom property --i set inline. Scoped to the
-   elements that actually carry a --i index (RP groups + character stacks); the
-   per-row cards inside them ride along via the parent's reveal. transform+opacity only. */
-.rp-group,.character-stack,.character-card,.connection-card{animation:rise var(--motion-med) var(--ease-out) both;animation-delay:calc(var(--i,0)*45ms)}
+/* List entry: staggered rise via CSS custom property --i set inline. Delay is capped
+   (min(--i,10) * 30ms) so long lists settle fast and never replay wholesale on update.
+   transform+opacity only. */
+.rp-group,.character-stack,.branch-card,.character-card,.connection-card{animation:rise var(--motion-med) var(--ease-out) both;animation-delay:calc(min(var(--i,0),10)*var(--motion-stagger))}
 /* Chevron rotate for the real <details> summaries (mobile nav, options, tools). */
 .mobile-more>summary::after,.shared-blog-option>summary::after,.password-option>summary::after,.parking-add>summary::after,.more-styles>summary::after{content:"";width:.5rem;height:.5rem;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform var(--motion-fast) var(--ease-out);margin-left:auto}
 .mobile-more[open]>summary::after,.shared-blog-option[open]>summary::after,.password-option[open]>summary::after,.parking-add[open]>summary::after,.more-styles[open]>summary::after{transform:rotate(225deg)}
@@ -141,6 +152,7 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,v
   :root{--motion-fast:0s;--motion-med:0s;--motion-slow:0s}
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
   .rp-group,.character-stack,.branch-card,.character-card,.connection-card{animation:none}
+  section[aria-labelledby],.modal-overlay,.modal-card{animation:none}
   .refresh-ring,.skeleton,.do-next.is-waiting{animation:none}
 }
 /* B03 delete/archive dialog */
