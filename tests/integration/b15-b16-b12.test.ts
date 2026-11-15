@@ -76,6 +76,17 @@ describe('B12: Unsorted group fallback', () => {
     expect(branch!.rpUnsortedReason).toBe('none')
   })
 
+  it('treats an explicit group that no longer exists as missing and falls back (B12 Diana case)', async () => {
+    const group = await (await fixture.request('/api/rp-groups', 'POST', { name: 'Only Group' })).json() as { id: string }
+    await fixture.request(`/api/rp-groups/${group.id}/characters`, 'POST', { characterId: 'character-a' })
+    const starter = await (await fixture.request('/api/starters', 'POST', starterInput)).json() as Starter
+    await fixture.request(`/api/starters/${starter.id}/branches`, 'POST', { partnerId: 'partner-a' })
+    await fixture.env.DB.prepare("UPDATE starters SET rp_group_id='deleted-group' WHERE id=?").bind(starter.id).run()
+    const branch = (await (await fixture.request('/api/inbox')).json() as { branches: InboxBranch[] }).branches.find(b => b.starterId === starter.id)!
+    expect(branch.groupId).toBe(group.id)
+    expect(branch.groupName).toBe('Only Group')
+  })
+
   it('should return groupId null and multiple_rps reason for two memberships', async () => {
     const g1 = (await (await fixture.request('/api/rp-groups', 'POST', { name: 'Group One' })).json()) as { id: string }
     const g2 = (await (await fixture.request('/api/rp-groups', 'POST', { name: 'Group Two' })).json()) as { id: string }

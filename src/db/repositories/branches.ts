@@ -138,10 +138,10 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
       b.last_activity_at AS lastActivityAt, b.last_refresh_at AS lastRefreshAt,
       b.refresh_error AS refreshError, b.status_manual_override_at AS statusManualOverrideAt,
       b.archived_at AS archivedAt, b.created_at AS createdAt, b.next_check_at AS nextCheckAt, s.title, s.description, s.character_id AS characterId,
-      c.name AS characterName, c.icon_object_key AS iconObjectKey, COALESCE(s.rp_group_id, fallback_g.id) AS groupId,
+      c.name AS characterName, c.icon_object_key AS iconObjectKey, COALESCE(g.id, fallback_g.id) AS groupId,
       COALESCE(g.name, fallback_g.name) AS groupName,
       CASE
-        WHEN s.rp_group_id IS NOT NULL THEN 'none'
+        WHEN g.id IS NOT NULL THEN 'none'
         WHEN (SELECT COUNT(*) FROM rp_group_characters rgc WHERE rgc.workspace_id = s.workspace_id AND rgc.character_id = s.character_id) = 1 THEN 'none'
         WHEN (SELECT COUNT(*) FROM rp_group_characters rgc WHERE rgc.workspace_id = s.workspace_id AND rgc.character_id = s.character_id) > 1 THEN 'multiple_rps'
         ELSE 'no_rps'
@@ -151,7 +151,7 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
     JOIN starters s ON s.workspace_id = b.workspace_id AND s.id = b.starter_id
     JOIN characters c ON c.workspace_id = s.workspace_id AND c.id = s.character_id
     LEFT JOIN rp_groups g ON g.workspace_id=s.workspace_id AND g.id=s.rp_group_id
-    LEFT JOIN rp_groups fallback_g ON fallback_g.workspace_id = s.workspace_id AND s.rp_group_id IS NULL
+    LEFT JOIN rp_groups fallback_g ON fallback_g.workspace_id = s.workspace_id AND g.id IS NULL
       AND (SELECT COUNT(*) FROM rp_group_characters rgc WHERE rgc.workspace_id = s.workspace_id AND rgc.character_id = s.character_id) = 1
       AND fallback_g.id = (SELECT rgc.group_id FROM rp_group_characters rgc WHERE rgc.workspace_id = s.workspace_id AND rgc.character_id = s.character_id)
     LEFT JOIN partners p ON p.workspace_id = b.workspace_id AND p.id = b.partner_id
