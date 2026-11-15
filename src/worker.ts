@@ -1,3 +1,4 @@
+import { BUILD_REVISION } from './build-revision'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { resendMailSender, type MailSender } from './auth/magic-links'
@@ -43,7 +44,7 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   app.use('/api/*', async (c, next) => {
     c.header('Cache-Control', 'no-store')
     c.header('Referrer-Policy', 'no-referrer')
-    c.header('X-Build-Revision', 'stage-1')
+    c.header('X-Build-Revision', BUILD_REVISION)
     c.header('X-Frame-Options', 'DENY')
     c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tumblr.com; connect-src 'self' https://*.tumblr.com; frame-ancestors 'none'")
     const isMagicLinkConfirmation = c.req.method === 'POST' && c.req.path === '/api/auth/verify'
