@@ -20,15 +20,15 @@ export default function BranchRow({ branch, options, onChange }: { branch: Inbox
   useEffect(() => { void loadTags() }, [branch.starterId])
 
   async function setTurn(next: ReplyStatus) {
-    const previous = branch.status
-    if (next === previous || next === 'archived') return
+    if (next === branch.status || next === 'archived') return
     setError('')
     setStatusOverride(next)
     try {
       await api(`/branches/${branch.id}`, 'PATCH', { status: next })
       await onChange()
+      setStatusOverride(null) // server data is the source of truth again
     } catch (problem) {
-      setStatusOverride(previous)
+      setStatusOverride(null) // roll back to the confirmed status
       setError((problem as Error).message)
     }
   }
