@@ -88,6 +88,14 @@ it('forwards the before cursor to Tumblr', async () => {
     return notificationsResponse(blogOf(path), [{ type: 'ask', timestamp: 100, from_tumblelog_name: 'asker' }])
   })
   expect(seenBefore).toBe('123')
+  // The page sends back the ISO oldestTimestamp; it must reach Tumblr as unix seconds.
+  await fetchActivity('/api/tumblr-activity?before=' + encodeURIComponent(new Date(123_000).toISOString()), url => {
+    const path = String(url)
+    if (path.includes('/notifications')) seenBefore = new URL(path).searchParams.get('before')
+    if (path.includes('/posts?')) return new Response(JSON.stringify({ response: { posts: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    return notificationsResponse(blogOf(path), [])
+  })
+  expect(seenBefore).toBe('123')
   expect(calls).toEqual(expect.arrayContaining(['https://api.tumblr.com/v2/blog/a.tumblr.com/posts?limit=20&npf=true', 'https://api.tumblr.com/v2/blog/c.tumblr.com/posts?limit=20&npf=true']))
   expect(result.blogs).toHaveLength(2)
   expect(result.blogs.every(blog => blog.status === 'ok')).toBe(true)

@@ -18,7 +18,10 @@ export function tumblrActivityRoutes() {
     // ?blog= filters to one canonical blog; ?before=<unix seconds> pages to older items.
     const blogFilter = c.req.query('blog') || null
     const beforeParam = c.req.query('before')
-    const before = beforeParam === undefined ? null : Number(beforeParam)
+    // Accept unix seconds or the ISO oldestTimestamp the page sends back; Tumblr wants unix seconds.
+    const beforeMs = !beforeParam ? NaN : /^\d+$/.test(beforeParam) ? Number(beforeParam) * 1000 : Date.parse(beforeParam)
+    if (beforeParam && Number.isNaN(beforeMs)) return c.json({ error: 'before must be a unix timestamp or ISO date' }, 400)
+    const before = beforeParam ? Math.floor(beforeMs / 1000) : null
     // De-duplicate by canonical blog: a blog linked by two characters/connections must be fetched once.
     const rows = await scope.db.prepare(`
       SELECT cb.blog_identifier AS blogIdentifier,
