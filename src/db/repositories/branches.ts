@@ -40,6 +40,8 @@ export interface InboxQuery extends WorkspaceScope {
   oldestFirst?: boolean
 }
 
+export type RpUnsortedReason = 'none' | 'no_rps' | 'multiple_rps'
+
 export interface InboxBranch extends ReplyBranch {
   title: string
   description: string
@@ -47,6 +49,7 @@ export interface InboxBranch extends ReplyBranch {
   characterName: string
   groupId: string | null
   groupName: string | null
+  rpUnsortedReason: RpUnsortedReason
   iconObjectKey: string | null
   source: 'tumblr'
   rootPostId: string
@@ -135,7 +138,14 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
       b.last_activity_at AS lastActivityAt, b.last_refresh_at AS lastRefreshAt,
       b.refresh_error AS refreshError, b.status_manual_override_at AS statusManualOverrideAt,
       b.archived_at AS archivedAt, b.created_at AS createdAt, b.next_check_at AS nextCheckAt, s.title, s.description, s.character_id AS characterId,
-      c.name AS characterName, c.icon_object_key AS iconObjectKey, s.rp_group_id AS groupId, COALESCE(g.name, fallback_g.name) AS groupName,
+      c.name AS characterName, c.icon_object_key AS iconObjectKey, COALESCE(s.rp_group_id, fallback_g.id) AS groupId,
+      COALESCE(g.name, fallback_g.name) AS groupName,
+      CASE
+        WHEN s.rp_group_id IS NOT NULL THEN 'none'
+        WHEN (SELECT COUNT(*) FROM rp_group_characters rgc WHERE rgc.workspace_id = s.workspace_id AND rgc.character_id = s.character_id) = 1 THEN 'none'
+        WHEN (SELECT COUNT(*) FROM rp_group_characters rgc WHERE rgc.workspace_id = s.workspace_id AND rgc.character_id = s.character_id) > 1 THEN 'multiple_rps'
+        ELSE 'no_rps'
+      END AS rpUnsortedReason,
       s.source, s.root_post_id AS rootPostId, s.root_blog_id AS rootBlogId, p.display_label AS partnerLabel
     FROM reply_branches b
     JOIN starters s ON s.workspace_id = b.workspace_id AND s.id = b.starter_id

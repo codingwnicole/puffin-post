@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import { trackingFixture, starterInput } from './tracking-fixture'
 
 interface Starter { id: string; groupId: string | null; archived: number; archivedAt: string | null; premise: string; description: string; branch?: unknown }
-interface InboxBranch { starterId: string; groupName: string | null }
+interface InboxBranch { starterId: string; groupId: string | null; groupName: string | null; rpUnsortedReason: string }
 
 let fixture: Awaited<ReturnType<typeof trackingFixture>>
 beforeEach(async () => { fixture = await trackingFixture() }, 30_000)
@@ -57,31 +57,82 @@ describe('B16: Premise editing', () => {
 
 describe('B12: Unsorted group fallback', () => {
   it('should apply single RP group membership when starter has no explicit group', async () => {
-    // Create an RP group
     const groupCreated = await fixture.request('/api/rp-groups', 'POST', { name: 'Test Group' })
     expect(groupCreated.status).toBe(201)
     const group = await groupCreated.json() as { id: string; name: string }
-
-    // Add character to the group
     const membership = await fixture.request(`/api/rp-groups/${group.id}/characters`, 'POST', { characterId: 'character-a' })
     expect(membership.status).toBe(204)
-
-    // Create starter without explicit group
     const created = await fixture.request('/api/starters', 'POST', starterInput)
     const starter = await created.json() as Starter
     expect(starter.groupId).toBe(group.id)
-
-    // Create a branch so the starter appears in the inbox
     await fixture.request(`/api/starters/${starter.id}/branches`, 'POST', { partnerId: 'partner-a' })
-
-    // Force the unsorted case: clear explicit group so the inbox must fall back to the sole membership
     await fixture.env.DB.prepare('UPDATE starters SET rp_group_id=NULL WHERE id=?').bind(starter.id).run()
-
-    // Check inbox - group name must resolve via single-membership fallback
     const inbox = await fixture.request('/api/inbox')
     const inboxBody = await inbox.json() as { branches: InboxBranch[] }
     const branch = inboxBody.branches.find((b) => b.starterId === starter.id)
     expect(branch).toBeDefined()
+    expect(branch!.groupId).toBe(group.id)
     expect(branch!.groupName).toBe('Test Group')
+    expect(branch!.rpUnsortedReason).toBe('none')
+  })
+
+  it('should return groupId null and multiple_rps reason for two memberships', async () => {
+    const g1 = (await (await fixture.request('/api/rp-groups', 'POST', { name: 'Group One' })).json()) as { id: string }
+    const g2 = (await (await fixture.request('/api/rp-groups', 'POST', { name: 'Group Two' })).json()) as { id: string }
+    await fixture.request(`/api/rp-groups/${g1.id}/characters`, 'POST', { characterId: 'character-a' })
+    await fixture.request(`/api/rp-groups/${g2.id}/characters`, 'POST', { characterId: 'character-a' })
+    const created = await fixture.request('/api/starters', 'POST', starterInput)
+    const starter = await created.json() as Starter
+    expect(starter.groupId).toBeNull()
+    await fixture.request(`/api/starters/${starter.id}/branches`, 'POST', { partnerId: 'partner-a' })
+    const inbox = await fixture.request('/api/inbox')
+    const inboxBody = await inbox.json() as { branches: InboxBranch[] }
+    const branch = inboxBody.branches.find((b) => b.starterId === starter.id)
+    expect(branch).toBeDefined()
+    expect(branch!.groupId).toBeNull()
+    expect(branch!.groupName).toBeNull()
+    expect(branch!.rpUnsortedReason).toBe('multiple_rps')
+  })
+
+  it('should let an explicit group override the fallback', async () => {
+    const g1 = (await (await fixture.request('/api/rp-groups', 'POST', { name: 'Group One' })).json()) as { id: string }
+    const g2 = (await (await fixture.request('/api/rp-groups', 'POST', { name: 'Group Two' })).json()) as { id: string }
+    await fixture.request(`/api/rp-groups/${g1.id}/characters`, 'POST', { characterId: 'character-a' })
+    await fixture.request(`/api/rp-groups/${g2.id}/characters`, 'POST', { characterId: 'character-a' })
+    const created = await fixture.request('/api/starters', 'POST', { ...starterInput, groupId: g1.id })
+    const starter = await created.json() as Starter
+    expect(starter.groupId).toBe(g1.id)
+    await fixture.request(`/api/starters/${starter.id}/branches`, 'POST', { partnerId: 'partner-a' })
+    const inbox = await fixture.request('/api/inbox')
+    const inboxBody = await inbox.json() as { branches: InboxBranch[] }
+    const branch = inboxBody.branches.find((b) => b.starterId === starter.id)
+    expect(branch).toBeDefined()
+    expect(branch!.groupId).toBe(g1.id)
+    expect(branch!.groupName).toBe('Group One')
+    expect(branch!.rpUnsortedReason).toBe('none')
+  })
+
+  it('should persist group assignment via the thread endpoint', async () => {
+    const g1 = (await (await fixture.request('/api/rp-groups', 'POST', { name: 'Group One' })).json()) as { id: string }
+    const g2 = (await (await fixture.request('/api/rp-groups', 'POST', { name: 'Group Two' })).json()) as { id: string }
+    await fixture.request(`/api/rp-groups/${g1.id}/characters`, 'POST', { characterId: 'character-a' })
+    await fixture.request(`/api/rp-groups/${g2.id}/characters`, 'POST', { characterId: 'character-a' })
+    const created = await fixture.request('/api/starters', 'POST', starterInput)
+    const starter = await created.json() as Starter
+    expect(starter.groupId).toBeNull()
+    const assigned = await fixture.request(`/api/rp-groups/threads/${starter.id}`, 'POST', { groupId: g2.id })
+    expect(assigned.status).toBe(204)
+    // Verify the DB was updated
+    const dbRow = await fixture.env.DB.prepare('SELECT rp_group_id AS rpGroupId FROM starters WHERE id=?').bind(starter.id).first() as { rpGroupId: string | null }
+    expect(dbRow.rpGroupId).toBe(g2.id)
+    // Now create a branch so it appears in the inbox
+    await fixture.request(`/api/starters/${starter.id}/branches`, 'POST', { partnerId: 'partner-a' })
+    const inbox = await fixture.request('/api/inbox')
+    const inboxBody = await inbox.json() as { branches: InboxBranch[] }
+    const branch = inboxBody.branches.find((b) => b.starterId === starter.id)
+    expect(branch).toBeDefined()
+    expect(branch!.groupId).toBe(g2.id)
+    expect(branch!.groupName).toBe('Group Two')
+    expect(branch!.rpUnsortedReason).toBe('none')
   })
 })
