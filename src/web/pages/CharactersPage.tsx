@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
-import { api, staleGet } from '../lib/api'
+import { api, peekCache, staleGet } from '../lib/api'
 import { initialsFor } from '../components/InitialsAvatar'
 
 type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null }
@@ -96,12 +96,12 @@ function CharacterCard({ row, index, assignments, groups, stat, iconVersion, bus
 }
 
 export default function CharactersPage() {
-  const [rows, setRows] = useState<Character[]>([]), [assignments, setAssignments] = useState<Connection['assignments']>([]), [groups, setGroups] = useState<Group[]>([]), [branches, setBranches] = useState<InboxBranch[]>([])
+  const [rows, setRows] = useState<Character[]>(() => peekCache<Character[]>('/characters') ?? []), [assignments, setAssignments] = useState<Connection['assignments']>(() => (peekCache<Connection[]>('/connections') ?? []).flatMap(connection => connection.assignments)), [groups, setGroups] = useState<Group[]>(() => peekCache<Group[]>('/rp-groups') ?? []), [branches, setBranches] = useState<InboxBranch[]>(() => peekCache<{ branches: InboxBranch[] }>('/inbox')?.branches ?? [])
   const [error, setError] = useState(''), [adding, setAdding] = useState(false), [addingGroup, setAddingGroup] = useState(false), [busy, setBusy] = useState(false), [iconVersions, setIconVersions] = useState<Record<string, number>>({})
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; threads: number } | null>(null)
   const [deleteStep, setDeleteStep] = useState<'choose' | 'confirm'>('choose')
   const [deleteBusy, setDeleteBusy] = useState(false)
-  const [loaded, setLoaded] = useState(false)
+  const [loaded, setLoaded] = useState(() => ['/characters', '/connections', '/rp-groups', '/inbox'].every(path => peekCache(path) !== undefined))
   const load = () => Promise.all([staleGet<Character[]>('/characters'), staleGet<Connection[]>('/connections'), staleGet<Group[]>('/rp-groups'), staleGet<{ branches: InboxBranch[] }>('/inbox')]).then(([characters, connections, nextGroups, inbox]) => { setRows(characters); setAssignments(connections.flatMap(connection => connection.assignments)); setGroups(nextGroups); setBranches(inbox.branches); setLoaded(true) }).catch(problem => { setError(problem.message); setLoaded(true) })
   useEffect(() => { void load() }, [])
   const counts = useMemo(() => Object.fromEntries(rows.map(character => { const current = branches.filter(branch => branch.characterId === character.id); return [character.id, { total: current.length, mine: current.filter(branch => branch.status === 'your_turn').length, theirs: current.filter(branch => branch.status === 'their_turn').length }] })), [rows, branches]) as Record<string, Counts>

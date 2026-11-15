@@ -15,23 +15,16 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
   return response.json() as Promise<T>
 }
 
-// Stale-while-revalidate cache for page-load GETs only.
-// Returns the cached value immediately (or undefined on a cold start) and refreshes
-// in the background; on a refresh failure the old value stays and the error is
-// returned to the caller. Mutations and post-mutation reloads keep using api()
-// directly so they always hit the network for fresh data.
+// Stale-while-revalidate for page-load GETs: pages seed their first render from
+// peekCache(path) (instant, possibly stale), then staleGet(path) always hits the
+// network and records the fresh value. A failed refresh throws, so the page keeps
+// its current content and shows the error instead of blanking.
 const getCache = new Map<string, unknown>()
-export function staleGet<T>(path: string): Promise<T> {
-  const cached = getCache.get(path) as T | undefined
-  const refresh = api<T>(path)
-    .then(value => { getCache.set(path, value); return value })
-    .catch(error => {
-      if (cached === undefined) throw error // cold start: nothing to fall back to
-      return cached
-    })
-  if (cached === undefined) return refresh
-  void refresh
-  return Promise.resolve(cached)
+export function peekCache<T>(path: string): T | undefined { return getCache.get(path) as T | undefined }
+export async function staleGet<T>(path: string): Promise<T> {
+  const value = await api<T>(path)
+  getCache.set(path, value)
+  return value
 }
 // Sign-out and user switches must not leak one account's data into the next.
 export function clearApiCache() { getCache.clear() }
