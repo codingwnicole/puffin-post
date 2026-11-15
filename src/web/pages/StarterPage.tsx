@@ -7,16 +7,29 @@ import StarterBranches from '../components/StarterBranches'
 export default function StarterPage({ id }: { id:string }) {
   const [detail,setDetail] = useState<{ starter:Starter; branches:InboxBranch[] }>()
   const [options,setOptions] = useState<TrackingOptions>({ characters:[],partners:[] }), [error,setError] = useState('')
+  const [premise,setPremise] = useState(''), [premiseBusy,setPremiseBusy] = useState(false), [premiseSaved,setPremiseSaved] = useState(false)
   async function reload() { setDetail(await api(`/starters/${encodeURIComponent(id)}`)) }
   useEffect(() => {
-    setDetail(undefined); setError('')
+    setDetail(undefined); setError(''); setPremise(''); setPremiseSaved(false)
     Promise.all([api<{ starter:Starter; branches:InboxBranch[] }>(`/starters/${encodeURIComponent(id)}`),api<TrackingOptions>('/starters/options')])
-      .then(([detail,options]) => { setDetail(detail); setOptions(options) }).catch(e => setError(e.message))
+      .then(([detail,options]) => { setDetail(detail); setOptions(options); setPremise(detail.starter.premise ?? '') }).catch(e => setError(e.message))
   },[id])
+  async function savePremise() {
+    try { setPremiseBusy(true); setError(''); await api(`/starters/${id}/premise`, 'PATCH', { premise }); setDetail(current => current ? { ...current, starter:{ ...current.starter, premise } } : current); setPremiseSaved(true); window.setTimeout(() => setPremiseSaved(false), 2500) } catch (problem) { setError((problem as Error).message) } finally { setPremiseBusy(false) }
+  }
+  async function toggleArchive() {
+    try { setError(''); await api(`/starters/${id}/${detail!.starter.archived ? 'restore' : 'archive'}`, 'POST'); await reload() } catch (problem) { setError((problem as Error).message) }
+  }
+  const latestReply = detail?.branches.reduce<InboxBranch | undefined>((latest, branch) => (!latest || (branch.lastActivityAt ?? '').localeCompare(latest.lastActivityAt ?? '') > 0) ? branch : latest, undefined)
   return <section aria-labelledby="starter-title"><a href="#inbox">Back to Inbox</a>
     <h2 className="page-heading" id="starter-title">{detail?.starter.title ?? 'Starter'}</h2>
     {error && <p role="alert">{error}</p>}
-    {detail && <><div className="actions"><p>{options.characters.find(c => c.id === detail.starter.characterId)?.name}</p><button className="danger-button" onClick={async()=>{if(!window.confirm('Delete this whole thread and every reply branch permanently?'))return;try{await api(`/starters/${id}`,'DELETE');window.location.hash='inbox'}catch(problem){setError((problem as Error).message)}}}>Delete thread</button></div>
+    {detail && <><div className="actions"><p>{options.characters.find(c => c.id === detail.starter.characterId)?.name}</p>
+      <button onClick={toggleArchive} disabled={premiseBusy}>{detail.starter.archived ? 'Restore thread' : 'Archive thread'}</button>
+      <button className="danger-button" onClick={async()=>{if(!window.confirm('Permanently delete this whole thread and every reply branch? This cannot be undone. If you just want it out of your inbox, Archive thread instead.'))return;try{await api(`/starters/${id}`,'DELETE');window.location.hash='inbox'}catch(problem){setError((problem as Error).message)}}}>Delete thread</button></div>
+      {detail.starter.archived && <p className="field-help" role="status">This thread is archived. It is excluded from inbox counts and refreshes until you restore it.</p>}
+      <div className="tracking-card"><p className="eyebrow">Premise · your notes</p><textarea rows={5} value={premise} onChange={e=>setPremise(e.target.value)} placeholder="What is this scene about? Your own notes — sync never touches these."></textarea><div className="actions"><button onClick={savePremise} disabled={premiseBusy || premise === (detail.starter.premise ?? '')}>{premiseBusy ? 'Saving…' : 'Save premise'}</button>{premiseSaved && <span role="status">Premise saved</span>}</div></div>
+      <div className="tracking-card"><p className="eyebrow">Latest reply · from Tumblr</p>{latestReply?.lastActivityAt ? <p className="preserve-lines">Last activity {new Date(latestReply.lastActivityAt).toLocaleString()}{latestReply.lastPoster ? ` · by ${latestReply.lastPoster}` : ''}</p> : <p className="field-help">No Tumblr reply captured for this thread yet.</p>}</div>
       <p className="preserve-lines">{detail.starter.description}</p><p>Tumblr: {detail.starter.rootBlogId} · Post {detail.starter.rootPostId}</p>
       <StarterBranches starterId={id} branches={detail.branches} options={options} reload={reload} /></>}
   </section>

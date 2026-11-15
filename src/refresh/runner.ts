@@ -31,7 +31,7 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number): Promi
           if (saved.meta.changes) await sendWorkspacePush(env,target.workspaceId,{title:'Puffin Post',body:`${mention.actor === 'anonymous' ? 'Someone' : mention.actor.replace(/\.tumblr\.com$/i,'')} tagged one of your blogs.`,url:'/#activity'})
         }
       } catch { /* Activity notifications are optional; thread refresh must still succeed. */ }
-      const starters = await env.DB.prepare('SELECT id,root_post_id AS rootPostId,root_blog_id AS rootBlogId FROM starters WHERE workspace_id=? AND character_id=(SELECT character_id FROM character_blogs WHERE workspace_id=? AND id=?)')
+      const starters = await env.DB.prepare('SELECT id,root_post_id AS rootPostId,root_blog_id AS rootBlogId FROM starters WHERE workspace_id=? AND archived=0 AND character_id=(SELECT character_id FROM character_blogs WHERE workspace_id=? AND id=?)')
         .bind(target.workspaceId,target.workspaceId,target.id).all<{id:string;rootPostId:string;rootBlogId:string}>()
       for (const starter of starters.results) {
         const rows = await env.DB.prepare(`SELECT b.id,b.latest_post_id AS latestPostId,b.status,b.status_manual_override_at AS statusManualOverrideAt,p.blog_identifier AS partnerBlogIdentifier
@@ -58,7 +58,7 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number): Promi
       await env.DB.batch([
         env.DB.prepare(`INSERT INTO refresh_cursors (workspace_id,character_blog_id,last_attempt_at,last_error,failure_count) VALUES (?,?,?,?,1)
           ON CONFLICT(workspace_id,character_blog_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,last_error=excluded.last_error,failure_count=refresh_cursors.failure_count+1`).bind(target.workspaceId,target.id,now.toISOString(),message),
-        env.DB.prepare(`UPDATE reply_branches SET refresh_error=?,last_refresh_at=? WHERE workspace_id=? AND starter_id IN (SELECT id FROM starters WHERE workspace_id=? AND character_id=(SELECT character_id FROM character_blogs WHERE workspace_id=? AND id=?))`)
+        env.DB.prepare(`UPDATE reply_branches SET refresh_error=?,last_refresh_at=? WHERE workspace_id=? AND starter_id IN (SELECT id FROM starters WHERE workspace_id=? AND archived=0 AND character_id=(SELECT character_id FROM character_blogs WHERE workspace_id=? AND id=?))`)
           .bind(message,now.toISOString(),target.workspaceId,target.workspaceId,target.workspaceId,target.id),
       ])
       failed++

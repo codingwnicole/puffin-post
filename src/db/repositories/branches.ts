@@ -54,6 +54,7 @@ export interface InboxBranch extends ReplyBranch {
   source: 'tumblr'
   rootPostId: string
   rootBlogId: string
+  starterArchived: number
   partnerLabel: string | null
 }
 
@@ -146,7 +147,7 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
         WHEN (SELECT COUNT(*) FROM rp_group_characters rgc WHERE rgc.workspace_id = s.workspace_id AND rgc.character_id = s.character_id) > 1 THEN 'multiple_rps'
         ELSE 'no_rps'
       END AS rpUnsortedReason,
-      s.source, s.root_post_id AS rootPostId, s.root_blog_id AS rootBlogId, p.display_label AS partnerLabel
+      s.source, s.root_post_id AS rootPostId, s.root_blog_id AS rootBlogId, s.archived AS starterArchived, p.display_label AS partnerLabel
     FROM reply_branches b
     JOIN starters s ON s.workspace_id = b.workspace_id AND s.id = b.starter_id
     JOIN characters c ON c.workspace_id = s.workspace_id AND c.id = s.character_id

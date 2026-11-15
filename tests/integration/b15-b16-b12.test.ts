@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest'
+import { describe, it, expect, beforeEach, afterAll, vi } from 'vitest'
 import { trackingFixture, starterInput } from './tracking-fixture'
+import { runRefreshBatch } from '../../src/refresh/runner'
 
 interface Starter { id: string; groupId: string | null; archived: number; archivedAt: string | null; premise: string; description: string; branch?: unknown }
 interface InboxBranch { starterId: string; groupId: string | null; groupName: string | null; rpUnsortedReason: string }
@@ -145,5 +146,59 @@ describe('B12: Unsorted group fallback', () => {
     expect(branch!.groupId).toBe(g2.id)
     expect(branch!.groupName).toBe('Group Two')
     expect(branch!.rpUnsortedReason).toBe('none')
+  })
+})
+
+describe('B15 sync safety', () => {
+  it('refreshing an archived starter leaves it untouched', async () => {
+    const created = await fixture.request('/api/starters', 'POST', starterInput)
+    const starter = await created.json() as Starter
+    await fixture.request(`/api/starters/${starter.id}/branches`, 'POST', { partnerId: 'partner-a' })
+    await fixture.request(`/api/starters/${starter.id}/archive`, 'POST')
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockRejectedValue(new Error('Tumblr fetch must not run for archived threads'))
+    try {
+      await runRefreshBatch(fixture.env, new Date('2026-01-01T00:00:00Z'), 10)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+    const inbox = (await (await fixture.request('/api/inbox?includeArchived=true')).json()) as { branches: { starterId: string; lastRefreshAt: string | null; refreshError: string | null }[] }
+    const branch = inbox.branches.find(b => b.starterId === starter.id)!
+    expect(branch.lastRefreshAt).toBeNull()
+    expect(branch.refreshError).toBeNull()
+  })
+
+  it('a refresh that updates the preview leaves the premise unchanged', async () => {
+    const created = await fixture.request('/api/starters', 'POST', starterInput)
+    const starter = await created.json() as Starter
+    await fixture.request(`/api/starters/${starter.id}/branches`, 'POST', { partnerId: 'partner-a' })
+    await fixture.request(`/api/starters/${starter.id}/premise`, 'PATCH', { premise: 'My scene notes.' })
+
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      id: 'updated-1', blog_name: 'partner-a.tumblr.com', reblogged_from: null, state: 'published', type: 'text',
+      date: '2026-01-02T00:00:00.000Z', timestamp: 1767312000, is_substate: false, reblog_key: 'b',
+      reblogged_root_id: 10, reblogged_root_url: 'https://a.tumblr.com/post/10',
+      caption: [{ type: 'paragraph', label: '', href: null, text: 'New reply from Tumblr.' }],
+    }), { status: 200, headers: { 'content-type': 'application/json' } }))
+    try {
+      await runRefreshBatch(fixture.env, new Date('2026-01-02T00:00:00Z'), 10)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+    const fetched = await fixture.request(`/api/starters/${starter.id}`)
+    const starterBody = (await fetched.json()) as { starter: { premise: string } }
+    expect(starterBody.starter.premise).toBe('My scene notes.')
+  })
+
+  it('archived threads are excluded from owed and due-soon counts', async () => {
+    const created = await fixture.request('/api/starters', 'POST', starterInput)
+    const starter = await created.json() as Starter
+    await fixture.request(`/api/starters/${starter.id}/branches`, 'POST', { partnerId: 'partner-a' })
+    await fixture.request(`/api/starters/${starter.id}/archive`, 'POST')
+    const inbox = (await (await fixture.request('/api/inbox')).json()) as { yourTurnCount: number; dueSoonCount: number }
+    expect(inbox.yourTurnCount).toBe(0)
+    expect(inbox.dueSoonCount).toBe(0)
   })
 })

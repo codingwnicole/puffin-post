@@ -31,7 +31,7 @@ function GuestSignIn({busy,setBusy,error,setError,sentLink,setSentLink}:{busy:bo
 
 export default function InboxPage() {
   const [inbox,setInbox]=useState<{branches:InboxBranch[];yourTurnCount:number;overdueDraftCount:number;dueSoonCount:number}>({branches:[],yourTurnCount:0,overdueDraftCount:0,dueSoonCount:0})
-  const [filters,setFilters]=useState<InboxFilters>(()=>{const params=new URLSearchParams(window.location.hash.split('?')[1]??'');return{status:'',characterId:params.get('characterId')??'',tagId:'',q:'',oldestFirst:false}}),[focusMode,setFocusMode]=useState(false),[error,setError]=useState(''),[loaded,setLoaded]=useState(false),[busy,setBusy]=useState(false),[sentLink,setSentLink]=useState(false)
+  const [filters,setFilters]=useState<InboxFilters>(()=>{const params=new URLSearchParams(window.location.hash.split('?')[1]??'');return{status:'',characterId:params.get('characterId')??'',tagId:'',q:'',oldestFirst:false,includeArchived:false}}),[focusMode,setFocusMode]=useState(false),[error,setError]=useState(''),[loaded,setLoaded]=useState(false),[busy,setBusy]=useState(false),[sentLink,setSentLink]=useState(false)
   const [tags,setTags]=useState<{id:string;displayLabel:string}[]>([]),[options,setOptions]=useState<TrackingOptions>({characters:[],partners:[]})
   const query=new URLSearchParams([...Object.entries(filters).filter(([,value])=>value && value!==false).map(([key,value])=>[key,value===true?'true':String(value)]),...(focusMode?[['doNext','true']]:[])])
   async function reload(){setInbox(await api(`/inbox${query.size?`?${query}`:''}`))}
