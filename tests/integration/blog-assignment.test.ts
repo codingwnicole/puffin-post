@@ -1,9 +1,9 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { trackingFixture } from './tracking-fixture'
 
 let fixture: Awaited<ReturnType<typeof trackingFixture>>
 beforeEach(async () => { fixture = await trackingFixture() }, 30_000)
-afterAll(async () => { await fixture.dispose() })
+afterEach(async () => { await fixture.dispose() })
 
 describe('B04: idempotent blog assignment', () => {
   it('assigns the same character to the same blog twice: 200 then 200, exactly one row', async () => {
@@ -48,5 +48,13 @@ describe('B04: idempotent blog assignment', () => {
     expect(row?.character_tag).toBe('renamed')
     const count = await fixture.env.DB.prepare('SELECT COUNT(*) AS n FROM character_blogs WHERE workspace_id=? AND character_id=? AND blog_identifier=?').bind('a', 'character-a', 'a.tumblr.com').first<{ n: number }>()
     expect(count?.n).toBe(1)
+  })
+
+  it('409s a re-save that would give a character the same tag as another character on the shared blog', async () => {
+    await fixture.request('/api/connections/connection-a/blogs', 'POST', { characterId: 'character-a', blogIdentifier: 'a.tumblr.com', characterTag: 'aaa' })
+    const other = (await (await fixture.request('/api/characters', 'POST', { name: 'Character e' })).json()) as { id: string }
+    expect((await fixture.request('/api/connections/connection-a/blogs', 'POST', { characterId: other.id, blogIdentifier: 'a.tumblr.com', characterTag: 'bbb' })).status).toBe(201)
+    const clash = await fixture.request('/api/connections/connection-a/blogs', 'POST', { characterId: other.id, blogIdentifier: 'a.tumblr.com', characterTag: 'aaa' })
+    expect(clash.status).toBe(409)
   })
 })

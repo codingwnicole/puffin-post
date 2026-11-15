@@ -30,14 +30,15 @@ export function connectionRoutes() {
     const characterTag = input.characterTag?.trim() ? normalizeTumblrTag(input.characterTag) : null
     if (!blogs.map(canonicalBlogIdentifier).includes(blogIdentifier)) return c.json({ error:'Blog is not available for this Tumblr connection' },400)
     const existing = await scope.db.prepare('SELECT id FROM character_blogs WHERE workspace_id=? AND character_id=? AND blog_identifier=?').bind(scope.workspaceId,input.characterId,blogIdentifier).first()
-    if (existing) {
-      const displayLabel = input.displayLabel?.trim() || blogIdentifier
-      await scope.db.prepare('UPDATE character_blogs SET display_label=?,character_tag=? WHERE id=?').bind(displayLabel,characterTag,existing.id).run()
-      return c.json({ id: existing.id, characterId: input.characterId, connectionId:c.req.param('connectionId'), blogIdentifier, displayLabel, characterTag },200)
-    }
     const overlapping = await scope.db.prepare('SELECT id,character_tag AS characterTag FROM character_blogs WHERE workspace_id=? AND tumblr_connection_id=? AND blog_identifier=? AND character_id != ?').bind(scope.workspaceId,c.req.param('connectionId'),blogIdentifier,input.characterId).all<{id:string;characterTag:string|null}>()
     if ((!characterTag && overlapping.results.length) || (characterTag && overlapping.results.some(rule => !rule.characterTag || rule.characterTag === characterTag))) {
       return c.json({ error:'A shared blog needs a different character tag for each character.' },409)
+    }
+    // Re-save of this character's own assignment: update in place (after the shared-tag check, so a tag change can't collide).
+    if (existing) {
+      const displayLabel = input.displayLabel?.trim() || blogIdentifier
+      await scope.db.prepare('UPDATE character_blogs SET display_label=?,character_tag=? WHERE workspace_id=? AND id=?').bind(displayLabel,characterTag,scope.workspaceId,existing.id).run()
+      return c.json({ id: existing.id, characterId: input.characterId, connectionId:c.req.param('connectionId'), blogIdentifier, displayLabel, characterTag },200)
     }
     const id = crypto.randomUUID()
     const displayLabel = input.displayLabel?.trim() || blogIdentifier
