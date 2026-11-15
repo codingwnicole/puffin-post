@@ -126,7 +126,7 @@ it('a dismissed tagged post stays hidden on the next load (B09)', async () => {
     : notificationsResponse('a.tumblr.com', [{ type: 'mention', timestamp: 100, post_id: 77, from_tumblelog_name: 'tagger' }])
   const before = await fetchActivity('/api/tumblr-activity', stub)
   expect(before.mentions).toHaveLength(1)
-  const mention = before.mentions[0] as { blogIdentifier: string; postId: string }
+  const mention = before.mentions[0] as unknown as { blogIdentifier: string; postId: string }
   expect((await fixture.request('/api/tumblr-activity/dismissals', 'POST', { blogIdentifier: mention.blogIdentifier, postId: mention.postId })).status).toBeLessThan(300)
   const after = await fetchActivity('/api/tumblr-activity', stub)
   expect(after.mentions).toHaveLength(0)
