@@ -3,6 +3,7 @@ import { api } from '../lib/api'
 
 type Resource = { id: string; label: string; url: string }
 type Plan = { id: string; name: string; faceclaim: string | null; notes: string; state: 'idea' | 'developing' | 'ready'; iconObjectKey: string | null; createdAt: string; updatedAt: string; resources: Resource[] }
+type ArchivedCharacter = { id: string; name: string; color: string | null; notes: string | null; iconObjectKey: string | null; createdAt: string; rpGroupNames: string[]; threadCount: number }
 
 function stageLabel(stage: Plan['state']) { return stage === 'idea' ? 'Spark' : stage === 'developing' ? 'In progress' : 'Ready to place' }
 async function squarePlannerImage(file: File) {
@@ -38,12 +39,36 @@ function PlanCard({ plan, reload, reportError }: { plan: Plan; reload: () => Pro
 
 export default function CharacterPlannerPage() {
   const [plans, setPlans] = useState<Plan[]>([]), [adding, setAdding] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('')
-  const reload = async () => { try { setPlans(await api<Plan[]>('/character-planner')); setError('') } catch (problem) { setError((problem as Error).message) } }
+  const [archived, setArchived] = useState<ArchivedCharacter[]>([]), [restoring, setRestoring] = useState<string | null>(null)
+  const reload = async () => { try { const [p, a] = await Promise.all([api<Plan[]>('/character-planner'), api<ArchivedCharacter[]>('/characters/archived')]); setPlans(p); setArchived(a); setError('') } catch (problem) { setError((problem as Error).message) } }
   useEffect(() => { void reload() }, [])
+  async function restore(id: string) { setRestoring(id); try { setError(''); await api('/characters/' + id + '/restore', 'POST'); await reload() } catch (problem) { setError((problem as Error).message) } finally { setRestoring(null) } }
   return <section aria-labelledby="planner-title"><div className="planner-heading"><div><h2 className="page-heading" id="planner-title">Character planner</h2><p className="page-description">Future characters and their resources, before they have an RP home.</p></div><button onClick={() => setAdding(!adding)}>{adding ? 'Close' : 'New character idea'}</button></div>
     {error && <p role="alert">{error}</p>}
     {adding && <form className="tracking-card tracking-form planner-create" onSubmit={async event => { event.preventDefault(); const form = event.currentTarget, data = new FormData(form); setBusy(true); try { await api('/character-planner', 'POST', { name: data.get('name'), faceclaim: data.get('faceclaim'), notes: data.get('notes'), state: data.get('state') }); form.reset(); setAdding(false); await reload() } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) } }}><h3>Save a character idea</h3><label>Working name<input name="name" required maxLength={200} autoFocus placeholder="Name, role, or a temporary title" /></label><label>Faceclaim<input name="faceclaim" maxLength={200} placeholder="e.g. Nana, Inde Navarrette, Sepideh Moafi" /></label><label>Stage<select name="state" defaultValue="idea"><option value="idea">Spark</option><option value="developing">In progress</option><option value="ready">Ready to place</option></select></label><label>Notes<textarea name="notes" maxLength={20000} placeholder="What you know so far..." /></label><button disabled={busy}>Save to planner</button></form>}
     <div className="planner-grid">{plans.map(plan => <PlanCard key={plan.id} plan={plan} reload={reload} reportError={setError} />)}</div>
     {!plans.length && !adding && <section className="tracking-card planner-empty"><h3>No future characters parked yet.</h3><p>Start with a faceclaim, a job, a moodboard link—whatever comes first.</p></section>}
+    {archived.length > 0 && (
+      <section className="planner-archived" aria-labelledby="archived-heading">
+        <h3 id="archived-heading">Archived</h3>
+        <p className="page-description">Characters you've set aside. All threads, quicklinks, and RP memberships are preserved.</p>
+        <div className="archived-list">
+          {archived.map(ch => (
+            <article key={ch.id} className="archived-entry tracking-card">
+              <img className="archived-avatar" alt="" hidden={!ch.iconObjectKey} src={ch.iconObjectKey ? '/api/characters/' + ch.id + '/icon?v=' + ch.iconObjectKey : undefined} />
+              <div className="archived-info">
+                <h4>{ch.name}</h4>
+                {ch.rpGroupNames.length > 0 && <p className="archived-rp-labels">{ch.rpGroupNames.join(' · ')}</p>}
+                <p className="archived-meta">{ch.threadCount} thread{ch.threadCount === 1 ? '' : 's'} preserved</p>
+              </div>
+              <div className="archived-actions">
+                <a href={'#character-shortcut/' + ch.id} className="secondary-button">View</a>
+                <button type="button" className="secondary-button" disabled={restoring === ch.id} onClick={() => void restore(ch.id)}>{restoring === ch.id ? 'Restoring…' : 'Restore'}</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    )}
   </section>
 }

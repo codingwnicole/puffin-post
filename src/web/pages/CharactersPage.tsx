@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import { api } from '../lib/api'
 
-type Character = { id: string; name: string; state: string; iconObjectKey: string | null }
+type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null }
+type ArchivedCharacter = { id: string; name: string; color: string | null; notes: string | null; iconObjectKey: string | null; createdAt: string; rpGroupNames: string[]; threadCount: number }
 type Connection = { assignments: { characterId: string; blogIdentifier: string; characterTag: string | null }[] }
 type Group = { id: string; name: string; characterIds: string[] }
 type InboxBranch = { characterId: string; status: string }
@@ -96,6 +97,9 @@ function CharacterCard({ row, index, assignments, groups, stat, iconVersion, bus
 export default function CharactersPage() {
   const [rows, setRows] = useState<Character[]>([]), [assignments, setAssignments] = useState<Connection['assignments']>([]), [groups, setGroups] = useState<Group[]>([]), [branches, setBranches] = useState<InboxBranch[]>([])
   const [error, setError] = useState(''), [adding, setAdding] = useState(false), [addingGroup, setAddingGroup] = useState(false), [busy, setBusy] = useState(false), [iconVersions, setIconVersions] = useState<Record<string, number>>({})
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; threads: number } | null>(null)
+  const [deleteStep, setDeleteStep] = useState<'choose' | 'confirm'>('choose')
+  const [deleteBusy, setDeleteBusy] = useState(false)
   const load = () => Promise.all([api<Character[]>('/characters'), api<Connection[]>('/connections'), api<Group[]>('/rp-groups'), api<{ branches: InboxBranch[] }>('/inbox')]).then(([characters, connections, nextGroups, inbox]) => { setRows(characters); setAssignments(connections.flatMap(connection => connection.assignments)); setGroups(nextGroups); setBranches(inbox.branches) }).catch(problem => setError(problem.message))
   useEffect(() => { void load() }, [])
   const counts = useMemo(() => Object.fromEntries(rows.map(character => { const current = branches.filter(branch => branch.characterId === character.id); return [character.id, { total: current.length, mine: current.filter(branch => branch.status === 'your_turn').length, theirs: current.filter(branch => branch.status === 'their_turn').length }] })), [rows, branches]) as Record<string, Counts>
@@ -103,7 +107,9 @@ export default function CharactersPage() {
   const unassignedCharacters = useMemo(() => rows.filter(row => !groups.some(group => group.characterIds.includes(row.id))), [groups, rows])
   async function upload(id: string, file: File) { try { setError(''); const form = new FormData(); form.set('icon', await squareIcon(file)); const response = await fetch('/api/characters/' + id + '/icon', { method: 'POST', body: form }); if (!response.ok) { const problem = await response.json().catch(() => null) as { error?: string } | null; throw new Error(problem?.error ?? 'Icon upload failed') } setIconVersions(current => ({ ...current, [id]: Date.now() })); await load() } catch (problem) { setError((problem as Error).message) } }
   async function addToGroup(groupId: string, characterId: string) { try { setBusy(true); setError(''); await api('/rp-groups/' + groupId + '/characters', 'POST', { characterId }); await load() } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) } }
-  async function remove(id: string) { try { setError(''); await api('/characters/' + id, 'DELETE'); await load() } catch (problem) { setError((problem as Error).message) } }
+  async function remove(id: string) { const row = rows.find(r => r.id === id); if (!row) return; setDeleteTarget({ id, name: row.name, threads: counts[id]?.total ?? 0 }); setDeleteStep('choose') }
+  async function archiveCharacter(id: string) { try { setError(''); setDeleteBusy(true); await api('/characters/' + id + '/archive', 'POST'); setDeleteTarget(null); setDeleteStep('choose'); await load() } catch (problem) { setError((problem as Error).message) } finally { setDeleteBusy(false) } }
+  async function confirmDelete() { if (!deleteTarget) return; try { setError(''); setDeleteBusy(true); await api('/characters/' + deleteTarget.id, 'DELETE'); setDeleteTarget(null); setDeleteStep('choose'); await load() } catch (problem) { setError((problem as Error).message) } finally { setDeleteBusy(false) } }
   async function returnToPlanner(id:string){try{setBusy(true);setError('');await api('/characters/'+id+'/return-to-planner','POST');await load();window.location.hash='planner'}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
   const card = (row: Character, index?: number) => <CharacterCard key={row.id} index={index} row={row} assignments={assignments} groups={groups} stat={counts[row.id] ?? { total: 0, mine: 0, theirs: 0 }} iconVersion={iconVersions[row.id]} busy={busy} addToGroup={addToGroup} upload={upload} remove={remove} returnToPlanner={returnToPlanner} showCreateGroup={() => setAddingGroup(true)} reportError={setError} />
   return <section aria-labelledby="page-title"><div className="character-page-heading"><div><h2 id="page-title" className="page-heading">Characters</h2><p className="page-description">Build your cast, connect their Tumblr, and place them in the RP spaces where they write.</p></div><div className="actions"><button onClick={() => setAddingGroup(!addingGroup)}>{addingGroup ? 'Close' : 'Add an RP'}</button><button onClick={() => setAdding(!adding)}>{adding ? 'Close' : 'Add character'}</button></div></div>
@@ -113,5 +119,33 @@ export default function CharactersPage() {
     {groupedCharacters.map(({ group, characters }) => <section className="character-rp-section" key={group.id} aria-labelledby={'rp-' + group.id}><div className="character-rp-heading"><div><p className="eyebrow">RP section</p><h3 id={'rp-' + group.id}>{group.name}</h3></div><div className="character-rp-actions"><span>{characters.length} {characters.length === 1 ? 'character' : 'characters'}</span>{characters.length > 1 && <button type="button" className="secondary-button" onClick={() => void exportRpStats(group, characters, counts).catch(problem => setError(problem.message))}>Export RP stats</button>}</div></div><ScrollableRow>{characters.map((row, index) => card(row, index))}</ScrollableRow></section>)}
     {unassignedCharacters.length > 0 && <section className="character-rp-section character-unsorted"><div className="character-rp-heading"><div><p className="eyebrow">Needs sorting</p><h3>Unassigned characters</h3></div><span>{unassignedCharacters.length} {unassignedCharacters.length === 1 ? 'character' : 'characters'}</span></div><ScrollableRow>{unassignedCharacters.map((row, index) => card(row, index))}</ScrollableRow></section>}
     {!rows.length && <p>No characters yet. Add your first one above.</p>}
+    {deleteTarget && (
+      <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
+        <div className="modal-card">
+          {deleteStep === 'choose' ? (
+            <>
+              <h3 id="delete-dialog-title">What would you like to do with {deleteTarget.name}?</h3>
+              <p className="page-description">Archiving keeps all threads, quicklinks, and RP memberships. Deleting removes everything permanently.</p>
+              <div className="modal-actions">
+                <button className="secondary-button" disabled={deleteBusy} onClick={() => void archiveCharacter(deleteTarget.id)}>{deleteBusy ? 'Working…' : 'Archive'}</button>
+                <button className="danger-button" disabled={deleteBusy} onClick={() => setDeleteStep('confirm')}>Delete</button>
+                <button className="text-button" onClick={() => { setDeleteTarget(null); setDeleteStep('choose') }}>Cancel</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3 id="delete-dialog-title">Permanently delete {deleteTarget.name}?</h3>
+              <p className="page-description">This cannot be undone. {deleteTarget.threads} thread{deleteTarget.threads === 1 ? '' : 's'} will be removed along with all quicklinks, RP memberships, and blog links.</p>
+              <p className="page-description">If you might want this character back later, archiving is safer.</p>
+              <div className="modal-actions">
+                <button className="secondary-button" disabled={deleteBusy} onClick={() => void archiveCharacter(deleteTarget.id)}>{deleteBusy ? 'Working…' : 'Archive instead'}</button>
+                <button className="danger-button" disabled={deleteBusy} onClick={() => void confirmDelete()}>{deleteBusy ? 'Deleting…' : 'Delete permanently'}</button>
+                <button className="text-button" disabled={deleteBusy} onClick={() => { setDeleteTarget(null); setDeleteStep('choose') }}>Cancel</button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    )}
   </section>
 }
