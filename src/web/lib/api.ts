@@ -4,9 +4,11 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
   if (!response.ok) {
     if (response.status === 401) throw new Error('Sign in to see your writing space.')
     const text = await response.text()
-    let error: { error?: string } | null = null
-    try { error = JSON.parse(text) as { error?: string } } catch { /* Some platform errors are plain text. */ }
-    throw new Error(error?.error ?? (text.trim() || `Request failed (${response.status})`))
+    let error: { error?: string; code?: string } | null = null
+    try { error = JSON.parse(text) as { error?: string; code?: string } } catch { /* Some platform errors are plain text. */ }
+    const thrown = new Error(error?.error ?? (text.trim() || `Request failed (${response.status})`))
+    if (error?.code) (thrown as Error & { code?: string }).code = error.code
+    throw thrown
   }
   // DELETE endpoints return 204; decoding an empty body made success look like failure.
   if (response.status === 204) return undefined as T

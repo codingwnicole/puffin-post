@@ -154,7 +154,7 @@ export function starterRoutes() {
     // link-less (manual) scene never touches Tumblr, so it is allowed through.
     if (input.postUrl) {
       const hasBlog = await scope.db.prepare('SELECT 1 FROM character_blogs WHERE workspace_id=? AND character_id=?').bind(scope.workspaceId,input.characterId).first()
-      if (!hasBlog) throw new HTTPException(400, { message:input.characterId ? 'Assign a Tumblr blog to this character before tracking a thread' : 'Connect a Tumblr account before tracking posts' })
+      if (!hasBlog) return c.json({ error: input.characterId ? 'Assign a Tumblr blog to this character before tracking a thread' : 'Connect a Tumblr account before tracking posts', code: 'character_needs_blog' }, 409)
     }
     const found = input.postUrl ? await findPost(scope, c.env, input.postUrl, input.characterId) : null
     if (!found && !input.title?.trim()) throw new HTTPException(400, { message:'Give this manual thread a scene label' })

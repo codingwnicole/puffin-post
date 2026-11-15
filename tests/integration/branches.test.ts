@@ -51,7 +51,7 @@ it('verifies the selected connection before starter creation but allows a manual
   expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(201)
   await fixture.env.DB.prepare("DELETE FROM character_blogs WHERE id='blog-a'").run()
   // A post link still requires the character's Tumblr blog for verification…
-  expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(400)
+  expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(409)
   // …but a link-less manual scene (Discord, etc.) tracks without any Tumblr access.
   const manual = await fixture.request('/api/starters','POST',{ characterId:'character-a', title:'Discord scene' })
   expect(manual.status).toBe(201)
