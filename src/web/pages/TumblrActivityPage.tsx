@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, staleGet } from '../lib/api'
+import { toast } from '../lib/toast'
 
 type Activity = { id: string; blogIdentifier: string; actor: string; timestamp: string; postId: string | null; preview: string | null; sourceUrl: string | null; threadKey?: string | null }
 type Character = { id: string; name: string }
@@ -107,14 +108,20 @@ export default function TumblrActivityPage() {
 
   async function dismissCandidate(item: Activity) {
     if (!item.postId) return
-    setBusy(item.id); setError(''); setMessage('')
+    setError(''); setMessage(''); setBusy(item.id)
+    // Optimistic: remove the row now, confirm with the server, roll back on failure.
+    const wasInCandidates = threadCandidates.some(candidate => candidate.id === item.id)
+    const wasInMentions = mentions.some(mention => mention.id === item.id)
+    setThreadCandidates(current => current.filter(candidate => candidate.id !== item.id))
+    setMentions(current => current.filter(mention => mention.id !== item.id))
     try {
       await api('/tumblr-activity/dismissals', 'POST', { blogIdentifier: item.blogIdentifier, postId: item.postId })
-      // Remove only the dismissed candidate; no full reload.
-      setThreadCandidates(current => current.filter(candidate => candidate.id !== item.id))
-      setMentions(current => current.filter(mention => mention.id !== item.id))
-      setMessage('Post dismissed from this review list.')
-    } catch (problem) { setError((problem as Error).message) } finally { setBusy('') }
+      toast(`Dismissed “${blogLabel(item.blogIdentifier)}”.`, () => api('/tumblr-activity/dismissals', 'DELETE', { blogIdentifier: item.blogIdentifier, postId: item.postId }))
+    } catch (problem) {
+      if (wasInCandidates) setThreadCandidates(current => [...current, item])
+      if (wasInMentions) setMentions(current => [...current, item])
+      setError((problem as Error).message)
+    } finally { setBusy('') }
   }
 
   const failedBlogs = blogs.filter(blog => blog.status === 'error')

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { Starter } from '../../db/repositories/starters'
 import type { InboxBranch } from '../../db/repositories/branches'
 import { api, type TrackingOptions } from '../lib/api'
+import { toast, undoStarterArchive } from '../lib/toast'
 import StarterBranches from '../components/StarterBranches'
 
 export default function StarterPage({ id }: { id:string }) {
@@ -18,7 +19,13 @@ export default function StarterPage({ id }: { id:string }) {
     try { setPremiseBusy(true); setError(''); await api(`/starters/${id}/premise`, 'PATCH', { premise }); setDetail(current => current ? { ...current, starter:{ ...current.starter, premise } } : current); setPremiseSaved(true); window.setTimeout(() => setPremiseSaved(false), 2500) } catch (problem) { setError((problem as Error).message) } finally { setPremiseBusy(false) }
   }
   async function toggleArchive() {
-    try { setError(''); await api(`/starters/${id}/${detail!.starter.archived ? 'restore' : 'archive'}`, 'POST'); await reload() } catch (problem) { setError((problem as Error).message) }
+    try {
+      setError('')
+      const starter = detail!.starter
+      if (starter.archived) { await api(`/starters/${id}/restore`, 'POST'); await reload(); return }
+      await api(`/starters/${id}/archive`, 'POST'); await reload()
+      toast(`Archived “${starter.title}”.`, undoStarterArchive(id))
+    } catch (problem) { setError((problem as Error).message) }
   }
   const latestReply = detail?.branches.reduce<InboxBranch | undefined>((latest, branch) => (!latest || (branch.lastActivityAt ?? '').localeCompare(latest.lastActivityAt ?? '') > 0) ? branch : latest, undefined)
   return <section aria-labelledby="starter-title"><a href="#inbox">Back to Inbox</a>

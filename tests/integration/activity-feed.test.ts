@@ -131,3 +131,17 @@ it('a dismissed tagged post stays hidden on the next load (B09)', async () => {
   const after = await fetchActivity('/api/tumblr-activity', stub)
   expect(after.mentions).toHaveLength(0)
 })
+
+it('deleting a dismissal un-hides the post and is workspace-scoped (B25)', async () => {
+  const stub = (url: RequestInfo | URL) => String(url).includes('/posts?')
+    ? new Response(JSON.stringify({ response: { posts: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    : notificationsResponse('a.tumblr.com', [{ type: 'mention', timestamp: 100, post_id: 77, from_tumblelog_name: 'tagger' }])
+  const body = { blogIdentifier: 'a.tumblr.com', postId: '77' }
+  expect((await fixture.request('/api/tumblr-activity/dismissals', 'POST', body)).status).toBeLessThan(300)
+  // A second workspace deleting the same coordinates must NOT touch workspace a's row.
+  expect((await fixture.request('/api/tumblr-activity/dismissals', 'DELETE', body, 'b')).status).toBe(204)
+  expect((await fetchActivity('/api/tumblr-activity', stub)).mentions).toHaveLength(0)
+  // Workspace a deletes its own row: the post reappears on the next GET.
+  expect((await fixture.request('/api/tumblr-activity/dismissals', 'DELETE', body)).status).toBe(204)
+  expect((await fetchActivity('/api/tumblr-activity', stub)).mentions).toHaveLength(1)
+})

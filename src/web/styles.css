@@ -182,3 +182,24 @@ img.avatar-fallback::after{content:attr(data-initials);font-weight:600;font-size
 .modal-overlay { position:fixed; inset:0; z-index:50; display:grid; place-items:center; padding:16px; background:rgb(0 0 0 / .45); }
 .modal-card { width:min(440px,100%); background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:12px; padding:20px; box-shadow:0 12px 40px rgb(0 0 0 / .25); }
 .modal-actions { display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; margin-top:16px; }
+/* B2: command menu, shortcut hint, undo toast, branch turn buttons */
+.command-menu { display:grid; width:min(520px,100%); }
+.command-menu-input { width:100%; box-sizing:border-box; padding:10px 12px; font:inherit; color:var(--text); background:var(--surface-2,transparent); border:1px solid var(--border); border-radius:10px; }
+.command-menu-list { list-style:none; margin:10px 0 0; padding:0; max-height:min(50vh,340px); overflow-y:auto; }
+.command-menu-list button { display:block; width:100%; padding:9px 12px; font:inherit; color:var(--text); text-align:left; background:transparent; border:0; border-radius:8px; cursor:pointer; }
+.command-menu-list button:hover { background:rgb(127 127 127 / .12); }
+.command-menu-list button.is-active { background:rgb(127 127 127 / .18); }
+.command-menu-empty { padding:14px 12px; font-size:.9rem; opacity:.7; }
+.shortcut-hint { display:inline-flex; align-items:center; gap:8px; margin-top:10px; padding:7px 10px; font:inherit; font-size:.85rem; color:var(--text); background:var(--surface-2,transparent); border:1px solid var(--border); border-radius:10px; cursor:pointer; width:100%; }
+.shortcut-hint:hover { border-color:rgb(127 127 127 / .5); }
+.shortcut-hint kbd { margin-left:auto; font:inherit; font-size:.75rem; padding:2px 6px; border:1px solid var(--border); border-radius:5px; background:rgb(127 127 127 / .08); }
+.toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); z-index:60; display:flex; align-items:center; gap:14px; max-width:min(440px,calc(100vw - 32px)); padding:12px 16px; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:12px; box-shadow:0 12px 40px rgb(0 0 0 / .25); animation:toast-in var(--motion-fast,.15s) ease-out; }
+.toast-message { font-size:.9rem; }
+.toast-action { flex:none; padding:6px 12px; font:inherit; font-size:.85rem; font-weight:600; color:var(--text); background:var(--surface-2,transparent); border:1px solid var(--border); border-radius:8px; cursor:pointer; }
+.toast-action:hover { border-color:rgb(127 127 127 / .5); }
+.toast-action:disabled { opacity:.6; cursor:default; }
+@keyframes toast-in { from { opacity:0; transform:translate(-50%,8px); } to { opacity:1; transform:translate(-50%,0); } }
+.branch-turn-actions { display:flex; gap:8px; padding:10px 14px 0; }
+.turn-button { flex:none; padding:5px 12px; font:inherit; font-size:.8rem; font-weight:600; color:var(--text); background:transparent; border:1px solid var(--border); border-radius:999px; cursor:pointer; }
+.turn-button:hover { border-color:rgb(127 127 127 / .5); }
+.turn-button.is-current { background:rgb(127 127 127 / .16); border-color:transparent; }

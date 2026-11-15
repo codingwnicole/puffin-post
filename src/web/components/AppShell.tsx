@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import Icon from './Icon'
 import { clearApiCache } from '../lib/api'
+import { isEditableTarget } from '../lib/shortcuts'
+import CommandMenu from './CommandMenu'
+import ToastHost from './ToastHost'
 
 export type AppPage = 'inbox' | 'characters' | 'planner' | 'settings' | 'parking-lot' | 'connections' | 'tools' | 'activity' | 'support' | 'starter'
 
@@ -20,7 +23,21 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
   const [signingOut, setSigningOut] = useState(false)
   const [signedIn, setSignedIn] = useState(false)
   const [activityUnread, setActivityUnread] = useState(0)
+  const [menuOpen, setMenuOpen] = useState(false)
   const lastUserId = useRef<string | null | undefined>(undefined)
+  // Ctrl/⌘K opens the command menu. Must not fire while typing in an input.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        if (isEditableTarget(event.target)) return
+        setMenuOpen(open => !open)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+  const shortcutKey = /Mac|iP/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K'
   useEffect(() => { fetch('/api/auth/session').then(async response => { setSignedIn(response.ok); if(response.ok) { const session = (await response.json().catch(() => ({}))) as { user?: { id?: string | number; name?: string } }; const userId = String(session.user?.id ?? session.user?.name ?? 'default'); if (lastUserId.current !== undefined && lastUserId.current !== userId) clearApiCache(); lastUserId.current = userId; void fetch('/api/tumblr-activity/unread-count').then(value=>value.ok?value.json():{count:0}).then(value=>setActivityUnread((value as {count?:number}).count??0)) } }).catch(() => setSignedIn(false)) }, [page])
 
   return <div className={`app-shell${signedIn ? '' : ' app-shell-guest'}`}>
@@ -29,8 +46,11 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
     {signedIn && <nav className="primary-nav" aria-label="Primary"><p className="nav-label">Workspace</p>
       {navigation.map(([item, label, icon], index) => <a key={item} href={`#${item}`} data-secondary={index > 2 || undefined} aria-current={page === item ? 'page' : undefined}><Icon name={icon}/><span>{label}{item==='activity'&&activityUnread>0?<b className="nav-unread" aria-label={`${activityUnread} unread activity items`}>{activityUnread>9?'9+':activityUnread}</b>:null}</span></a>)}
       <details className="mobile-more"><summary><Icon name="more"/><span>More</span></summary><div><a href="#activity"><Icon name="activity"/>Tumblr activity</a><a href="#tools"><Icon name="tools"/>Writing tools</a><a href="#planner"><Icon name="planner"/>Character planner</a><a href="#connections"><Icon name="connections"/>Connected accounts</a><a href="#settings"><Icon name="settings"/>Settings</a><a href="#support"><Icon name="more"/>Support & feedback</a></div></details>
+      <p className="nav-note"><button type="button" className="shortcut-hint" onClick={() => setMenuOpen(true)} aria-keyshortcuts="Control+K Meta+K"><Icon name="search" />Search / commands<kbd>{shortcutKey}</kbd></button></p>
       <p className="nav-note">Track scenes, not spreadsheets.<button className="sign-out" disabled={signingOut} onClick={async () => { setSigningOut(true); clearApiCache(); await fetch('/api/auth/sign-out', { method:'POST', headers:{ origin:window.location.origin } }); window.history.replaceState(null, '', '/'); window.location.reload() }}>{signingOut ? 'Signing out.' : 'Sign out'}</button></p>
     </nav>}
     <main id="main-content" tabIndex={-1}>{signedIn && <div className="workspace-heading"><p className="eyebrow">Your writing space</p><p className="tagline">Keep every thread moving.</p></div>}{children}</main>
+    {signedIn && <CommandMenu open={menuOpen} onClose={() => setMenuOpen(false)} />}
+    <ToastHost />
   </div>
 }

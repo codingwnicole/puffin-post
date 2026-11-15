@@ -90,5 +90,13 @@ export function tumblrActivityRoutes() {
     `).bind(scope.workspaceId, body.blogIdentifier.toLowerCase(), body.postId, new Date().toISOString()).run()
     return c.json({ ok: true })
   })
+  // Delete the dismissal row so the post reappears on the next activity GET.
+  app.delete('/dismissals', async c => {
+    const scope = await requireWorkspace(c)
+    const body = z.object({ blogIdentifier: z.string().min(1).max(255), postId: z.string().min(1).max(255) }).parse(await c.req.json())
+    await scope.db.prepare('DELETE FROM activity_dismissals WHERE workspace_id = ? AND blog_identifier = ? AND post_id = ?')
+      .bind(scope.workspaceId, body.blogIdentifier.toLowerCase(), body.postId).run()
+    return c.body(null, 204)
+  })
   return app
 }

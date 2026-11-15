@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { InboxBranch } from '../../db/repositories/branches'
-import { REPLY_STATUSES } from '../../shared/domain'
+import { REPLY_STATUSES, type ReplyStatus } from '../../shared/domain'
 import { api, type TrackingOptions } from '../lib/api'
 import InitialsAvatar from './InitialsAvatar'
 
@@ -12,8 +12,26 @@ export default function BranchRow({ branch, options, onChange }: { branch: Inbox
   const [busy, setBusy] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [tags, setTags] = useState<{ id: string; displayLabel: string }[]>([])
+  // Optimistic status flip for reversible turns only; the badge and the select
+  // both read this, so the change is visible immediately and rolls back on error.
+  const [statusOverride, setStatusOverride] = useState<string | null>(null)
+  const status = statusOverride ?? branch.status
   const loadTags = () => api<{ id: string; displayLabel: string }[]>(`/tags/starters/${branch.starterId}`).then(setTags).catch(() => {})
   useEffect(() => { void loadTags() }, [branch.starterId])
+
+  async function setTurn(next: ReplyStatus) {
+    const previous = branch.status
+    if (next === previous || next === 'archived') return
+    setError('')
+    setStatusOverride(next)
+    try {
+      await api(`/branches/${branch.id}`, 'PATCH', { status: next })
+      await onChange()
+    } catch (problem) {
+      setStatusOverride(previous)
+      setError((problem as Error).message)
+    }
+  }
 
   async function save(form: HTMLFormElement) {
     const data = new FormData(form)
@@ -35,10 +53,11 @@ export default function BranchRow({ branch, options, onChange }: { branch: Inbox
 
   return <article className={`tracking-card branch-card status-${branch.status}${expanded ? ' is-expanded' : ''}`}>
     <button type="button" className="scene-card-trigger" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>
-      <span className="branch-heading"><InitialsAvatar name={branch.characterName} imageUrl={branch.iconObjectKey ? `/api/characters/${branch.characterId}/icon?v=${encodeURIComponent(branch.iconObjectKey)}` : null}/><span className="branch-title"><span className="branch-meta">{branch.characterName} × {partner}</span><strong>{displayTitle}</strong></span><span className="status-badge">{statusLabel(branch.status)}</span></span>
+      <span className="branch-heading"><InitialsAvatar name={branch.characterName} imageUrl={branch.iconObjectKey ? `/api/characters/${branch.characterId}/icon?v=${encodeURIComponent(branch.iconObjectKey)}` : null}/><span className="branch-title"><span className="branch-meta">{branch.characterName} × {partner}</span><strong>{displayTitle}</strong></span><span className="status-badge">{statusLabel(status)}</span></span>
       <span className="branch-premise">{summary}</span>
       <span className="scene-card-hint">{expanded ? 'Hide scene details' : 'Open scene details'}</span>
     </button>
+    <div className="branch-turn-actions"><button type="button" className={status === 'your_turn' ? 'turn-button is-current' : 'turn-button'} aria-pressed={status === 'your_turn'} onClick={() => void setTurn('your_turn')}>Your turn</button><button type="button" className={status === 'their_turn' ? 'turn-button is-current' : 'turn-button'} aria-pressed={status === 'their_turn'} onClick={() => void setTurn('their_turn')}>Their turn</button></div>
     {expanded && <div className="scene-card-expanded">
       <div className="branch-details">
         {isManual ? <span className="manual-scene">Manual scene</span> : <><a className="open-tumblr button" href={`https://www.tumblr.com/${encodeURIComponent(branch.rootBlogId.replace(/\.tumblr\.com$/, ''))}/${encodeURIComponent(branch.latestPostId ?? branch.rootPostId)}`} target="_blank" rel="noopener noreferrer">Open on Tumblr</a><button type="button" className="secondary-button" disabled={busy} onClick={async () => { try { setBusy(true); setError(''); await api(`/starters/${branch.starterId}/reparse`, 'POST'); await onChange() } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) } }}>Refresh names</button></>}
