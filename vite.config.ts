@@ -6,4 +6,9 @@ import { defineConfig } from 'vite'
 // B17: stamp the git revision into worker + client so the live origin can be verified.
 const revision = (() => { try { return execSync('git rev-parse --short HEAD').toString().trim() } catch { return 'unknown' } })()
 
-export default defineConfig({ plugins: [react(), cloudflare()], define: { __BUILD_REVISION__: JSON.stringify(revision) } })
+// S17: never ship client source maps to production; worker maps are not public.
+export default defineConfig({
+  plugins: [react(), cloudflare()],
+  define: { __BUILD_REVISION__: JSON.stringify(revision) },
+  build: { sourcemap: false },
+})
