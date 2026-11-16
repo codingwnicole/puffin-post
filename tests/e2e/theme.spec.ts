@@ -74,11 +74,11 @@ test('390px layout uses bottom navigation without horizontal scrolling', async (
 
 for (const mode of ['light', 'dark']) {
   test(`${mode} retains readable text and controls`, async ({ page }) => {
+    // Inputs fade background-color; measure settled colors, not mid-transition.
+    await page.emulateMedia({ reducedMotion: 'reduce' })
     await signIn(page)
     await page.goto('/#settings')
     await setMode(page, mode)
-    // Inputs fade background-color; measure the settled colors, not mid-transition.
-    await page.emulateMedia({ reducedMotion: 'reduce' })
     const contrasts = await page.evaluate(() => {
       function luminance(color: string) {
         const channels = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => {
