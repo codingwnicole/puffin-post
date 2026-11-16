@@ -80,7 +80,7 @@ main{max-width:94rem;margin-left:18rem;padding:2.5rem clamp(1.5rem,4vw,5rem) 5re
 .character-stats{display:flex;flex-wrap:wrap;gap:.35rem 1rem;min-width:0}
 .character-stats a,.character-stats span{min-width:0}
 .character-actions,.character-lifecycle{display:flex;flex-wrap:wrap;gap:.5rem}
-.character-actions .icon-picker,.character-actions button,.character-lifecycle button{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.character-actions .icon-picker,.character-actions button,.character-lifecycle button{min-width:0;flex:1 1 auto;overflow:hidden;text-overflow:ellipsis}
 .preserve-lines{overflow-wrap:anywhere;word-break:break-word}
 /* Planner cards share the overflow class: let the heading's text column and the actions row shrink & wrap inside the grid track. */
 .planner-card{overflow:hidden;min-width:0}
@@ -177,6 +177,7 @@ img.avatar-fallback::after{content:attr(data-initials);font-weight:600;font-size
   .success-pulse{animation:none}
   .avatar-img-pending{opacity:1}
   .avatar-img-loaded{transition:none}
+  ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none}
 }
 /* B03 delete/archive dialog */
 .modal-overlay { position:fixed; inset:0; z-index:50; display:grid; place-items:center; padding:16px; background:rgb(0 0 0 / .45); }
@@ -203,3 +204,10 @@ img.avatar-fallback::after{content:attr(data-initials);font-weight:600;font-size
 .turn-button { flex:none; padding:5px 12px; font:inherit; font-size:.8rem; font-weight:600; color:var(--text); background:transparent; border:1px solid var(--border); border-radius:999px; cursor:pointer; }
 .turn-button:hover { border-color:rgb(127 127 127 / .5); }
 .turn-button.is-current { background:rgb(127 127 127 / .16); border-color:transparent; }
+/* UI29-40 */
+h1,h2,h3,.page-heading{text-wrap:balance}
+.character-stats strong,.group-count,.count-pill,.turn-button,.rp-group-badge,.status-badge,.do-next{font-variant-numeric:tabular-nums}
+@media (max-width:760px){
+  .primary-nav>a,.mobile-more summary,button,.text-button,.text-action,.turn-button,.do-next,.secondary-button,.icon-picker{min-height:44px}
+  .mobile-more{padding-bottom:env(safe-area-inset-bottom)}
+}

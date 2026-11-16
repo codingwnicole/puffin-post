@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { flushSync } from 'react-dom'
 import AppShell, { type AppPage } from './components/AppShell'
 import InboxPage from './pages/InboxPage'
 import StarterPage from './pages/StarterPage'
@@ -23,7 +24,11 @@ export default function App() {
   const starterId = route.slice('starter/'.length)
   const shortcutId = route.startsWith('character-shortcut/') ? route.slice('character-shortcut/'.length) : null
   useEffect(() => {
-    const navigate = () => setRoute(window.location.hash.slice(1))
+    const navigate = () => {
+      const next = window.location.hash.slice(1)
+      // View Transitions API: supported browsers crossfade page swaps, others take the plain path.
+      document.startViewTransition ? document.startViewTransition(() => flushSync(() => setRoute(next))) : setRoute(next)
+    }
     window.addEventListener('hashchange', navigate)
     return () => window.removeEventListener('hashchange', navigate)
   }, [])
