@@ -1,15 +1,31 @@
 import type { Env } from '../worker'
-import { createTumblrClient, type TumblrActivity } from '../tumblr/client'
+import { createTumblrClient, type FetchBudget } from '../tumblr/client'
 import { decryptToken } from '../tumblr/oauth'
 import { canonicalBlogIdentifier } from '../tumblr/normalize'
 import { rotateAfter } from './cursor'
 import { refreshStarterBranches, type RefreshBranch } from '../tumblr/refresh'
 import { sendWorkspacePush } from '../routes/push'
 
-export interface RefreshBatchResult { selected: number; refreshed: number; failed: number }
+export interface RefreshBatchResult { selected: number; refreshed: number; failed: number; skipped?: number; fetchesUsed?: number }
 interface RefreshTarget { id:string; workspaceId:string; characterId:string; blogIdentifier:string; tokenEncrypted:string; tokenSecretEncrypted:string }
 
-export async function runRefreshBatch(env: Env, now: Date, limit: number): Promise<RefreshBatchResult> {
+// Cloudflare caps outbound subrequests per worker invocation (50 on the free
+// plan). Refresh and pushes share that budget, so refresh stops before it can
+// push the invocation over the cap and leaves the rest for the next tick.
+const SUBREQUEST_BUDGET = 44
+const FETCH_RESERVE_FOR_OTHER = 6
+
+// A live outbound-fetch counter shared by every Tumblr client in this run.
+class SubrequestBudget {
+  private used = 0
+  constructor(private readonly cap: number) {}
+  remaining(): number { return Math.max(0, this.cap - this.used) }
+  consume(): void { this.used += 1 }
+  usedCount(): number { return this.used }
+}
+
+export async function runRefreshBatch(env: Env, now: Date, limit: number, options: { fetchBudget?: number } = {}): Promise<RefreshBatchResult> {
+  const budget = new SubrequestBudget(Math.max(1, (options.fetchBudget ?? SUBREQUEST_BUDGET) - FETCH_RESERVE_FOR_OTHER))
   const state = await env.DB.prepare('SELECT last_character_blog_id AS lastCharacterBlogId FROM refresh_scheduler_state WHERE id=1').first<{lastCharacterBlogId:string|null}>()
   const candidates = await env.DB.prepare(`SELECT cb.id, cb.workspace_id AS workspaceId, cb.character_id AS characterId, cb.blog_identifier AS blogIdentifier,
       tc.token_encrypted AS tokenEncrypted, tc.token_secret_encrypted AS tokenSecretEncrypted
@@ -17,13 +33,15 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number): Promi
     JOIN tumblr_connections tc ON tc.workspace_id=cb.workspace_id AND tc.id=cb.tumblr_connection_id
     WHERE c.state='active' AND tc.status='active' ORDER BY cb.id`).all<RefreshTarget>()
   const selected = rotateAfter(candidates.results, state?.lastCharacterBlogId ?? null, limit)
-  let refreshed = 0, failed = 0
+  let refreshed = 0, failed = 0, skipped = 0
   for (const target of selected) {
+    if (budget.remaining() < 1) { skipped++; continue }
     try {
       const client = createTumblrClient({ consumerKey:env.TUMBLR_CONSUMER_KEY, consumerSecret:env.TUMBLR_CONSUMER_SECRET,
-        token:await decryptToken(target.tokenEncrypted, env.TOKEN_ENCRYPTION_KEY), tokenSecret:await decryptToken(target.tokenSecretEncrypted, env.TOKEN_ENCRYPTION_KEY) })
+        token:await decryptToken(target.tokenEncrypted, env.TOKEN_ENCRYPTION_KEY), tokenSecret:await decryptToken(target.tokenSecretEncrypted, env.TOKEN_ENCRYPTION_KEY), budget })
       const ownBlogs = await env.DB.prepare('SELECT blog_identifier AS blogIdentifier FROM character_blogs WHERE workspace_id=? AND character_id=?').bind(target.workspaceId,target.characterId).all<{blogIdentifier:string}>()
       try {
+        if (budget.remaining() < 1) throw new Error('subrequest budget reserved for thread refresh')
         const mentions = (await client.getNotifications(target.blogIdentifier)).filter(item => ['mention','mention_in_post','mention_in_reply','user_mention','note_mention'].includes(item.type))
         for (const mention of mentions) {
           const key = `mention:${target.blogIdentifier}:${mention.id}`
@@ -37,16 +55,26 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number): Promi
         const rows = await env.DB.prepare(`SELECT b.id,b.latest_post_id AS latestPostId,b.status,b.status_manual_override_at AS statusManualOverrideAt,p.blog_identifier AS partnerBlogIdentifier
           FROM reply_branches b LEFT JOIN partners p ON p.workspace_id=b.workspace_id AND p.id=b.partner_id
           WHERE b.workspace_id=? AND b.starter_id=? AND b.archived_at IS NULL`).bind(target.workspaceId,starter.id).all<RefreshBranch>()
-        const activities = await client.getThreadActivity(canonicalBlogIdentifier(starter.rootBlogId), starter.rootPostId)
-        await refreshStarterBranches({ workspaceId:target.workspaceId, starterId:starter.id, rootBlogIdentifier:canonicalBlogIdentifier(starter.rootBlogId), ownBlogIdentifiers:ownBlogs.results.map(blog=>canonicalBlogIdentifier(blog.blogIdentifier)), branches:rows.results, activities, now }, async (branch, activity, status) => {
-          const automaticStatus = branch.statusManualOverrideAt ? branch.status : status
+        const root = canonicalBlogIdentifier(starter.rootBlogId)
+        // One notes call per starter root post, shared by every branch of that
+        // starter; skipped when the budget is spent or no branch needs a newer
+        // note.
+        const needsNotes = rows.results.some(branch => branch.latestPostId === null) || budget.remaining() >= 1
+        const activities = needsNotes && budget.remaining() >= 1 ? await client.getThreadActivity(root, starter.rootPostId) : []
+        await refreshStarterBranches({ workspaceId:target.workspaceId, starterId:starter.id, rootBlogIdentifier:root, ownBlogIdentifiers:ownBlogs.results.map(blog=>canonicalBlogIdentifier(blog.blogIdentifier)), branches:rows.results, activities, now }, async (branch, activity, status) => {
+          // A manual "Your turn"/"Their turn" choice holds only until Tumblr
+          // activity newer than it arrives; then the detected status wins and
+          // the override clears. Otherwise the manual status is preserved.
+          const overrideWins = branch.statusManualOverrideAt !== null && !(activity.timestamp > branch.statusManualOverrideAt)
+          const finalStatus = overrideWins ? branch.status : status
+          const clearedOverride = branch.statusManualOverrideAt !== null && !overrideWins
           await env.DB.batch([
-            env.DB.prepare(`UPDATE reply_branches SET latest_post_id=?,last_poster=?,last_activity_at=?,last_refresh_at=?,refresh_error=NULL,status=? WHERE workspace_id=? AND id=?`)
-              .bind(activity.postId,activity.blogIdentifier,activity.timestamp,new Date(now).toISOString(),automaticStatus,target.workspaceId,branch.id),
+            env.DB.prepare(`UPDATE reply_branches SET latest_post_id=?,last_poster=?,last_activity_at=?,last_refresh_at=?,refresh_error=NULL,status=?,status_manual_override_at=? WHERE workspace_id=? AND id=?`)
+              .bind(activity.postId,activity.blogIdentifier,activity.timestamp,new Date(now).toISOString(),finalStatus,clearedOverride ? null : branch.statusManualOverrideAt,target.workspaceId,branch.id),
             env.DB.prepare(`INSERT INTO activities (id,workspace_id,starter_id,reply_branch_id,type,actor,source,metadata_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
               .bind(crypto.randomUUID(),target.workspaceId,starter.id,branch.id,'tumblr_reply_detected',activity.blogIdentifier,'tumblr',JSON.stringify({postId:activity.postId}),new Date(now).toISOString()),
           ])
-          if (automaticStatus === 'your_turn' && branch.status !== 'your_turn') await sendWorkspacePush(env,target.workspaceId,{title:'Puffin Post',body:'A tracked thread has a new reply waiting on you.',url:'/#inbox'})
+          if (finalStatus === 'your_turn' && branch.status !== 'your_turn') await sendWorkspacePush(env,target.workspaceId,{title:'Puffin Post',body:'A tracked thread has a new reply waiting on you.',url:'/#inbox'})
         })
       }
       await env.DB.prepare(`INSERT INTO refresh_cursors (workspace_id,character_blog_id,last_attempt_at,last_successful_refresh_at,last_error,failure_count)
@@ -66,5 +94,5 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number): Promi
   }
   const last = selected.at(-1)
   if (last) await env.DB.prepare(`INSERT INTO refresh_scheduler_state (id,last_character_blog_id,updated_at) VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET last_character_blog_id=excluded.last_character_blog_id,updated_at=excluded.updated_at`).bind(last.id,now.toISOString()).run()
-  return { selected:selected.length, refreshed, failed }
+  return { selected:selected.length, refreshed, failed, skipped, fetchesUsed: budget.usedCount() }
 }

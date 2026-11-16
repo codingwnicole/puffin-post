@@ -20,13 +20,18 @@ export interface TumblrClient { getThreadActivity(blogIdentifier: string, postId
 export interface TumblrNotification { id:string; type:string; blogIdentifier:string; actor:string; timestamp:string; postId:string|null; preview:string|null; sourceUrl:string|null }
 export interface TumblrClient { getNotifications(blogIdentifier:string,before?:number|null):Promise<TumblrNotification[]> }
 const FETCH_TIMEOUT_MS = 15_000
-export function createTumblrClient(config: { consumerKey: string; consumerSecret: string; token: string; tokenSecret: string; fetch?: typeof fetch }): TumblrClient {
+export interface FetchBudget { remaining(): number; consume(): void }
+export function createTumblrClient(config: { consumerKey: string; consumerSecret: string; token: string; tokenSecret: string; fetch?: typeof fetch; budget?: FetchBudget }): TumblrClient {
   const run = config.fetch ?? fetch
+  const budget = config.budget
   // S14: never let a hung Tumblr response hold a worker slot.
   const safeRun = (url: string, init?: RequestInit) => {
     const host = new URL(url).hostname
     if (!isAllowedTumblrHost(host)) throw new Error(`Blocked Tumblr request to disallowed host: ${host}`)
-    return run(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+    if (budget && budget.remaining() <= 0) throw new Error('Subrequest budget exhausted')
+    const response = run(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+    if (budget) response.then(() => budget.consume(), () => budget.consume()).catch(() => {})
+    return response
   }
   return { async getPost(blogIdentifier, postId) {
     const url = `https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/posts/${encodeURIComponent(postId)}`
