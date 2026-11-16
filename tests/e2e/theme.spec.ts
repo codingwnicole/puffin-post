@@ -63,7 +63,7 @@ test('390px layout uses bottom navigation without horizontal scrolling', async (
   await navigation.getByText('More').click()
   await expect(navigation.getByRole('link', { name: 'Settings' })).toBeVisible()
   await page.evaluate(() => {
-    const a = document.querySelector('a[href="#settings"]')!
+    const a = document.querySelector<HTMLAnchorElement>('a[href="#settings"]')!
     a.click()
   })
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
@@ -72,7 +72,7 @@ test('390px layout uses bottom navigation without horizontal scrolling', async (
   expect((await navigation.boundingBox())!.width).toBeLessThan(300)
 })
 
-for (const mode of ['light', 'dark']) {
+for (const mode of ['light', 'dark'] as const) {
   test(`${mode} retains readable text and controls`, async ({ page }) => {
     // Inputs fade background-color; measure settled colors, not mid-transition.
     await page.emulateMedia({ reducedMotion: 'reduce' })
