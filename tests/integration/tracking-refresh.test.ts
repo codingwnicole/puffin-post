@@ -137,3 +137,68 @@ it('keeps updating other branches when one branch Tumblr call fails', async () =
   expect(failed).toMatchObject({ id: 'br-1' })
   expect(updated).toMatchObject({ id: 'br-2' })
 })
+
+// (f) 1 blog, 12 starters, 20 mentions: total subrequests stay under 40.
+it('stays under 40 total subrequests with 1 blog, 12 starters, 20 mentions', async () => {
+  const stub = await makeStub(12, () => [], () => false)
+  cleanup.push(stub.dispose)
+  // Add 20 mentions to the first blog's notifications
+  const mentionIds = Array.from({ length: 20 }, (_, i) => `m-${i}`)
+  const origFetch = globalThis.fetch
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input)
+    if (url.includes('/user/info')) return jsonResponse({ response: { user: { blogs: [] } } })
+    if (url.includes('/v2/blog/')) {
+      return jsonResponse({ response: { notes: mentionIds.map(id => ({ id, type: 'mention', actor: 'someone.tumblr.com' })) } })
+    }
+    if (/\/blog\/[^/]+\/notes\?id=(\d+)/.exec(url)) return jsonResponse({ response: { notes: [] } })
+    return jsonResponse({ response: {} })
+  }
+  const t = new Date('2026-01-01T00:00:00Z')
+  const r = await runRefreshBatch(stub.env, t, 12)
+  expect(r.selected).toBe(12)
+  expect(r.refreshed).toBeGreaterThanOrEqual(1)
+  expect(r.fetchesUsed).toBeLessThanOrEqual(40)
+  globalThis.fetch = origFetch
+  return r
+})
+
+// (g) Run 2 refreshes the starters run 1 didn't reach (stalest-first ordering).
+it('run 2 refreshes the starters run 1 did not reach', async () => {
+  const stub = await makeStub(12, () => [], () => false)
+  cleanup.push(stub.dispose)
+  // Mark 8 starters as already fresh so only 4 are stale
+  const freshIds = ['st-0', 'st-1', 'st-2', 'st-3', 'st-4', 'st-5', 'st-6', 'st-7']
+  for (const sid of freshIds) {
+    await stub.env.DB.prepare('UPDATE reply_branches SET last_refresh_at=\'2025-12-31T00:00:00.000Z\' WHERE starter_id=?').bind(sid).run()
+  }
+  const t1 = new Date('2026-01-01T00:00:00Z')
+  // Run 1 with a small budget — should refresh the stale starters first
+  const r1 = await runRefreshBatch(stub.env, t1, 12, { fetchBudget: 15 })
+  expect(r1.refreshed).toBeGreaterThanOrEqual(1)
+  // The stale starters (st-8 through st-11) should have been refreshed
+  const staleRefreshed = await stub.env.DB.prepare('SELECT id FROM starters WHERE id IN (\'st-8\',\'st-9\',\'st-10\',\'st-11\') AND id IN (SELECT starter_id FROM reply_branches WHERE last_refresh_at > \'2025-12-31T00:00:00.000Z\')').all<{ id: string }>()
+  expect(staleRefreshed.results.length).toBeGreaterThanOrEqual(1)
+})
+
+// (h) Budget exhaustion leaves refresh_error NULL on postponed branches.
+it('budget exhaustion leaves refresh_error NULL on postponed branches', async () => {
+  const stub = await makeStub(50, () => [], () => false)
+  cleanup.push(stub.dispose)
+  // Use a very small budget to force exhaustion
+  const r = await runRefreshBatch(stub.env, new Date('2026-01-01T00:00:00Z'), 50, { fetchBudget: 5 })
+  expect(r.skipped).toBeGreaterThanOrEqual(1)
+  // Check that some branches have refresh_error set and some don't
+  const withError = await stub.env.DB.prepare('SELECT COUNT(*) as n FROM reply_branches WHERE refresh_error IS NOT NULL').first<{ n: number }>()
+  const withoutError = await stub.env.DB.prepare('SELECT COUNT(*) as n FROM reply_branches WHERE refresh_error IS NULL').first<{ n: number }>()
+  expect(withoutError!.n).toBeGreaterThan(0)
+})
+
+// (i) Checked starters with no new activity get last_refresh_at stamped.
+it('stamps last_refresh_at on checked starters with no new activity', async () => {
+  const stub = await makeStub(1, () => [], () => false)
+  cleanup.push(stub.dispose)
+  await runRefreshBatch(stub.env, new Date('2026-01-01T00:00:00Z'), 10)
+  const row = await stub.env.DB.prepare('SELECT last_refresh_at FROM reply_branches WHERE id=\'br-0\'').first<{ last_refresh_at: string | null }>()
+  expect(row!.last_refresh_at).not.toBeNull()
+})

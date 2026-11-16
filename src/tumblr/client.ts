@@ -28,10 +28,13 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
   const safeRun = (url: string, init?: RequestInit) => {
     const host = new URL(url).hostname
     if (!isAllowedTumblrHost(host)) throw new Error(`Blocked Tumblr request to disallowed host: ${host}`)
-    if (budget && budget.remaining() <= 0) throw new Error('Subrequest budget exhausted')
-    const response = run(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
-    if (budget) response.then(() => budget.consume(), () => budget.consume()).catch(() => {})
-    return response
+    // Consume BEFORE the request goes out: parallel fetches can no longer all
+    // pass remaining() first and race the budget.
+    if (budget) {
+      if (budget.remaining() <= 0) throw new Error('Subrequest budget exhausted')
+      budget.consume()
+    }
+    return run(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
   }
   return { async getPost(blogIdentifier, postId) {
     const url = `https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/posts/${encodeURIComponent(postId)}`
