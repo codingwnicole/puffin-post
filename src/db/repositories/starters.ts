@@ -1,4 +1,4 @@
-import type { WorkspaceScope } from '../client'
+import type { Database, WorkspaceScope } from '../client'
 import { requireMembership } from './workspaces'
 
 export async function getStarter(scope: WorkspaceScope, id: string): Promise<Starter> {
@@ -39,6 +39,19 @@ export interface CreateStarterInput extends WorkspaceScope {
   threadRootId?: string
   threadRootBlogId?: string
   description?: string
+}
+
+/** The tracked thread any of these post ids belongs to (a starter root, the
+ * clicked post, or a branch's latest post). Tumblr post ids are globally
+ * unique, so ids alone identify the thread. Null when untracked. */
+export async function findTrackedThread(db: Database, workspaceId: string, postIds: string[]): Promise<string | null> {
+  const ids = [...new Set(postIds.filter(Boolean))]
+  if (!ids.length) return null
+  const marks = ids.map(() => '?').join(',')
+  const row = await db.prepare(`SELECT s.id FROM starters s WHERE s.workspace_id = ? AND (s.thread_root_id IN (${marks}) OR s.root_post_id IN (${marks})
+      OR EXISTS (SELECT 1 FROM reply_branches b WHERE b.workspace_id = s.workspace_id AND b.starter_id = s.id AND b.latest_post_id IN (${marks})))
+    ORDER BY s.created_at LIMIT 1`).bind(workspaceId, ...ids, ...ids, ...ids).first<{ id: string }>()
+  return row?.id ?? null
 }
 
 export async function createStarter(input: CreateStarterInput): Promise<Starter> {

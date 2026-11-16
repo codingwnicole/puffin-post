@@ -4,7 +4,7 @@ import { z } from 'zod'
 import type { Env } from '../worker'
 import type { WorkspaceScope } from '../db/client'
 import { requireWorkspace } from '../auth/sessions'
-import { createStarter, getStarter, updateStarterTitle } from '../db/repositories/starters'
+import { createStarter, findTrackedThread, getStarter, updateStarterTitle } from '../db/repositories/starters'
 import { createReplyBranch, listInboxBranches, upsertReplyBranch } from '../db/repositories/branches'
 import { branchSchema, starterSchema } from './tracking-validation'
 import { canonicalBlogIdentifier, normalizeTumblrTag, parseTumblrPostReference } from '../tumblr/normalize'
@@ -114,7 +114,7 @@ export function starterRoutes() {
     const parsedCharacterNames = parseDeclaredCharacterNames(parserSource)
     const partnerNames = parsedCharacterNames.filter(name => name.localeCompare(selectedCharacter?.name ?? '', undefined, { sensitivity:'accent' }) !== 0)
     const parsedTitle = selectedCharacter?.name && partnerNames.length ? `${selectedCharacter.name} × ${partnerNames.join(' × ')}${where ? ` — ${where}` : ''}` : undefined
-    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:selectedCharacter?.name, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier }
+    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:selectedCharacter?.name, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [clickedPost.rootPostId, clickedPost.id, reference.postId]) }
   }
 
   async function findOrCreatePartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, blogIdentifier:string) {
@@ -173,7 +173,9 @@ export function starterRoutes() {
     const latest = found && partnerBlog ? latestDirectExchange(found.ownBlogIdentifiers,found.threadRootBlogId,partnerBlog,found.activities) : undefined
     const latestPost = latest && found ? await found.client.getPost(latest.activity.blogIdentifier, latest.activity.postId).catch(() => null) : null
     const manualId=crypto.randomUUID()
-    const starter = await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.suggestedTitle || characterTitle(found?.characterName, found?.parsedCharacterNames) || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(latestPost?.preview ?? found?.preview) })
+    // Already tracked (any blog, any character): reuse that thread, never a second copy.
+    const existing = found?.existingStarterId ? await getStarter(scope, found.existingStarterId) : null
+    const starter = existing ?? await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.suggestedTitle || characterTitle(found?.characterName, found?.parsedCharacterNames) || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(latestPost?.preview ?? found?.preview) })
     const partnerId=partnerBlog ? await findOrCreatePartner(scope,partnerBlog) : input.partnerName?.trim() ? await findOrCreateManualPartner(scope,input.partnerName) : null
     if (found?.tags?.length) await applyPostTags(scope, starter.id, found.tags)
     const branch = (partnerId || !found)

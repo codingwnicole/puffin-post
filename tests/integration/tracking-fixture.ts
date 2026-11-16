@@ -10,7 +10,20 @@ export async function trackingFixture() {
   globalThis.fetch = async (input: RequestInfo | URL) => {
     const url = String(input)
     const match = /\/blog\/([^/]+)\/posts\/(\d+)/.exec(url)
-    if (match) return new Response(JSON.stringify({ response:{ blog:{ name:decodeURIComponent(match[1]).replace(/\.tumblr\.com$/,'' ) }, id_string:match[2], tags:['ooc','open','a/o'] } }), { status:200, headers:{'content-type':'application/json'} })
+    if (match) {
+      const blog = decodeURIComponent(match[1]).replace(/\.tumblr\.com$/,'')
+      const id = match[2]
+      // Default: a reblog of a thread whose root is the same blog's post 1000.
+      // Tests can override reblogged_root_* / trail on the fixture for NPF-style
+      // reblogs (no root, root = trail[0]) or originals (no trail, own root).
+      const stub = (globalThis as any).__tumblrStubPosts?.[blog + ':' + id]
+      // Unstubbed posts are originals (no reblogged_root_*, no trail) so the
+      // resolved root is the post itself. Tests stub reblogs explicitly.
+      const rootId = stub?.reblogged_root_id
+      const rootName = stub?.reblogged_root_name
+      const trail = stub?.trail ?? null
+      return new Response(JSON.stringify({ response:{ blog:{ name:blog }, id_string:id, tags:['ooc','open','a/o'], reblogged_root_id: rootId ?? null, reblogged_root_name: rootName ?? null, trail } }), { status:200, headers:{'content-type':'application/json'} })
+    }
     if (url.includes('/notes?')) return new Response(JSON.stringify({ response:{ notes:[] } }), { status:200, headers:{'content-type':'application/json'} })
     return new Response(JSON.stringify({ response:{ user:{ blogs:[{ name:'a' },{ name:'b' }] } } }), { status:200, headers:{'content-type':'application/json'} })
   }

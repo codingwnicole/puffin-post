@@ -36,17 +36,29 @@ export function tumblrActivityRoutes() {
         AND EXISTS (SELECT 1 FROM tumblr_connections tc WHERE tc.workspace_id = cb.workspace_id AND tc.id = cb.tumblr_connection_id AND tc.status = 'active')
       GROUP BY cb.blog_identifier
     `).bind(...(blogFilter ? [scope.workspaceId, blogFilter] : [scope.workspaceId])).all<ConnectedBlog>()
-    const tracked = await scope.db.prepare(`
-      SELECT thread_root_blog_id AS rootBlogIdentifier, thread_root_id AS rootPostId
-      FROM starters WHERE workspace_id = ?
-    `).bind(scope.workspaceId).all<{ rootBlogIdentifier: string; rootPostId: string }>()
-    const threadKey = (blogIdentifier: string, postId: string) => `${blogIdentifier.toLowerCase()}:${postId}`
-    const trackedThreadRoots = new Set(tracked.results.map(row => threadKey(row.rootBlogIdentifier, row.rootPostId)))
     const dismissed = await scope.db.prepare(`
       SELECT blog_identifier AS blogIdentifier, post_id AS postId
       FROM activity_dismissals WHERE workspace_id = ?
     `).bind(scope.workspaceId).all<{ blogIdentifier: string; postId: string }>()
     const dismissedPosts = new Set(dismissed.results.map(row => `${row.blogIdentifier.toLowerCase()}:${row.postId}`))
+    // One query loads every post id recorded for a tracked thread in this
+    // workspace (starter thread-roots, starter roots, and every branch's
+    // latest post). A post is "tracked" when its resolved thread-root id is
+    // in the Set OR its own id is in the Set. Tumblr post ids are globally
+    // unique, so a post-id-only Set is sufficient and cheapest (one query,
+    // no per-item lookups, stays under the D1 subrequest budget).
+    const trackedPostIds = new Set<string>(
+      (await scope.db.prepare(
+        `SELECT thread_root_id AS v FROM starters WHERE workspace_id=? AND thread_root_id IS NOT NULL
+         UNION SELECT root_post_id FROM starters WHERE workspace_id=? AND root_post_id IS NOT NULL
+         UNION SELECT b.latest_post_id FROM reply_branches b JOIN starters s ON s.id=b.starter_id AND s.workspace_id=b.workspace_id
+           WHERE b.workspace_id=? AND b.latest_post_id IS NOT NULL`
+      ).bind(scope.workspaceId, scope.workspaceId, scope.workspaceId).all<{ v: string }>()
+    ).results.map(row => String(row.v)))
+    // Archived threads count as tracked too: they must not be re-suggested.
+    const isTracked = (post: { id?: string | null; rootPostId?: string | null }) =>
+      Boolean((post.rootPostId && trackedPostIds.has(String(post.rootPostId))) || (post.id && trackedPostIds.has(String(post.id))))
+    const threadKey = (blogIdentifier: string, postId: string) => `${blogIdentifier.toLowerCase()}:${postId}`
     const responses = await Promise.all(rows.results.map(async row => {
       const client = createTumblrClient({ consumerKey: c.env.TUMBLR_CONSUMER_KEY, consumerSecret: c.env.TUMBLR_CONSUMER_SECRET, token: await decryptToken(row.tokenEncrypted, c.env.TOKEN_ENCRYPTION_KEY), tokenSecret: await decryptToken(row.tokenSecretEncrypted, c.env.TOKEN_ENCRYPTION_KEY) })
       try {
@@ -67,13 +79,13 @@ export function tumblrActivityRoutes() {
     const diagnostics = responses.flatMap(response => response.error ? [response.error] : [])
     const notifications = responses.flatMap(response => response.notifications)
       .filter(notification => !notification.postId || !dismissedPosts.has(`${notification.blogIdentifier.toLowerCase()}:${notification.postId}`))
-      .filter(notification => !('rootPostId' in notification) || !notification.rootPostId || !('rootBlogIdentifier' in notification) || !notification.rootBlogIdentifier || !trackedThreadRoots.has(threadKey(notification.rootBlogIdentifier, notification.rootPostId)))
+      .filter(notification => !isTracked({ id: notification.postId, rootPostId: 'rootPostId' in notification ? notification.rootPostId : null }))
       .filter((notification, index, all) => all.findIndex(other => other.type === notification.type && other.actor === notification.actor && other.postId === notification.postId) === index)
-      .map(notification => ({ ...notification, threadKey: 'rootPostId' in notification && notification.rootPostId && 'rootBlogIdentifier' in notification && notification.rootBlogIdentifier ? threadKey(notification.rootBlogIdentifier, notification.rootPostId) : notification.postId ? threadKey(notification.actor, notification.postId) : null }))
+      .map(notification => ({ ...notification, threadKey: 'rootPostId' in notification && notification.rootPostId && 'rootBlogIdentifier' in notification && notification.rootBlogIdentifier ? threadKey(String(notification.rootBlogIdentifier), String(notification.rootPostId)) : notification.postId ? threadKey(notification.actor, String(notification.postId)) : null }))
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     const mentionTypes = new Set(['mention', 'mention_in_post', 'mention_in_reply', 'user_mention', 'note_mention'])
     const threadCandidates = [...new Map(responses.flatMap(response => response.recentPosts)
-      .filter(post => !trackedThreadRoots.has(threadKey(post.rootBlogIdentifier, post.rootPostId)) && !dismissedPosts.has(`${post.blogIdentifier.toLowerCase()}:${post.id}`))
+      .filter(post => !isTracked(post) && !dismissedPosts.has(`${post.blogIdentifier.toLowerCase()}:${post.id}`))
       // Recent posts arrive newest-first. Keep the current reblog, not an earlier copy of the same scene.
       .map(post => [threadKey(post.rootBlogIdentifier, post.rootPostId), post] as const)).values()]
       .map(post => ({ id: `post:${post.blogIdentifier}:${post.id}`, blogIdentifier: post.blogIdentifier, actor: post.blogIdentifier, timestamp: new Date().toISOString(), postId: post.id, preview: post.preview ?? post.title ?? null, sourceUrl: post.postUrl ?? `https://www.tumblr.com/${post.blogIdentifier.replace(/\.tumblr\.com$/i, '')}/${post.id}`, threadKey: threadKey(post.rootBlogIdentifier, post.rootPostId) }))
