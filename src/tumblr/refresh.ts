@@ -30,9 +30,10 @@ export function latestDirectExchange(ownBlogIdentifiers:string[], rootBlogIdenti
     // A partner reblogging from you (or from your root) means their turn is over; you owe the next reply.
     if (isPartnerActivity && (ownBlogs.has(parent) || parent === rootBlogIdentifier && ownBlogs.has(rootBlogIdentifier))) latest = { activity, status:'your_turn' }
     // Your reblog from that partner means you have replied and are waiting on them.
-    if (isOwnActivity && parent === partnerBlogIdentifier) latest = { activity, status:'their_turn' }
+    // Skip when the partner IS one of your own blogs (shared blog) — the activity is ambiguous there.
+    if (isOwnActivity && parent === partnerBlogIdentifier && !ownBlogs.has(partnerBlogIdentifier)) latest = { activity, status:'their_turn' }
     // Your reblog from the root post also clears your obligation if the partner is the original poster.
-    if (isOwnActivity && parent === rootBlogIdentifier && partnerBlogIdentifier === rootBlogIdentifier) latest = { activity, status:'their_turn' }
+    if (isOwnActivity && !isPartnerActivity && parent === rootBlogIdentifier && partnerBlogIdentifier === rootBlogIdentifier) latest = { activity, status:'their_turn' }
   }
   return latest
 }

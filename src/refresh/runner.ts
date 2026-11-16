@@ -12,8 +12,13 @@ interface StarterRow { id: string; rootPostId: string; rootBlogId: string }
 interface BranchRow extends RefreshBranch { starterId: string; lastRefreshAt: string | null }
 
 // Cloudflare free plan: 50 subrequests per invocation, counting fetches AND
-// D1 calls combined. sendDuePushes shares the invocation, so hold back.
-const SUBREQUEST_BUDGET = 40
+// D1 calls combined. sendDuePushes shares the invocation, so hold back: 30
+// leaves 20 for sendDuePushes' worst case (1 D1 query + 1 fetch per due
+// subscription + updates).
+const SUBREQUEST_BUDGET = 30
+// The target and starter loops stop with this many subrequests still free, so
+// the per-target write batch (1) and the scheduler-state batch (1) always fit.
+const FINAL_WRITE_HEADROOM = 2
 
 // Counts every outbound fetch and every D1 call (prepare or batch) in the run.
 // `d1` and `fetches` are tracked separately so the runner can gate starter notes
@@ -44,44 +49,49 @@ function countingDB(db: D1Database, budget: SubrequestBudget): D1Database {
   return { ...db, prepare, batch: (stmts: D1PreparedStatement[]) => { budget.consumeD1(); return db.batch(stmts) } } as unknown as D1Database
 }
 
-export async function runRefreshBatch(env: Env, now: Date, limit: number, options: { fetchBudget?: number } = {}): Promise<RefreshBatchResult> {
+export async function runRefreshBatch(env: Env, now: Date, limit: number, options: { fetchBudget?: number; targetLimit?: number } = {}): Promise<RefreshBatchResult> {
   const budget = new SubrequestBudget(Math.max(1, options.fetchBudget ?? SUBREQUEST_BUDGET))
   const db = countingDB(env.DB, budget)
-  // The client's safeRun consumes the budget before the request goes out, so
-  // parallel fetches can no longer all pass remaining() and race the budget.
-  const budgetedFetch: typeof fetch = (input, init) => {
-    if (budget.remaining() <= 0) throw new Error('Subrequest budget exhausted')
-    return fetch(input, init)
-  }
+  const effectiveLimit = Math.max(1, Math.min(limit, options.targetLimit ?? limit))
   const state = await db.prepare('SELECT last_character_blog_id AS lastCharacterBlogId FROM refresh_scheduler_state WHERE id=1').first<{ lastCharacterBlogId: string | null }>()
   const candidates = await db.prepare(`SELECT cb.id, cb.workspace_id AS workspaceId, cb.character_id AS characterId, cb.blog_identifier AS blogIdentifier,
       tc.token_encrypted AS tokenEncrypted, tc.token_secret_encrypted AS tokenSecretEncrypted
     FROM character_blogs cb JOIN characters c ON c.workspace_id=cb.workspace_id AND c.id=cb.character_id
     JOIN tumblr_connections tc ON tc.workspace_id=cb.workspace_id AND tc.id=cb.tumblr_connection_id
     WHERE c.state='active' AND tc.status='active' ORDER BY cb.id`).all<RefreshTarget>()
-  const selected = rotateAfter(candidates.results, state?.lastCharacterBlogId ?? null, limit)
+  const selected = rotateAfter(candidates.results, state?.lastCharacterBlogId ?? null, effectiveLimit)
   let refreshed = 0, failed = 0, skipped = 0
+  // A starter already refreshed through one target's blog is skipped for later
+  // targets of the same character (main blog + sideblogs), so every thread's
+  // notes are fetched once per run. Mentions are NOT deduped: each blog has
+  // its own notification feed.
+  const doneStarterIds = new Set<string>()
+  // One summary push per workspace per run: collect counts here, send once
+  // after the target loop, and count its cost against the budget.
+  const summary = new Map<string, { mentionCount: number; tagCount: number }>()
+  let lastTargetId: string | null = null
+  let abortedByBudget = false
   for (const target of selected) {
-    if (budget.remaining() <= 0) { skipped++; continue }
+    if (budget.remaining() <= FINAL_WRITE_HEADROOM) { skipped++; abortedByBudget = true; continue }
     try {
+      lastTargetId = target.id
       const client = createTumblrClient({ consumerKey: env.TUMBLR_CONSUMER_KEY, consumerSecret: env.TUMBLR_CONSUMER_SECRET,
         token: await decryptToken(target.tokenEncrypted, env.TOKEN_ENCRYPTION_KEY), tokenSecret: await decryptToken(target.tokenSecretEncrypted, env.TOKEN_ENCRYPTION_KEY),
-        fetch: budgetedFetch, budget })
+        budget })
       const ownBlogs = await db.prepare('SELECT blog_identifier AS blogIdentifier FROM character_blogs WHERE workspace_id=? AND character_id=?').bind(target.workspaceId, target.characterId).all<{ blogIdentifier: string }>()
       const ownBlogSet = ownBlogs.results.map(blog => canonicalBlogIdentifier(blog.blogIdentifier))
       try {
         const mentions = (await client.getNotifications(target.blogIdentifier)).filter(item => ['mention', 'mention_in_post', 'mention_in_reply', 'user_mention', 'note_mention'].includes(item.type))
-        // All mention dedupe inserts go out in ONE batch (one subrequest); push
-        // only for the keys this run actually created.
+        // All mention dedupe inserts go out in ONE batch (one subrequest); the
+        // summary push (sent once per workspace after the loop) covers them.
         if (mentions.length) {
           const stmts = mentions.map(mention => db.prepare('INSERT INTO activity_notification_deliveries (workspace_id,notification_key,created_at) VALUES (?,?,?) ON CONFLICT(workspace_id,notification_key) DO NOTHING RETURNING notification_key')
             .bind(target.workspaceId, `mention:${target.blogIdentifier}:${mention.id}`, now.toISOString()))
           const results = await db.batch(stmts)
-          for (let i = 0; i < mentions.length; i++) {
-            const mention = mentions[i]
-            const result = results[i]
-            const isNew = (result.meta?.changes ?? 0) > 0 || ((result.results ?? []) as Array<{ notification_key?: string }>).some(row => row.notification_key)
-            if (isNew) await sendWorkspacePush(env, target.workspaceId, { title: 'Puffin Post', body: `${mention.actor === 'anonymous' ? 'Someone' : mention.actor.replace(/\.tumblr\.com$/i, '')} tagged one of your blogs.`, url: '/#activity' })
+          const created = results.reduce((count, result) => count + (((result.results ?? []) as Array<{ notification_key?: string }>).filter(row => row.notification_key).length), 0)
+          if (created) {
+            const counts = summary.get(target.workspaceId) ?? { mentionCount: 0, tagCount: 0 }
+            summary.set(target.workspaceId, { mentionCount: counts.mentionCount + created, tagCount: counts.tagCount })
           }
         }
       } catch { /* Activity notifications are optional; thread refresh must still succeed. */ }
@@ -113,25 +123,29 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
         })
       // All writes for this target go out in ONE batch (one subrequest).
       const writes: D1PreparedStatement[] = []
+      let starterAborted = false
       for (const starter of starters) {
-        if (budget.remaining() <= 0) break
+        if (doneStarterIds.has(starter.id)) continue
+        if (budget.remaining() <= FINAL_WRITE_HEADROOM) { starterAborted = true; break }
         const root = canonicalBlogIdentifier(starter.rootBlogId)
         // One notes call per starter root post, shared by every branch of that
         // starter; skipped when the budget is spent.
         let activities: Awaited<ReturnType<typeof client.getThreadActivity>> = []
-        if (budget.remaining() >= 1) {
-          try {
-            activities = await client.getThreadActivity(root, starter.rootPostId)
-          } catch (starterErr) {
-            // A single starter's notes call failing should not sink the whole
-            // target: stamp the branches and move on to the next starter.
-            const message = starterErr instanceof Error ? starterErr.message.slice(0, 500) : 'Tumblr refresh failed'
-            for (const branch of starter.branches) {
-              writes.push(db.prepare('UPDATE reply_branches SET refresh_error=?,last_refresh_at=? WHERE workspace_id=? AND id=?')
-                .bind(message, now.toISOString(), target.workspaceId, branch.id))
-            }
-            continue
+        try {
+          activities = await client.getThreadActivity(root, starter.rootPostId)
+        } catch (starterErr) {
+          // Budget exhaustion inside the starter loop is a clean partial stop:
+          // no refresh_error, and the next run resumes at this starter.
+          if (starterErr instanceof Error && starterErr.message === 'Subrequest budget exhausted') { starterAborted = true; break }
+          // A single starter's notes call failing should not sink the whole
+          // target: stamp the branches and move on to the next starter.
+          failed++
+          const message = starterErr instanceof Error ? starterErr.message.slice(0, 500) : 'Tumblr refresh failed'
+          for (const branch of starter.branches) {
+            writes.push(db.prepare('UPDATE reply_branches SET refresh_error=?,last_refresh_at=? WHERE workspace_id=? AND id=?')
+              .bind(message, now.toISOString(), target.workspaceId, branch.id))
           }
+          continue
         }
         // Branches the apply callback updates get a full write (status,
         // latest_post_id, last_refresh_at, etc.); branches with no new
@@ -152,7 +166,12 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
             db.prepare(`INSERT INTO activities (id,workspace_id,starter_id,reply_branch_id,type,actor,source,metadata_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
               .bind(crypto.randomUUID(), target.workspaceId, starter.id, branch.id, 'tumblr_reply_detected', activity.blogIdentifier, 'tumblr', JSON.stringify({ postId: activity.postId }), now.toISOString()),
           )
-          if (finalStatus === 'your_turn' && branch.status !== 'your_turn') await sendWorkspacePush(env, target.workspaceId, { title: 'Puffin Post', body: 'A tracked thread has a new reply waiting on you.', url: '/#inbox' })
+          // Count instead of pushing per branch; one summary push per
+          // workspace goes out after the target loop.
+          if (finalStatus === 'your_turn' && branch.status !== 'your_turn') {
+            const counts = summary.get(target.workspaceId) ?? { mentionCount: 0, tagCount: 0 }
+            summary.set(target.workspaceId, { mentionCount: counts.mentionCount, tagCount: counts.tagCount + 1 })
+          }
         })
         // Stamp only the branches the apply callback did not already update.
         for (const branch of starter.branches) {
@@ -160,13 +179,14 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
           writes.push(db.prepare('UPDATE reply_branches SET last_refresh_at=?,refresh_error=NULL WHERE workspace_id=? AND id=?')
             .bind(now.toISOString(), target.workspaceId, branch.id))
         }
+        doneStarterIds.add(starter.id)
       }
       const cursor = db.prepare(`INSERT INTO refresh_cursors (workspace_id,character_blog_id,last_attempt_at,last_successful_refresh_at,last_error,failure_count)
         VALUES (?,?,?,?,NULL,0) ON CONFLICT(workspace_id,character_blog_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,last_successful_refresh_at=excluded.last_successful_refresh_at,last_error=NULL,failure_count=0`)
         .bind(target.workspaceId, target.id, now.toISOString(), now.toISOString())
-      if (writes.length) writes.push(cursor)
-      await db.batch(writes)
+      if (writes.length) { writes.push(cursor); await db.batch(writes) }
       refreshed++
+      if (starterAborted) break
     } catch (error) {
       // Budget exhaustion is a clean partial stop: keep the work already done,
       // write no refresh_error, and leave the rest for the next run.
@@ -183,9 +203,24 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
       failed++
     }
   }
-  const last = selected.at(-1)
-  if (last) {
-    const scheduler = db.prepare(`INSERT INTO refresh_scheduler_state (id,last_character_blog_id,updated_at) VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET last_character_blog_id=excluded.last_character_blog_id,updated_at=excluded.updated_at`).bind(last.id, now.toISOString())
+  // One summary push per workspace with anything to report. The push cost is
+  // 1 D1 read (subscription list) + 1 fetch per subscription, all counted
+  // against the budget before the fetches go out. sendWorkspacePush uses
+  // env.DB directly (not the counting wrapper) so the D1 read is accounted
+  // for here, not double-counted.
+  for (const [workspaceId, counts] of summary) {
+    if (abortedByBudget || budget.remaining() <= FINAL_WRITE_HEADROOM) break
+    const subCount = (await env.DB.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE workspace_id=?').bind(workspaceId).first<{ n: number }>())?.n ?? 0
+    budget.consumeD1()
+    if (budget.remaining() < subCount) break
+    for (let i = 0; i < subCount; i++) budget.consumeFetch()
+    const body = [counts.mentionCount ? `${counts.mentionCount} replies waiting` : null, counts.tagCount ? `${counts.tagCount} new tags` : null].filter(Boolean).join(', ')
+    await sendWorkspacePush(env, workspaceId, { title: 'Puffin Post', body, url: '/#inbox' })
+  }
+  // Save the last target actually processed, so targets postponed for budget
+  // go first next run instead of being rotated past.
+  if (lastTargetId) {
+    const scheduler = db.prepare(`INSERT INTO refresh_scheduler_state (id,last_character_blog_id,updated_at) VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET last_character_blog_id=excluded.last_character_blog_id,updated_at=excluded.updated_at`).bind(lastTargetId, now.toISOString())
     await db.batch([scheduler])
   }
   return { selected: selected.length, refreshed, failed, skipped, fetchesUsed: budget.usedCount() }
