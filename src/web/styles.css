@@ -212,3 +212,6 @@ h1,h2,h3,.page-heading{text-wrap:balance}
   .mobile-more{padding-bottom:env(safe-area-inset-bottom)}
 }
 .filter-bar .filter-archived{flex-direction:row;align-items:center;align-self:end;gap:.5rem;min-height:2.75rem}.filter-bar .filter-archived input{width:auto;min-height:0;padding:0;accent-color:var(--sea)}
+/* Desktop sidebar footer flows after the links instead of being pinned, so it can never cover them; short screens scroll the nav. */
+@media (min-width:1025px){.primary-nav{display:flex;flex-direction:column;padding-bottom:1.5rem}.primary-nav .nav-note{position:static;margin-top:auto;padding-top:1.25rem}}
+.primary-nav .shortcut-hint{color:#fff;border-color:#81949a;background:transparent}.primary-nav .shortcut-hint:hover{background:#2e4650}

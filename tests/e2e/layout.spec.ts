@@ -127,11 +127,13 @@ for (const viewport of VIEWPORTS) {
   })
 }
 
-test('layout 1280x720: sidebar footer buttons do not overlap', async ({ page }) => {
+test.describe('sidebar footer at 1280x720', () => {
   test.use({ viewport: { width: 1280, height: 720 } })
+  test('sidebar footer buttons do not overlap', async ({ page }) => {
   await mockApi(page)
   await page.goto('#characters')
   await page.waitForSelector('.character-card', { timeout: 15000 })
   await page.waitForTimeout(300)
   await assertNavFooterButtonsClear(page)
+})
 })
