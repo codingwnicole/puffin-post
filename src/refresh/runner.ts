@@ -68,11 +68,10 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   const doneStarterIds = new Set<string>()
   // One summary push per workspace per run: collect counts here, send once
   // after the target loop, and count its cost against the budget.
-  const summary = new Map<string, { mentionCount: number; tagCount: number }>()
+  const summary = new Map<string, { tagCount: number; replyCount: number }>()
   let lastTargetId: string | null = null
-  let abortedByBudget = false
   for (const target of selected) {
-    if (budget.remaining() <= FINAL_WRITE_HEADROOM) { skipped++; abortedByBudget = true; continue }
+    if (budget.remaining() <= FINAL_WRITE_HEADROOM) { skipped++; continue }
     try {
       lastTargetId = target.id
       const client = createTumblrClient({ consumerKey: env.TUMBLR_CONSUMER_KEY, consumerSecret: env.TUMBLR_CONSUMER_SECRET,
@@ -90,8 +89,8 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
           const results = await db.batch(stmts)
           const created = results.reduce((count, result) => count + (((result.results ?? []) as Array<{ notification_key?: string }>).filter(row => row.notification_key).length), 0)
           if (created) {
-            const counts = summary.get(target.workspaceId) ?? { mentionCount: 0, tagCount: 0 }
-            summary.set(target.workspaceId, { mentionCount: counts.mentionCount + created, tagCount: counts.tagCount })
+            const counts = summary.get(target.workspaceId) ?? { tagCount: 0, replyCount: 0 }
+            summary.set(target.workspaceId, { tagCount: counts.tagCount + created, replyCount: counts.replyCount })
           }
         }
       } catch { /* Activity notifications are optional; thread refresh must still succeed. */ }
@@ -169,8 +168,8 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
           // Count instead of pushing per branch; one summary push per
           // workspace goes out after the target loop.
           if (finalStatus === 'your_turn' && branch.status !== 'your_turn') {
-            const counts = summary.get(target.workspaceId) ?? { mentionCount: 0, tagCount: 0 }
-            summary.set(target.workspaceId, { mentionCount: counts.mentionCount, tagCount: counts.tagCount + 1 })
+            const counts = summary.get(target.workspaceId) ?? { tagCount: 0, replyCount: 0 }
+            summary.set(target.workspaceId, { tagCount: counts.tagCount, replyCount: counts.replyCount + 1 })
           }
         })
         // Stamp only the branches the apply callback did not already update.
@@ -209,12 +208,12 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   // env.DB directly (not the counting wrapper) so the D1 read is accounted
   // for here, not double-counted.
   for (const [workspaceId, counts] of summary) {
-    if (abortedByBudget || budget.remaining() <= FINAL_WRITE_HEADROOM) break
+    if (budget.remaining() <= FINAL_WRITE_HEADROOM) break
     const subCount = (await env.DB.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE workspace_id=?').bind(workspaceId).first<{ n: number }>())?.n ?? 0
     budget.consumeD1()
-    if (budget.remaining() < subCount) break
+    if (budget.remaining() - 1 < subCount) break // keep 1 for the scheduler batch
     for (let i = 0; i < subCount; i++) budget.consumeFetch()
-    const body = [counts.mentionCount ? `${counts.mentionCount} replies waiting` : null, counts.tagCount ? `${counts.tagCount} new tags` : null].filter(Boolean).join(', ')
+    const body = [counts.replyCount ? `${counts.replyCount} replies waiting` : null, counts.tagCount ? `${counts.tagCount} new tags` : null].filter(Boolean).join(', ')
     await sendWorkspacePush(env, workspaceId, { title: 'Puffin Post', body, url: '/#inbox' })
   }
   // Save the last target actually processed, so targets postponed for budget
