@@ -72,6 +72,26 @@ async function assertNavFooterClear(page: Page) {
   test.expect(overlap).toBeNull()
 }
 
+// The sidebar footer's own buttons must not cover each other (they share the .nav-note box).
+async function assertNavFooterButtonsClear(page: Page) {
+  const overlap = await page.evaluate(() => {
+    const hint = document.querySelector<HTMLElement>('.shortcut-hint')
+    const signOut = document.querySelector<HTMLElement>('.sign-out')
+    if (!hint || !signOut) return null
+    const h = hint.getBoundingClientRect()
+    const s = signOut.getBoundingClientRect()
+    const intersects = h.left < s.right && h.right > s.left && h.top < s.bottom && h.bottom > s.top
+    return {
+      hintVisible: hint.offsetParent !== null && h.width > 0 && h.height > 0,
+      signOutVisible: signOut.offsetParent !== null && s.width > 0 && s.height > 0,
+      intersects,
+    }
+  })
+  test.expect(overlap?.hintVisible).toBe(true)
+  test.expect(overlap?.signOutVisible).toBe(true)
+  test.expect(overlap?.intersects).toBe(false)
+}
+
 const VIEWPORTS = [
   { name: 'laptop-1280', width: 1280, height: 720 },
   { name: 'laptop-1366', width: 1366, height: 768 },
@@ -106,3 +126,12 @@ for (const viewport of VIEWPORTS) {
     }
   })
 }
+
+test('layout 1280x720: sidebar footer buttons do not overlap', async ({ page }) => {
+  test.use({ viewport: { width: 1280, height: 720 } })
+  await mockApi(page)
+  await page.goto('#characters')
+  await page.waitForSelector('.character-card', { timeout: 15000 })
+  await page.waitForTimeout(300)
+  await assertNavFooterButtonsClear(page)
+})

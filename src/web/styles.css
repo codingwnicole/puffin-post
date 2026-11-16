@@ -211,3 +211,4 @@ h1,h2,h3,.page-heading{text-wrap:balance}
   .primary-nav>a,.mobile-more summary,button,.text-button,.text-action,.turn-button,.do-next,.secondary-button,.icon-picker{min-height:44px}
   .mobile-more{padding-bottom:env(safe-area-inset-bottom)}
 }
+.filter-bar .filter-archived{flex-direction:row;align-items:center;align-self:end;gap:.5rem;min-height:2.75rem}.filter-bar .filter-archived input{width:auto;min-height:0;padding:0;accent-color:var(--sea)}
