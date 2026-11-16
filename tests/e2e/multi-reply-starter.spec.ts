@@ -1,41 +1,71 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+// Signed-in base mock: the shell renders pages only after /api/auth/session is 200.
+// Unmatched /api/** returns [] so side fetches (tags, etc.) render empty lists.
+// Each test registers its own route afterwards; Playwright tries the newest route
+// first, and that route calls route.fallback() for anything it does not handle.
+async function signedIn(page: Page) {
+  await page.route('**/api/**', route => {
+    const path = new URL(route.request().url()).pathname
+    const json = path === '/api/auth/session' ? { user: { id: 'u1', name: 'Tester' } }
+      : path === '/api/tumblr-activity/unread-count' ? { count: 0 }
+      : []
+    return route.fulfill({ json })
+  })
+}
+
+// Branch cards are collapsed by default; the trigger button expands one.
+const card = (page: Page, partner: string) => page.locator('article.branch-card').filter({ has: page.locator('.branch-meta', { hasText: partner }) })
+const expand = (page: Page, partner: string) => card(page, partner).locator('.scene-card-trigger').click()
 
 test('three participants are actionable independently from inbox and starter detail', async ({ page }) => {
   const starter = { id:'s',title:'Open starter',characterId:'c',description:'Shared scene',rootPostId:'123',rootBlogId:'writer.tumblr.com' }
   const rows = ['One','Two','Three'].map((name,i) => ({ id:`b${i}`,starterId:'s',title:starter.title,characterId:'c',characterName:'Writer',partnerLabel:name,partnerId:null,status:'your_turn',notes:'',rootPostId:'123',rootBlogId:'writer.tumblr.com' }))
+  const patched: string[] = []
+  await signedIn(page)
   await page.route('**/api/**', async route => {
-    const url = new URL(route.request().url())
-    if (url.pathname === '/api/starters/options') return route.fulfill({ json:{ characters:[{ id:'c',name:'Writer' }],partners:[] } })
-    if (url.pathname === '/api/inbox') return route.fulfill({ json:{ branches:rows.filter(r => r.status !== 'archived'),yourTurnCount:rows.filter(r => r.status === 'your_turn').length } })
-    if (url.pathname === '/api/starters/s') return route.fulfill({ json:{ starter,branches:rows } })
-    if (route.request().method() === 'PATCH') {
-      const row = rows.find(r => url.pathname.endsWith(r.id))!
+    const path = new URL(route.request().url()).pathname, method = route.request().method()
+    if (path === '/api/starters/options') return route.fulfill({ json:{ characters:[{ id:'c',name:'Writer' }],partners:[] } })
+    if (path === '/api/inbox') return route.fulfill({ json:{ branches:rows.filter(r => r.status !== 'archived'),yourTurnCount:rows.filter(r => r.status === 'your_turn').length,overdueDraftCount:0,dueSoonCount:0 } })
+    if (path === '/api/starters/s' && method === 'PATCH') return route.fulfill({ json:starter })
+    if (path === '/api/starters/s') return route.fulfill({ json:{ starter,branches:rows } })
+    if (path.startsWith('/api/branches/') && method === 'PATCH') {
+      const row = rows.find(r => path === `/api/branches/${r.id}`)!
+      patched.push(row.id)
       Object.assign(row,route.request().postDataJSON())
       return route.fulfill({ json:row })
     }
-    return route.fulfill({ status:404 })
+    return route.fallback()
   })
   await page.goto('/')
-  await expect(page.getByText('3 replies need you')).toBeVisible()
-  const first = page.getByRole('article').filter({ hasText:'One' })
-  await first.getByLabel('Status').selectOption('archived')
-  await first.getByRole('button',{ name:'Save branch' }).click()
-  await expect(page.getByText('2 replies need you')).toBeVisible()
-  await expect(page.getByRole('article')).toHaveCount(2)
-  await page.getByRole('link',{ name:'Open starter',exact:true }).first().click()
-  await expect(page.getByText('Shared scene')).toBeVisible()
-  await expect(page.getByRole('article')).toHaveCount(3)
-  await expect(page.getByRole('article').filter({ hasText:'One' }).getByLabel('Status')).toHaveValue('archived')
-  await expect(page.getByRole('article').filter({ hasText:'Two' }).getByLabel('Status')).toHaveValue('your_turn')
+  await expect(page.getByRole('heading',{ name:/Your turn 3 replies/ })).toBeVisible()
+  await expect(page.locator('article.branch-card')).toHaveCount(3)
+  // Archive only the first participant; the editor autosaves when focus leaves it.
+  await expand(page,'One')
+  const status = card(page,'One').getByLabel('Status')
+  await status.focus()
+  await status.selectOption('archived')
+  await status.blur()
+  await expect(page.getByRole('heading',{ name:/Your turn 2 replies/ })).toBeVisible()
+  await expect(page.locator('article.branch-card')).toHaveCount(2)
+  expect([...new Set(patched)]).toEqual(['b0'])
+  // Starter detail still lists every participant with its own status.
+  await page.evaluate(() => { location.hash = 'starter/s' })
+  await expect(page.getByText('Shared scene',{ exact:true })).toBeVisible()
+  await expect(page.locator('article.branch-card')).toHaveCount(3)
+  await expect(card(page,'One').locator('.status-badge')).toHaveText('Archived')
+  await expect(card(page,'Two').locator('.status-badge')).toHaveText('Your turn')
+  await expect(card(page,'Three').locator('.status-badge')).toHaveText('Your turn')
 })
 
 test('creates a shared starter and adds a participant without duplicating it', async ({ page }) => {
   let saved: any, added: any
   const rows: any[] = []
+  await signedIn(page)
   await page.route('**/api/**',async route => {
     const path = new URL(route.request().url()).pathname, method = route.request().method()
     if (path === '/api/starters/options') return route.fulfill({ json:{ characters:[{ id:'c',name:'Writer' }],partners:[{ id:'p',name:'Partner' }] } })
-    if (path === '/api/inbox') return route.fulfill({ json:{ branches:[],yourTurnCount:0 } })
+    if (path === '/api/inbox') return route.fulfill({ json:{ branches:[],yourTurnCount:0,overdueDraftCount:0,dueSoonCount:0 } })
     if (path === '/api/starters' && method === 'POST') { saved = route.request().postDataJSON(); return route.fulfill({ status:201,json:{ id:'s',...saved } }) }
     if (path === '/api/starters/s') return route.fulfill({ json:{ starter:{ id:'s',...saved },branches:rows } })
     if (path === '/api/starters/s/branches') {
@@ -43,32 +73,35 @@ test('creates a shared starter and adds a participant without duplicating it', a
       rows.push({ id:'b',starterId:'s',...saved,characterName:'Writer',partnerLabel:'Partner',status:'your_turn',...added })
       return route.fulfill({ status:201,json:rows[0] })
     }
-    return route.fulfill({ status:404 })
+    return route.fallback()
   })
   await page.goto('/')
-  await page.getByText('Add Tumblr starter',{ exact:true }).click()
-  await page.getByLabel('Starter title').fill('Rooftop scene')
-  await page.getByLabel('Character',{ exact:true }).selectOption('c')
-  await page.getByLabel('Tumblr blog').fill('writer.tumblr.com')
-  await page.getByLabel('Tumblr post ID').fill('123')
-  await page.getByLabel('Shared description').fill('Shared by every branch')
-  await page.getByRole('button',{ name:'Create starter',exact:true }).click()
+  // Quick Add is hidden until its #quick-add anchor is targeted.
+  await page.getByRole('link',{ name:'+ Add a thread' }).click()
+  const quickAdd = page.locator('#quick-add')
+  await quickAdd.getByLabel('Scene label').fill('Rooftop scene')
+  await quickAdd.getByLabel('Character',{ exact:true }).selectOption('c')
+  await quickAdd.getByLabel('Scene premise').fill('Shared by every branch')
+  await quickAdd.getByRole('button',{ name:'Add thread',exact:true }).click()
   await expect(page.getByRole('heading',{ name:'Rooftop scene',exact:true })).toBeVisible()
-  await page.getByLabel('Partner').selectOption('p')
-  await page.getByLabel('Branch notes').fill('Only for this participant')
-  await page.getByRole('button',{ name:'Add branch',exact:true }).click()
-  await expect(page.getByRole('article')).toHaveCount(1)
-  await expect(page.getByText('Shared by every branch')).toBeVisible()
+  expect(saved).toMatchObject({ title:'Rooftop scene',characterId:'c',description:'Shared by every branch' })
+  const addForm = page.locator('form').filter({ hasText:'Add participant branch' })
+  await addForm.getByLabel('Partner').selectOption('p')
+  await addForm.getByLabel('Branch notes').fill('Only for this participant')
+  await addForm.getByRole('button',{ name:'Add branch',exact:true }).click()
+  await expect(page.locator('article.branch-card')).toHaveCount(1)
+  await expect(page.locator('p.preserve-lines').filter({ hasText:'Shared by every branch' })).toBeVisible()
   expect(added).toEqual({ partnerId:'p',notes:'Only for this participant' })
 })
 
 test('direct starter navigation updates the record and participant action target', async ({ page }) => {
   const fetched: string[] = [], targets: string[] = []
+  await signedIn(page)
   await page.route('**/api/**',async route => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/starters/options') return route.fulfill({ json:{ characters:[],partners:[] } })
     const match = /^\/api\/starters\/(one|two)(\/branches)?$/.exec(path)
-    if (!match) return route.fulfill({ status:404 })
+    if (!match) return route.fallback()
     if (match[2]) { targets.push(match[1]); return route.fulfill({ status:201,json:{ id:'branch' } }) }
     fetched.push(match[1])
     return route.fulfill({ json:{ starter:{ id:match[1],title:`Starter ${match[1]}`,description:`Scene ${match[1]}`,rootBlogId:'writer.tumblr.com',rootPostId:'123' },branches:[] } })
@@ -88,10 +121,13 @@ test('direct starter navigation updates the record and participant action target
 test('a delayed previous starter response cannot overwrite the current starter', async ({ page }) => {
   let releasePrevious!: () => void
   const previousPending = new Promise<void>(resolve => { releasePrevious = resolve })
+  await signedIn(page)
   await page.route('**/api/**',async route => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/starters/options') return route.fulfill({ json:{ characters:[],partners:[] } })
-    const id = path.split('/').at(-1)!
+    const match = /^\/api\/starters\/(one|two)$/.exec(path)
+    if (!match) return route.fallback()
+    const id = match[1]
     if (id === 'one') await previousPending
     return route.fulfill({ json:{ starter:{ id,title:`Starter ${id}`,description:`Scene ${id}` },branches:[] } })
   })
@@ -114,19 +150,24 @@ test('shows a refresh warning only on the affected branch in inbox and starter d
     { id:'affected',starterId:'s',title:starter.title,characterId:'c',characterName:'Writer',partnerLabel:'Friend',partnerId:null,status:'their_turn',notes:'',rootPostId:'123',rootBlogId:'writer.tumblr.com',refreshError:'Tumblr refresh failed (503)' },
     { id:'healthy',starterId:'s',title:starter.title,characterId:'c',characterName:'Writer',partnerLabel:'Other',partnerId:null,status:'their_turn',notes:'',rootPostId:'123',rootBlogId:'writer.tumblr.com',refreshError:null },
   ]
+  await signedIn(page)
   await page.route('**/api/**', async route => {
     const path = new URL(route.request().url()).pathname
     if (path === '/api/starters/options') return route.fulfill({ json:{ characters:[{ id:'c',name:'Writer' }],partners:[] } })
-    if (path === '/api/inbox') return route.fulfill({ json:{ branches,yourTurnCount:0 } })
+    if (path === '/api/inbox') return route.fulfill({ json:{ branches,yourTurnCount:0,overdueDraftCount:0,dueSoonCount:0 } })
     if (path === '/api/starters/s') return route.fulfill({ json:{ starter,branches } })
-    return route.fulfill({ status:404 })
+    return route.fallback()
   })
+  const check = async () => {
+    await expand(page,'Friend')
+    await expand(page,'Other')
+    await expect(card(page,'Friend').getByRole('status')).toHaveText('Refresh needs attention: Tumblr refresh failed (503)')
+    await expect(card(page,'Other').getByLabel('Status')).toBeVisible()
+    await expect(card(page,'Other').getByRole('status')).toHaveCount(0)
+  }
   await page.goto('/')
-  const affected = page.getByRole('article').filter({ hasText:'Friend' })
-  const healthy = page.getByRole('article').filter({ hasText:'Other' })
-  await expect(affected.getByRole('status')).toHaveText('Refresh needs attention: Tumblr refresh failed (503)')
-  await expect(healthy.getByRole('status')).toHaveCount(0)
-  await affected.getByRole('link',{ name:'Refresh test',exact:true }).click()
-  await expect(page.getByRole('article').filter({ hasText:'Friend' }).getByRole('status')).toHaveText('Refresh needs attention: Tumblr refresh failed (503)')
-  await expect(page.getByRole('article').filter({ hasText:'Other' }).getByRole('status')).toHaveCount(0)
+  await check()
+  await page.evaluate(() => { location.hash = 'starter/s' })
+  await expect(page.getByRole('heading',{ name:'Refresh test',exact:true })).toBeVisible()
+  await check()
 })
