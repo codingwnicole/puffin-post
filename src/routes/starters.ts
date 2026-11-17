@@ -23,6 +23,16 @@ function compactThreadSummary(value?: string) {
   return sentences.length > 360 ? `${sentences.slice(0, 357).trimEnd()}…` : sentences
 }
 
+// Truncate a captured who/where field to a word boundary so a starter title
+// never swallows the rest of the post; leave room for the ellipsis.
+function capAtWordBoundary(value: string, max: number) {
+  if (value.length <= max) return value
+  let cut = value.slice(0, max - 1)
+  const space = cut.lastIndexOf(' ')
+  if (space >= 1) cut = cut.slice(0, space)
+  return `${cut.trimEnd()}…`
+}
+
 // Build an auto-title from the character names Puffin parsed off the post.
 // Used when there is no declared "who:" header, so adding a thread from
 // anywhere still yields a real character name rather than a bare placeholder.
@@ -108,12 +118,17 @@ export function starterRoutes() {
     // Some groups put the RP header on the tagged reblog; others put it on the
     // original starter. Read both, in that order, so neither convention loses.
     const parserSource = [clickedPost.parserText ?? clickedPost.preview, post.parserText ?? post.preview].filter(Boolean).join('\n')
-    const who = parserSource?.match(/\bwho\s*:\s*(.+?)(?=\bwhere\s*:|$)/i)?.[1]?.trim()
-    const where = parserSource?.match(/\bwhere\s*:\s*(.+?)(?=$)/i)?.[1]?.trim()
-    const suggestedTitle = selectedCharacter?.name ? `${selectedCharacter.name}${who ? ` × ${who.replace(/@[^\s,]+/g, '').replace(/\bft\.?\b/i, '').replace(/\s+/g, ' ').replace(/^\W+|\W+$/g, '') || 'writing partner'}` : ''}${where ? ` — ${where}` : ''}` : post.title
+    // Stop each capture at the first line break or the next RP-header label, so a
+    // "where:" value never swallows the paragraphs that follow the header.
+    const whoCaptured = parserSource?.match(/\bwho\s*:\s*(.+?)(?=\bwho\s*:|\bwhere\s*:|\bwhen\s*:|\btags\s*:|[\r\n]|$)/i)?.[1]?.trim()
+    const whereCaptured = parserSource?.match(/\bwhere\s*:\s*(.+?)(?=\bwho\s*:|\bwhere\s*:|\bwhen\s*:|\btags\s*:|[\r\n]|$)/i)?.[1]?.trim()
+    const whoDisplay = whoCaptured ? capAtWordBoundary(whoCaptured.replace(/@[^\s,]+/g, '').replace(/\bft\.?\b/i, '').replace(/\s+/g, ' ').replace(/^\W+|\W+$/g, ''), 60) || 'writing partner' : undefined
+    const whereDisplay = whereCaptured ? capAtWordBoundary(whereCaptured, 60) : undefined
+    const capTitle = (title: string) => capAtWordBoundary(title, 120)
+    const suggestedTitle = selectedCharacter?.name ? capTitle(`${selectedCharacter.name}${whoDisplay ? ` × ${whoDisplay}` : ''}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : post.title
     const parsedCharacterNames = parseDeclaredCharacterNames(parserSource)
     const partnerNames = parsedCharacterNames.filter(name => name.localeCompare(selectedCharacter?.name ?? '', undefined, { sensitivity:'accent' }) !== 0)
-    const parsedTitle = selectedCharacter?.name && partnerNames.length ? `${selectedCharacter.name} × ${partnerNames.join(' × ')}${where ? ` — ${where}` : ''}` : undefined
+    const parsedTitle = selectedCharacter?.name && partnerNames.length ? capTitle(`${selectedCharacter.name} × ${partnerNames.join(' × ')}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : undefined
     return { client, reference, tags:[...tags], candidates, title:post.title, characterName:selectedCharacter?.name, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [clickedPost.rootPostId, clickedPost.id, reference.postId]) }
   }
 
