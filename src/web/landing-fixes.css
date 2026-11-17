@@ -60,3 +60,7 @@ html,body,#root{min-width:0;max-width:100%}main,section,form,.tracking-card,.set
 .stack-form button{justify-self:start}
 .activity-blog-filter{display:flex;align-items:center;gap:.6rem;margin:1rem 0;font-weight:650}
 .activity-blog-filter select{width:auto;min-width:12rem;min-height:2.75rem;padding:.65rem .75rem;border:1px solid var(--border);border-radius:.65rem;background:var(--surface);color:var(--text)}
+.branch-premise{padding-block:0;padding-left:0;padding-right:0;border-block:.7rem solid var(--surface-muted)}
+.scene-card-trigger{grid-template-columns:minmax(0,1fr);justify-items:stretch}
+.scene-card-trigger>*{min-width:0}
+@media(min-width:1025px){.character-stacks{grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr))}}
