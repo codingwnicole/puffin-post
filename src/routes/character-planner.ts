@@ -69,6 +69,19 @@ export function characterPlannerRoutes() {
     return c.json({id:characterId,name:plan.name},201)
   })
 
+  // Reverse of the character route's return-to-planner: undo a "moved to planner".
+  // Re-activate the (hiatus) character and delete the plan it was turned into.
+  app.post('/return-to-cast/:characterId', async c => {
+    const s = await requireWorkspace(c), id = c.req.param('characterId')
+    const plan = await s.db.prepare('SELECT id,name FROM character_plans WHERE workspace_id=? AND source_character_id=?').bind(s.workspaceId, id).first<{id:string;name:string}>()
+    if (!plan) throw new HTTPException(404, { message: 'No planner idea for this character' })
+    await s.db.batch([
+      s.db.prepare("UPDATE characters SET state='active' WHERE workspace_id=? AND id=? AND state='hiatus'").bind(s.workspaceId, id),
+      s.db.prepare('DELETE FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId, plan.id),
+    ])
+    return c.json({ id, name: plan.name }, 200)
+  })
+
   app.delete('/:id', async c => {
     const s = await requirePlan(c, c.req.param('id'))
     const plan=await s.db.prepare('SELECT icon_object_key AS iconObjectKey,source_character_id AS sourceCharacterId FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId,c.req.param('id')).first<{iconObjectKey:string|null;sourceCharacterId:string|null}>()

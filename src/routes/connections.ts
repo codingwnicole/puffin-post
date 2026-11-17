@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { z } from 'zod'
 import type { Env } from '../worker'
 import { requireWorkspace } from '../auth/sessions'
 import { canonicalBlogIdentifier, normalizeTumblrTag } from '../tumblr/normalize'
@@ -42,8 +43,18 @@ export function connectionRoutes() {
     }
     const id = crypto.randomUUID()
     const displayLabel = input.displayLabel?.trim() || blogIdentifier
-    await scope.db.prepare('INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label,character_tag) VALUES (?,?,?,?,?,?,?)')
-      .bind(id,scope.workspaceId,input.characterId,c.req.param('connectionId'),blogIdentifier,displayLabel,characterTag).run()
+    try{
+      await scope.db.prepare('INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label,character_tag) VALUES (?,?,?,?,?,?,?)')
+        .bind(id,scope.workspaceId,input.characterId,c.req.param('connectionId'),blogIdentifier,displayLabel,characterTag).run()
+    }catch(error){
+      // A concurrent save of the same (character, blog) can win the unique index
+      // between the existing-check above and this insert. Return the winner's row.
+      if(String((error as {message?:string}).message??'').includes('SQLITE_CONSTRAINT_UNIQUE')){
+        const winner=await scope.db.prepare('SELECT id FROM character_blogs WHERE workspace_id=? AND character_id=? AND blog_identifier=?').bind(scope.workspaceId,input.characterId,blogIdentifier).first<{id:string}>()
+        if(winner) return c.json({ id:winner.id, characterId:input.characterId, connectionId:c.req.param('connectionId'), blogIdentifier, displayLabel, characterTag },201)
+      }
+      throw error
+    }
     return c.json({ id, characterId: input.characterId, connectionId:c.req.param('connectionId'), blogIdentifier, displayLabel, characterTag },201)
   })
   app.delete('/:connectionId/blogs/:assignmentId', async c => {

@@ -71,25 +71,36 @@ export async function createStarter(input: CreateStarterInput): Promise<Starter>
   // link-less and never collide.
   const threadRootId = input.threadRootId ?? input.rootPostId
   const threadRootBlogId = input.threadRootBlogId ?? input.rootBlogId
-  const existing = await db.prepare(`SELECT id, workspace_id AS workspaceId, character_id AS characterId, rp_group_id AS groupId,
+  const selectStarter = (where: string, params: (string | null)[]) =>
+    db.prepare(`SELECT id, workspace_id AS workspaceId, character_id AS characterId, rp_group_id AS groupId,
     title, source, root_post_id AS rootPostId, root_blog_id AS rootBlogId, thread_root_id AS threadRootId,
     thread_root_blog_id AS threadRootBlogId, description, created_at AS createdAt
-    FROM starters WHERE workspace_id = ? AND thread_root_blog_id = ? AND thread_root_id = ?
-    AND thread_root_blog_id IS NOT NULL AND thread_root_id IS NOT NULL LIMIT 1`)
-    .bind(workspaceId, threadRootBlogId, threadRootId).first<Starter>()
-  if (existing) {
-    return { ...existing, postUrl: `https://${existing.threadRootBlogId}/post/${existing.threadRootId}` }
-  }
+    FROM starters WHERE ${where} LIMIT 1`).bind(...params).first<Starter>()
+  const withPostUrl = (row: Starter) => ({ ...row, postUrl: `https://${row.threadRootBlogId}/post/${row.threadRootId}` })
+  const existing = await selectStarter(
+    'workspace_id = ? AND thread_root_blog_id = ? AND thread_root_id = ? AND thread_root_blog_id IS NOT NULL AND thread_root_id IS NOT NULL',
+    [workspaceId, threadRootBlogId, threadRootId])
+  if (existing) return withPostUrl(existing)
   const starter: Starter = {
     id: crypto.randomUUID(), workspaceId, characterId: input.characterId, groupId:input.groupId ?? null, title: input.title.trim(),
     source: 'tumblr', rootPostId: input.rootPostId, rootBlogId: input.rootBlogId, threadRootId, threadRootBlogId, postUrl: `https://${input.rootBlogId}/post/${input.rootPostId}`,
     description: input.description ?? '', createdAt: new Date().toISOString(), premise: '', archived: 0, archivedAt: null,
   }
-  await db.prepare(`
+  try {
+    await db.prepare(`
     INSERT INTO starters (id, workspace_id, character_id, rp_group_id, title, source, root_post_id, root_blog_id, thread_root_id, thread_root_blog_id, description, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(starter.id, workspaceId, starter.characterId, starter.groupId, starter.title, starter.source,
     starter.rootPostId, starter.rootBlogId, starter.threadRootId, starter.threadRootBlogId, starter.description, starter.createdAt).run()
+  } catch (error) {
+    // A concurrent create of the same thread can slip between the check above and
+    // this insert and win the unique index. Return the winner's row, never a 500.
+    if (String((error as { message?: string }).message ?? '').includes('SQLITE_CONSTRAINT_UNIQUE')) {
+      const winner = await selectStarter('workspace_id = ? AND thread_root_blog_id = ? AND thread_root_id = ?', [workspaceId, threadRootBlogId, threadRootId])
+      if (winner) return withPostUrl(winner)
+    }
+    throw error
+  }
   return { ...starter, postUrl: `https://${starter.threadRootBlogId}/post/${starter.threadRootId}` }
 }
 

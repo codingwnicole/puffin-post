@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import { api, peekCache, staleGet } from '../lib/api'
-import { toast, undoCharacterArchive } from '../lib/toast'
+import { toast, undoCharacterArchive, undoReturnToPlanner } from '../lib/toast'
 import { initialsFor } from '../components/InitialsAvatar'
 
 type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null }
@@ -113,7 +113,7 @@ export default function CharactersPage() {
   async function remove(id: string) { const row = rows.find(r => r.id === id); if (!row) return; setDeleteTarget({ id, name: row.name, threads: counts[id]?.total ?? 0 }); setDeleteStep('choose') }
   async function archiveCharacter(id: string) { const row = rows.find(r => r.id === id); if (!row) return; try { setError(''); setDeleteBusy(true); await api('/characters/' + id + '/archive', 'POST'); setDeleteTarget(null); setDeleteStep('choose'); await load(); toast(`Archived ${row.name}.`, undoCharacterArchive(id)) } catch (problem) { setError((problem as Error).message) } finally { setDeleteBusy(false) } }
   async function confirmDelete() { if (!deleteTarget) return; try { setError(''); setDeleteBusy(true); await api('/characters/' + deleteTarget.id, 'DELETE'); setDeleteTarget(null); setDeleteStep('choose'); await load() } catch (problem) { setError((problem as Error).message) } finally { setDeleteBusy(false) } }
-  async function returnToPlanner(id:string){try{setBusy(true);setError('');await api('/characters/'+id+'/return-to-planner','POST');await load();window.location.hash='planner'}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
+  async function returnToPlanner(id:string){const row=rows.find(r=>r.id===id);if(!row)return;try{setBusy(true);setError('');await api('/characters/'+id+'/return-to-planner','POST');toast('Moved '+row.name+' to the planner.',undoReturnToPlanner(id));await load();window.location.hash='planner'}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
   const card = (row: Character, index?: number) => <CharacterCard key={row.id} index={index} row={row} assignments={assignments} groups={groups} stat={counts[row.id] ?? { total: 0, mine: 0, theirs: 0 }} iconVersion={iconVersions[row.id]} busy={busy} addToGroup={addToGroup} upload={upload} remove={remove} returnToPlanner={returnToPlanner} showCreateGroup={() => setAddingGroup(true)} reportError={setError} />
   return <section aria-labelledby="page-title"><div className="character-page-heading"><div><h2 id="page-title" className="page-heading">Characters</h2><p className="page-description">Build your cast, connect their Tumblr, and place them in the RP spaces where they write.</p></div><div className="actions"><button onClick={() => setAddingGroup(!addingGroup)}>{addingGroup ? 'Close' : 'Add an RP'}</button><button onClick={() => setAdding(!adding)}>{adding ? 'Close' : 'Add character'}</button></div></div>
     {error && <p role="alert">{error}</p>}

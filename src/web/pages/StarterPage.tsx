@@ -18,21 +18,32 @@ export default function StarterPage({ id }: { id:string }) {
   async function savePremise() {
     try { setPremiseBusy(true); setError(''); await api(`/starters/${id}/premise`, 'PATCH', { premise }); setDetail(current => current ? { ...current, starter:{ ...current.starter, premise } } : current); setPremiseSaved(true); window.setTimeout(() => setPremiseSaved(false), 2500) } catch (problem) { setError((problem as Error).message) } finally { setPremiseBusy(false) }
   }
+  const [archiveBusy,setArchiveBusy] = useState(false)
   async function toggleArchive() {
+    const starter = detail?.starter
+    if (!starter) return
+    const wasArchived = Boolean(starter.archived)
+    setError('')
+    // Optimistic: flip the archived state now so the Archive/Restore button, the
+    // status note, and the inbox all update instantly. A background revalidate
+    // confirms it; a failed write rolls back and surfaces an alert.
+    setDetail(current => current ? { ...current, starter: { ...current.starter, archived: wasArchived ? 0 : 1 } } : current)
+    setArchiveBusy(true)
     try {
-      setError('')
-      const starter = detail!.starter
-      if (starter.archived) { await api(`/starters/${id}/restore`, 'POST'); await reload(); return }
-      await api(`/starters/${id}/archive`, 'POST'); await reload()
-      toast(`Archived “${starter.title}”.`, undoStarterArchive(id))
-    } catch (problem) { setError((problem as Error).message) }
+      if (wasArchived) { await api(`/starters/${id}/restore`, 'POST') }
+      else { await api(`/starters/${id}/archive`, 'POST'); toast(`Archived “${starter.title}”.`, undoStarterArchive(id)) }
+      await reload()
+    } catch (problem) {
+      setDetail(current => current ? { ...current, starter: { ...current.starter, archived: wasArchived ? 1 : 0 } } : current)
+      setError((problem as Error).message)
+    } finally { setArchiveBusy(false) }
   }
   const latestReply = detail?.branches.reduce<InboxBranch | undefined>((latest, branch) => (!latest || (branch.lastActivityAt ?? '').localeCompare(latest.lastActivityAt ?? '') > 0) ? branch : latest, undefined)
   return <section aria-labelledby="starter-title"><a href="#inbox">Back to Inbox</a>
     <h2 className="page-heading" id="starter-title">{detail?.starter.title ?? 'Starter'}</h2>
     {error && <p role="alert">{error}</p>}
     {detail && <><div className="actions starter-actions"><p>{options.characters.find(c => c.id === detail.starter.characterId)?.name}</p>
-      <button onClick={toggleArchive} disabled={premiseBusy}>{detail.starter.archived ? 'Restore thread' : 'Archive thread'}</button>
+      <button onClick={toggleArchive} disabled={premiseBusy || archiveBusy}>{detail.starter.archived ? 'Restore thread' : 'Archive thread'}</button>
       <button className="danger-button" onClick={async()=>{if(!window.confirm('Permanently delete this whole thread and every reply branch? This cannot be undone. If you just want it out of your inbox, Archive thread instead.'))return;try{await api(`/starters/${id}`,'DELETE');window.location.hash='inbox'}catch(problem){setError((problem as Error).message)}}}>Delete thread</button></div>
       {Boolean(detail.starter.archived) && <p className="field-help" role="status">This thread is archived. It is excluded from inbox counts and refreshes until you restore it.</p>}
       <div className="tracking-card starter-premise"><p className="eyebrow">Premise · your notes</p><textarea rows={5} value={premise} onChange={e=>setPremise(e.target.value)} placeholder="What is this scene about? Your own notes — sync never touches these."></textarea><div className="actions"><button onClick={savePremise} disabled={premiseBusy || premise === (detail.starter.premise ?? '')}>{premiseBusy ? 'Saving…' : 'Save premise'}</button>{premiseSaved && <span role="status">Premise saved</span>}</div></div>
