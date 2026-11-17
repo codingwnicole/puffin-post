@@ -154,6 +154,111 @@ for (const mode of ['light', 'dark'] as const) {
   })
 }
 
+// Walk every visible element that carries direct text on the named page and
+// assert WCAG contrast against the nearest opaque ancestor background.
+const CONTRAST_PAGES: Array<{ name: string; hash: string }> = [
+  { name: 'inbox', hash: '#inbox' },
+  { name: 'characters', hash: '#characters' },
+  { name: 'parking-lot', hash: '#parking-lot' },
+  { name: 'settings', hash: '#settings' },
+]
+
+for (const mode of ['light', 'dark'] as const) {
+  for (const { name, hash } of CONTRAST_PAGES) {
+    test(`${mode} ${name}: all text meets WCAG contrast`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: mode, reducedMotion: 'reduce' })
+      await signIn(page)
+      await page.goto(`/${hash}`)
+      // Wait for the page to settle before measuring.
+      await page.waitForTimeout(600)
+      const offenders = await page.evaluate(() => {
+        function luminance(color: string) {
+          const channels = color.match(/[\d.]+/g)
+          if (!channels) return 0
+          const [r, g, b] = channels.slice(0, 3).map(Number).map(v => {
+            const c = v / 255
+            return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+          })
+          return r * 0.2126 + g * 0.7152 + b * 0.0722
+        }
+        function parseRgba(color: string): [number, number, number, number] | null {
+          const m = color.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/)
+          if (!m) return null
+          const a = m[4] !== undefined ? Number(m[4]) : 1
+          return [Number(m[1]), Number(m[2]), Number(m[3]), a]
+        }
+        function isOpaque(color: string): boolean {
+          const parsed = parseRgba(color)
+          return parsed !== null && parsed[3] >= 1
+        }
+        function isSkippableBg(color: string): boolean {
+          return /color\(|color-mix|gradient|conic|linear|radial/.test(color)
+        }
+        const results: string[] = []
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
+        const seen = new Set<Element>()
+        let node: Text
+        while ((node = walker.nextNode() as Text)) {
+          if (!node.textContent || !node.textContent.trim()) continue
+          const el: Element | null = node.parentElement
+          if (!el || el.tagName === 'SCRIPT' || el.tagName === 'STYLE' || el.tagName === 'NOSCRIPT') continue
+          // Skip disabled form controls
+          if (el instanceof HTMLInputElement && (el.disabled || el.readOnly)) continue
+          if (el instanceof HTMLButtonElement && el.disabled) continue
+          if (el instanceof HTMLSelectElement && el.disabled) continue
+          if (el instanceof HTMLTextAreaElement && el.disabled) continue
+          const seenKey = el as Element
+          if (seen.has(seenKey)) continue
+          seen.add(seenKey)
+          const style = getComputedStyle(seenKey)
+          if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') continue
+          // Check it's actually visible
+          const rect = (seenKey as HTMLElement).getBoundingClientRect()
+          if (rect.width === 0 || rect.height === 0) continue
+          // Find nearest ancestor with an opaque, non-skippable background
+          let bg: string | null = null
+          let ancestor: Element | null = seenKey
+          while (ancestor) {
+            const ancestorStyle = getComputedStyle(ancestor)
+            const bgc = ancestorStyle.backgroundColor
+            if (isOpaque(bgc) && !isSkippableBg(bgc)) {
+              bg = bgc
+              break
+            }
+            if (isSkippableBg(bgc)) {
+              // Skip this ancestor entirely — it uses color()/gradient
+              ancestor = ancestor.parentElement
+              continue
+            }
+            ancestor = ancestor.parentElement
+          }
+          if (!bg) continue
+          const fg = style.color
+          if (parseRgba(fg) === null) continue
+          const alpha = parseRgba(fg)![3]
+          if (alpha < 0.5) continue
+          const a = luminance(fg)
+          const b = luminance(bg)
+          const contrast = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+          // Determine if this is large text (>= 24px or >= 18.66px bold)
+          const fontSize = parseFloat(style.fontSize)
+          const fontWeight = parseInt(style.fontWeight, 10)
+          const isLarge = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700)
+          const threshold = isLarge ? 3 : 4.5
+          if (contrast < threshold) {
+            const tag = seenKey.tagName.toLowerCase()
+            const cls = seenKey.className ? ` .${seenKey.className.toString().slice(0, 60)}` : ''
+            const text = seenKey.textContent!.trim().slice(0, 40)
+            results.push(`<${tag}${cls}> "${text}" contrast=${contrast.toFixed(2)} (need ${threshold})`)
+          }
+        }
+        return results
+      })
+      expect(offenders, `WCAG contrast violations on ${name} (${mode}):\n${offenders.join('\n')}`).toEqual([])
+    })
+  }
+}
+
 test('dark reply-run text is readable on its card surface', async ({ page }) => {
   const branch = { id: 'b1', workspaceId: 'w1', starterId: 's1', partnerId: null, status: 'your_turn', notes: '', latestPostId: null, lastPoster: null, lastActivityAt: null, latestReplyExcerpt: null, lastRefreshAt: null, refreshError: null, statusManualOverrideAt: null, archivedAt: null, createdAt: '2026-11-16T00:00:00Z', nextCheckAt: null, title: 'First branch', description: '', characterId: 'c1', characterName: 'Remy', groupId: null, groupName: null, rpUnsortedReason: 'no_rps', iconObjectKey: null, source: 'tumblr', rootPostId: '1', rootBlogId: 'x.tumblr.com', starterArchived: 0, partnerLabel: null }
   await page.route('**/api/**', route => {
