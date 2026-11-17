@@ -49,3 +49,7 @@ html,body,#root{min-width:0;max-width:100%}main,section,form,.tracking-card,.set
 .planner-card-heading>.planner-avatar{width:3.5rem;height:3.5rem;flex:0 0 auto}
 .planner-card-heading>div{flex:1 1 12rem;min-width:0}
 .planner-card-heading h3{overflow-wrap:break-word}
+.starter-premise textarea{width:100%;min-height:2.75rem;padding:.65rem .75rem;border:1px solid var(--border);border-radius:.65rem;background:var(--surface);color:var(--text);margin-top:.5rem}
+.starter-premise .eyebrow,.starter-latest .eyebrow{margin-bottom:.4rem}
+.starter-actions{align-items:center}
+.rp-unsorted-reason{margin:.75rem 1rem 0;color:var(--muted);font-size:.88rem}
