@@ -93,3 +93,18 @@ html,body,#root{min-width:0;max-width:100%}main,section,form,.tracking-card,.set
   .primary-nav .nav-icon{width:1.05rem;height:1.05rem}
   .mobile-more{display:none}
 }
+
+/* ===== S8 (2026-11-16): inbox title on one line, compact donut, first thread visible ===== */
+/* "Your turn" must not wrap: the Reply run card sits in the hero row and squeezed the copy. */
+.inbox-hero .page-heading{white-space:nowrap}
+.inbox-hero .reply-run{flex:0 1 22rem;min-width:0}
+/* Compact donut: earlier rules position text for a 5.6rem ring; hide the label, centre the number. */
+.reply-donut span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.reply-donut strong{top:50%;transform:translateY(-50%);font-size:1.1rem}
+/* Shrink the space hogs above the first thread card. */
+.inbox-hero{padding:.5rem 0 .75rem}
+.inbox-summary{margin:.5rem 0}
+.filter-bar{margin:.5rem 0;padding:.75rem}
+.rp-deck-header{padding-top:.6rem;padding-bottom:.6rem}
+/* Align the starter action buttons (Delete sat ~6px lower than Archive). */
+.starter-actions>*{margin:0}

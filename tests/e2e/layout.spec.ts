@@ -169,7 +169,15 @@ test.describe('inbox first screen shows a thread', () => {
         await page.waitForSelector('article.branch-card', { timeout: 15000 })
         await page.waitForTimeout(300)
         const box = await (await page.$('article.branch-card'))!.boundingBox()
-        test.expect(box!.y).toBeLessThan(viewport.height)
+        // The first thread's title row must be on the first screen, not just its top edge.
+        test.expect(box!.y + 80).toBeLessThan(viewport.height)
+        // "Your turn" must stay on a single line: bounding box < 1.6x its line-height.
+        const title = await page.evaluate(() => {
+          const el = document.getElementById('inbox-title') as HTMLElement
+          const lh = parseFloat(getComputedStyle(el).lineHeight)
+          return { height: el.getBoundingClientRect().height, lineHeight: lh }
+        })
+        test.expect(title.height).toBeLessThan(1.6 * title.lineHeight)
         await page.screenshot({ path: `test-results/layout/inbox-first-screen-${viewport.width}x${viewport.height}.png` })
       })
     })
