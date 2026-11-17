@@ -38,7 +38,7 @@ export default function InboxPage() {
   const query=new URLSearchParams([...Object.entries(filters).filter(([,value])=>value && value!==false).map(([key,value])=>[key,value===true?'true':String(value)]),...(focusMode?[['doNext','true']]:[])])
   // Mirror filters into the hash (replaceState: no history entry per keystroke) so
   // Back/Reload and deep-links land on the same view, and the view is shareable.
-  useEffect(()=>{const path=window.location.hash.split('?')[0]||'inbox';window.history.replaceState(null,'',`${path}?${query}`)},[query])
+  useEffect(()=>{const raw=window.location.hash.slice(1).split('?')[0];if(!['','inbox','/inbox'].includes(raw))return;const base='#'+(raw||'inbox'),qs=query.toString();window.history.replaceState(null,'',qs?`${base}?${qs}`:base)},[query])
   async function reload(){setInbox(await api(`/inbox${query.size?`?${query}`:''}`))}
   async function createStarter(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setError('');setBusy(true);const payload:Record<string,FormDataEntryValue|null>=Object.fromEntries(new FormData(event.currentTarget));payload.groupId=payload.groupId||null;payload.partnerBlogIdentifier=payload.partnerBlogIdentifier||null;try{const starter=await api<{id:string}>('/starters','POST',payload);window.location.hash=`starter/${starter.id}`}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
   useEffect(()=>{let active=true;setError('');
@@ -50,7 +50,7 @@ export default function InboxPage() {
     Promise.all([staleGet<TrackingOptions>('/starters/options'),api<{id:string;displayLabel:string}[]>('/tags').catch(()=>[])]).then(([nextOptions,nextTags])=>{if(active){setOptions(nextOptions);setTags(nextTags);setLoaded(true)}}).catch(problem=>{if(active)setError(problem.message)});
     return()=>{active=false}},[filters.status,filters.characterId,filters.tagId,filters.q,filters.oldestFirst,filters.includeArchived,focusMode])
   // Persist per-view scroll (Back restores where you were); sessionStorage only, so it dies with the tab.
-  useEffect(()=>{try{const view=(window.location.hash.split('?')[0]||'inbox').replace(/^#/,'');const key=`puffin-scroll:${view}`;let timer:number;const save=()=>{window.sessionStorage.setItem(key,String(window.scrollY))};window.addEventListener('scroll',()=>{clearTimeout(timer);timer=window.setTimeout(save,150)});return()=>{clearTimeout(timer);window.removeEventListener('scroll',save);save()}}catch{}},[])
+  useEffect(()=>{try{const view=(window.location.hash.split('?')[0]||'inbox').replace(/^#/,'');const key=`puffin-scroll:${view}`;let timer:number;const save=()=>{window.sessionStorage.setItem(key,String(window.scrollY))};const onScroll=()=>{clearTimeout(timer);timer=window.setTimeout(save,150)};window.addEventListener('scroll',onScroll);return()=>{clearTimeout(timer);window.removeEventListener('scroll',onScroll)}}catch{}},[])
   useEffect(()=>{try{const view=(window.location.hash.split('?')[0]||'inbox').replace(/^#/,'');const key=`puffin-scroll:${view}`;const saved=window.sessionStorage.getItem(key);if(saved&&loaded){const y=Number(saved);if(Number.isFinite(y))window.scrollTo(0,y)}}catch{ /* sessionStorage can be disabled */ }},[loaded])
   async function assignGroup(branchId:string,groupId:string|null){try{await api(`/rp-groups/threads/${branchId}`,'POST',{groupId});await reload()}catch(problem){setError((problem as Error).message)}}
   const needsSignIn=error==='Sign in to see your writing space.'

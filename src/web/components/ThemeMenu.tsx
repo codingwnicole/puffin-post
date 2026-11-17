@@ -8,7 +8,6 @@ export default function ThemeMenu() {
     const apply = () => {
       const mode = resolveTheme(preference.mode, media.matches)
       document.documentElement.dataset.theme = mode
-      delete document.documentElement.dataset.palette
       document.documentElement.style.colorScheme = mode
     }
     apply()

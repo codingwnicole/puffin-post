@@ -49,3 +49,15 @@ it('two concurrent create-starter requests for the same thread yield exactly one
     .first<{ n: number }>()
   expect(count?.n).toBe(1)
 })
+
+it('two concurrent saves for one character+blog with different tags end in one row carrying one of the tags', async () => {
+  await fixture.env.DB.prepare(
+    'INSERT INTO tumblr_connections (id,workspace_id,token_encrypted,token_secret_encrypted,account_metadata_json) VALUES (?,?,?,?,?)'
+  ).bind('connection-fresh', 'a', 't', 't', JSON.stringify({ blogs: ['z.tumblr.com'] })).run()
+  const save = (characterTag: string) => fixture.request('/api/connections/connection-fresh/blogs', 'POST', { characterId: 'character-a', blogIdentifier: 'z.tumblr.com', characterTag })
+  const responses = await Promise.all([save('tag one'), save('tag two')])
+  for (const response of responses) expect([200, 201]).toContain(response.status)
+  const rows = await fixture.env.DB.prepare("SELECT character_tag AS tag FROM character_blogs WHERE workspace_id='a' AND character_id='character-a' AND blog_identifier='z.tumblr.com'").all<{ tag: string }>()
+  expect(rows.results).toHaveLength(1)
+  expect(['tag one', 'tag two']).toContain(rows.results[0].tag)
+})

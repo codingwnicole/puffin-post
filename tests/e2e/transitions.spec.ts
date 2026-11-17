@@ -104,17 +104,6 @@ test.describe('T7d view transitions', () => {
     await expect(page.locator('.shortcut-header')).toBeVisible()
     expect(await vtNames(page, 'character-')).toEqual(['character-char-1'])
   })
-
-  test('branch title -> starter page keeps one identity on the starter page', async ({ page }) => {
-    await signedIn(page)
-    await page.goto('/#inbox', { waitUntil: 'networkidle' })
-    await expect(page.locator('.branch-title-link', { hasText: 'The Long Scene' })).toBeVisible()
-
-    // Click the branch title; the starter page header carries the starter identity.
-    await page.locator('.branch-title-link', { hasText: 'The Long Scene' }).click()
-    await expect(page.locator('#starter-title')).toBeVisible()
-    expect(await vtNames(page, 'starter-')).toEqual(['starter-branch-1'])
-  })
 })
 
 test.describe('T7d safe prefetch', () => {

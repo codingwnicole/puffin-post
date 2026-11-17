@@ -31,3 +31,16 @@ it('undoing a character that has no planner idea is a clean 404, not a 500', asy
   const undo = await fixture.request('/api/character-planner/return-to-cast/character-a', 'POST')
   expect(undo.status).toBe(404)
 })
+
+it('undo keeps a planner idea that existed before the move, and restores a hiatus character to hiatus', async () => {
+  await fixture.request('/api/characters/character-a/return-to-planner', 'POST')
+  // The character comes back to the cast while its planner idea stays; then it is on hiatus.
+  await fixture.env.DB.prepare("UPDATE characters SET state='hiatus' WHERE id='character-a'").run()
+  const again = await fixture.request('/api/characters/character-a/return-to-planner', 'POST')
+  expect(again.status).toBe(200)
+  expect((await again.json() as { created: boolean }).created).toBe(false)
+  const undo = await fixture.request('/api/character-planner/return-to-cast/character-a', 'POST', { state: 'hiatus', deletePlan: false })
+  expect(undo.status).toBe(200)
+  expect((await state())?.state).toBe('hiatus')
+  expect(await plan()).toBeTruthy()
+})

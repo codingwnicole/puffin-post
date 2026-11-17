@@ -1,5 +1,4 @@
 import { Hono } from 'hono'
-import { z } from 'zod'
 import type { Env } from '../worker'
 import { requireWorkspace } from '../auth/sessions'
 import { canonicalBlogIdentifier, normalizeTumblrTag } from '../tumblr/normalize'
@@ -47,11 +46,13 @@ export function connectionRoutes() {
       await scope.db.prepare('INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label,character_tag) VALUES (?,?,?,?,?,?,?)')
         .bind(id,scope.workspaceId,input.characterId,c.req.param('connectionId'),blogIdentifier,displayLabel,characterTag).run()
     }catch(error){
-      // A concurrent save of the same (character, blog) can win the unique index
-      // between the existing-check above and this insert. Return the winner's row.
+      // ponytail: a concurrent save for the same character+blog lost the race to the unique index;
+      // apply it like the sequential re-save path (update in place). Another character winning the blog is a 409.
       if(String((error as {message?:string}).message??'').includes('SQLITE_CONSTRAINT_UNIQUE')){
         const winner=await scope.db.prepare('SELECT id FROM character_blogs WHERE workspace_id=? AND character_id=? AND blog_identifier=?').bind(scope.workspaceId,input.characterId,blogIdentifier).first<{id:string}>()
-        if(winner) return c.json({ id:winner.id, characterId:input.characterId, connectionId:c.req.param('connectionId'), blogIdentifier, displayLabel, characterTag },201)
+        if(!winner) return c.json({ error:'A shared blog needs a different character tag for each character.' },409)
+        await scope.db.prepare('UPDATE character_blogs SET display_label=?,character_tag=? WHERE workspace_id=? AND id=?').bind(displayLabel,characterTag,scope.workspaceId,winner.id).run()
+        return c.json({ id:winner.id, characterId:input.characterId, connectionId:c.req.param('connectionId'), blogIdentifier, displayLabel, characterTag },200)
       }
       throw error
     }

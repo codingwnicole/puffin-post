@@ -49,4 +49,4 @@ export const undoDismissal = (blogIdentifier: string, postId: string) =>
   () => api('/tumblr-activity/dismissals', 'DELETE', { blogIdentifier, postId })
 export const undoStarterArchive = (starterId: string) => () => api(`/starters/${starterId}/restore`, 'POST')
 export const undoCharacterArchive = (id: string) => () => api(`/characters/${id}/restore`, 'POST')
-export const undoReturnToPlanner = (id: string) => () => api(`/character-planner/return-to-cast/${id}`, 'POST')
+export const undoReturnToPlanner = (id: string, state: string, deletePlan: boolean) => () => api(`/character-planner/return-to-cast/${id}`, 'POST', { state, deletePlan })

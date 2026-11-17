@@ -70,14 +70,16 @@ export function characterPlannerRoutes() {
   })
 
   // Reverse of the character route's return-to-planner: undo a "moved to planner".
-  // Re-activate the (hiatus) character and delete the plan it was turned into.
+  // Puts the character back in its previous state; deletes the plan only if that move created it.
   app.post('/return-to-cast/:characterId', async c => {
     const s = await requireWorkspace(c), id = c.req.param('characterId')
+    const body = await c.req.json<{ state?: string; deletePlan?: boolean }>().catch(() => ({} as { state?: string; deletePlan?: boolean }))
+    const previous = body.state === 'hiatus' ? 'hiatus' : 'active', deletePlan = body.deletePlan !== false
     const plan = await s.db.prepare('SELECT id,name FROM character_plans WHERE workspace_id=? AND source_character_id=?').bind(s.workspaceId, id).first<{id:string;name:string}>()
     if (!plan) throw new HTTPException(404, { message: 'No planner idea for this character' })
     await s.db.batch([
-      s.db.prepare("UPDATE characters SET state='active' WHERE workspace_id=? AND id=? AND state='hiatus'").bind(s.workspaceId, id),
-      s.db.prepare('DELETE FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId, plan.id),
+      s.db.prepare("UPDATE characters SET state=? WHERE workspace_id=? AND id=? AND state='hiatus'").bind(previous, s.workspaceId, id),
+      ...(deletePlan ? [s.db.prepare('DELETE FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId, plan.id)] : []),
     ])
     return c.json({ id, name: plan.name }, 200)
   })

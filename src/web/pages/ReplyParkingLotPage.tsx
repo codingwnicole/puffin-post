@@ -22,7 +22,7 @@ function DraftCard({ draft, options, reload, converted }: { draft: ReplyDraft; o
     {draft.characterIds.length > 0 && <p className="field-help">For: {draft.characterIds.map(id => options.characters.find(character => character.id === id)?.name).filter(Boolean).join(', ')}</p>}
     {draft.reminderAt && <p>{new Date(draft.reminderAt).getTime() <= Date.now() ? 'Overdue - ' : 'Reminder - '}<time dateTime={draft.reminderAt}>{new Date(draft.reminderAt).toLocaleDateString()}</time></p>}
     <p className="preserve-lines">{draft.notes.slice(0, 300)}{draft.notes.length > 300 ? '.' : ''}</p>
-    {draft.sourceUrl && <p><a href={draft.sourceUrl} target="_blank" rel="noopener noreferrer">Open source</a></p>}
+    {draft.sourceUrl && <p><a className="draft-source" href={draft.sourceUrl} target="_blank" rel="noopener noreferrer">Open source</a></p>}
     <div className="actions">
       {(draft.purpose === 'reply' || draft.purpose === 'starter_idea') && <button disabled={busy} onClick={() => { setConverting(!converting); setEditing(false) }}>Convert to Tumblr</button>}
       <button disabled={busy} onClick={() => { setEditing(!editing); setConverting(false) }}>Edit draft</button>
