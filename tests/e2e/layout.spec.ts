@@ -149,6 +149,43 @@ test.describe('sidebar footer at 1280x720', () => {
 })
 })
 
+test.describe('expanded More menu stays on top of cards', () => {
+  // Widths from the scaling audit where the bottom "More" menu shows (<=1024px).
+  const WIDTHS = [375, 600, 760, 761, 800, 900, 1024]
+  for (const width of WIDTHS) {
+    test.describe(`more menu on top at ${width}x800`, () => {
+      test.use({ viewport: { width, height: 800 } })
+      test('More menu panel is the topmost element at its center', async ({ page }) => {
+        // Several branches so the cards extend up behind the upward-opening panel.
+        await mockApi(page, {
+          inbox: {
+            yourTurnCount: 6, dueSoonCount: 1, overdueDraftCount: 0,
+            branches: Array.from({ length: 6 }, (_, i) => ({
+              id: `b${i + 1}`, branchKey: `k${i + 1}`, title: `Branch ${i + 1}`,
+              characterName: `Char ${i + 1}`, status: i % 2 ? 'their_turn' : 'your_turn',
+              latest: 'hi', updatedAt: '2026-11-16T00:00:00.000Z',
+            })),
+          },
+        })
+        await page.goto('#inbox')
+        await page.waitForSelector('article.branch-card', { timeout: 15000 })
+        await page.waitForTimeout(400) // let the rise animation settle (transform stacking context)
+        await page.locator('.mobile-more summary').click()
+        await page.waitForTimeout(150)
+        const res = await page.evaluate(() => {
+          const panel = document.querySelector<HTMLElement>('.mobile-more div')
+          if (!panel) return { contains: false, err: 'no panel' }
+          const r = panel.getBoundingClientRect()
+          const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2)
+          const el = document.elementFromPoint(x, y)
+          return { contains: panel.contains(el), hit: el ? el.tagName : 'null' }
+        })
+        test.expect(res.contains, `More menu panel center covered by ${res.hit} at ${width}px`).toBe(true)
+      })
+    })
+  }
+})
+
 test.describe('inbox first screen shows a thread', () => {
   const VIEWPORTS = [ { width: 1280, height: 720 }, { width: 1536, height: 864 } ]
   for (const viewport of VIEWPORTS) {
