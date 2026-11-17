@@ -12,6 +12,7 @@ export interface ReplyBranch {
   latestPostId: string | null
   lastPoster: string | null
   lastActivityAt: string | null
+  latestReplyExcerpt: string | null
   lastRefreshAt: string | null
   refreshError: string | null
   statusManualOverrideAt: string | null
@@ -28,6 +29,7 @@ export interface CreateReplyBranchInput extends WorkspaceScope {
   latestPostId?: string | null
   lastPoster?: string | null
   lastActivityAt?: string | null
+  latestReplyExcerpt?: string | null
 }
 
 export interface InboxQuery extends WorkspaceScope {
@@ -63,6 +65,7 @@ export async function upsertReplyBranch(input: CreateReplyBranchInput): Promise<
   const inputPartner = input.partnerId ?? null
   const existing = await db.prepare(`SELECT id, workspace_id AS workspaceId, starter_id AS starterId, partner_id AS partnerId,
     status, notes, latest_post_id AS latestPostId, last_poster AS lastPoster, last_activity_at AS lastActivityAt,
+    latest_reply_excerpt AS latestReplyExcerpt,
     last_refresh_at AS lastRefreshAt, refresh_error AS refreshError, status_manual_override_at AS statusManualOverrideAt,
     archived_at AS archivedAt, created_at AS createdAt, next_check_at AS nextCheckAt
     FROM reply_branches
@@ -90,6 +93,7 @@ export async function upsertReplyBranch(input: CreateReplyBranchInput): Promise<
         workspaceId, existing.id).run()
     const merged = await db.prepare(`SELECT id, workspace_id AS workspaceId, starter_id AS starterId, partner_id AS partnerId,
       status, notes, latest_post_id AS latestPostId, last_poster AS lastPoster, last_activity_at AS lastActivityAt,
+      latest_reply_excerpt AS latestReplyExcerpt,
       last_refresh_at AS lastRefreshAt, refresh_error AS refreshError, status_manual_override_at AS statusManualOverrideAt,
       archived_at AS archivedAt, created_at AS createdAt, next_check_at AS nextCheckAt
       FROM reply_branches WHERE workspace_id = ? AND id = ?`)
@@ -117,15 +121,16 @@ export async function createReplyBranch(input: CreateReplyBranchInput): Promise<
     id: crypto.randomUUID(), workspaceId, starterId: input.starterId, partnerId: input.partnerId ?? null,
     status, notes: input.notes ?? '', latestPostId: input.latestPostId ?? null,
     lastPoster: input.lastPoster ?? null, lastActivityAt: input.lastActivityAt ?? null,
+    latestReplyExcerpt: input.latestReplyExcerpt ?? null,
     lastRefreshAt: null, refreshError: null, statusManualOverrideAt: null,
     archivedAt: status === 'archived' ? createdAt : null, createdAt, nextCheckAt: null,
   }
   await db.prepare(`
     INSERT INTO reply_branches (id, workspace_id, starter_id, partner_id, status, notes,
-      latest_post_id, last_poster, last_activity_at, last_refresh_at, archived_at, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      latest_post_id, last_poster, last_activity_at, latest_reply_excerpt, last_refresh_at, archived_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(branch.id, workspaceId, branch.starterId, branch.partnerId, branch.status, branch.notes,
-    branch.latestPostId, branch.lastPoster, branch.lastActivityAt, branch.lastRefreshAt, branch.archivedAt, branch.createdAt).run()
+    branch.latestPostId, branch.lastPoster, branch.lastActivityAt, branch.latestReplyExcerpt, branch.lastRefreshAt, branch.archivedAt, branch.createdAt).run()
   return branch
 }
 
@@ -137,7 +142,7 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
   const result = await db.prepare(`
     SELECT b.id, b.workspace_id AS workspaceId, b.starter_id AS starterId, b.partner_id AS partnerId,
       b.status, b.notes, b.latest_post_id AS latestPostId, b.last_poster AS lastPoster,
-      b.last_activity_at AS lastActivityAt, b.last_refresh_at AS lastRefreshAt,
+      b.last_activity_at AS lastActivityAt, b.latest_reply_excerpt AS latestReplyExcerpt, b.last_refresh_at AS lastRefreshAt,
       b.refresh_error AS refreshError, b.status_manual_override_at AS statusManualOverrideAt,
       b.archived_at AS archivedAt, b.created_at AS createdAt, b.next_check_at AS nextCheckAt, s.title, s.description, s.character_id AS characterId,
       c.name AS characterName, c.icon_object_key AS iconObjectKey, COALESCE(g.id, fallback_g.id) AS groupId,

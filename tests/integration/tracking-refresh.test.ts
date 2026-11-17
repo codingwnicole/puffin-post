@@ -59,10 +59,11 @@ function post(id: string, blog: string, rootId: string, rootBlog: string) {
   return { id, blog_name: blog, reblog_key: 'k', state: 'published', format: 'html', timestamp: '2026-11-14T12:00:00Z', date: '2026-11-14 12:00:00 UTC', type: 'text', tags: [], reblogged_from_blog: blog, reblogged_from_root_blog: rootBlog, root_blog: rootBlog, root_id: rootId, reblogged: 0, notes_count: 1, photo_url: 'http://r.tumblr.com/' + id, url: 'http://r.tumblr.com/' + id }
 }
 
-function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot?: Record<string, any[]> } = {}) {
-  const { mentionsPerBlog = 0, notesByRoot = {} } = opts
+function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot?: Record<string, any[]>; postPreviews?: Record<string, string | null> } = {}) {
+  const { mentionsPerBlog = 0, notesByRoot = {}, postPreviews = {} } = opts
   let notesCalls = 0
   let mentionCalls = 0
+  let postCalls = 0
   const pushBodies: string[] = []
   fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -83,6 +84,16 @@ function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot
         const notes = (notesByRoot[idParam] || []).map((n: any) => ({ type: 'reblog', blog_name: n.blog, post_id: n.id, reblog_parent_blog_name: n.parentBlog, timestamp: Math.floor(Date.now() / 1000) }))
         return new Response(JSON.stringify({ response: { notes } }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
+      if (path.includes('/posts/')) {
+        postCalls++
+        const postId = decodeURIComponent(path.split('/posts/')[1])
+        const preview = postId in postPreviews ? postPreviews[postId] : null
+        const raw: any = post(postId, 'partner', 'root', 'main')
+        raw.blog = { name: 'partner' }
+        raw.id_string = postId
+        if (preview) raw.content = [{ text: preview }]
+        return new Response(JSON.stringify({ response: raw }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
       if (path.includes('/info')) {
         return new Response(JSON.stringify({ response: { user: { blogs: [{ name: 'main' }] } } }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
@@ -90,7 +101,7 @@ function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot
     }
     return new Response('{}', { status: 200 })
   })
-  return { notesCalls: () => notesCalls, mentionCalls: () => mentionCalls, pushBodies }
+  return { notesCalls: () => notesCalls, mentionCalls: () => mentionCalls, postCalls: () => postCalls, pushBodies }
 }
 
 describe('tracking refresh runner', () => {
@@ -214,6 +225,57 @@ describe('tracking refresh runner', () => {
     expect(totalNotes).toBe(6)
     const err2 = (await db.prepare('SELECT COUNT(*) AS count FROM reply_branches WHERE refresh_error IS NOT NULL').first()) as any
     expect(err2?.count).toBe(0)
+    fetchSpy.mockRestore()
+    await dispose()
+  })
+
+  it('stores the latest reply text per branch, keeping a sideblog branch separate', async () => {
+    const { env, dispose } = await makeEnv()
+    const db = env.DB
+    const ws = 'w6'
+    await seedBase(db, ws, 'conn6', 'main.tumblr.com', 'c6')
+    await db.prepare('INSERT INTO character_blogs (id, workspace_id, character_id, tumblr_connection_id, blog_identifier, display_label) VALUES (?,?,?,?,?,?)').bind('cb-c6-side', ws, 'c6', 'conn6', 'side.tumblr.com', 'side.tumblr.com').run()
+    // Starter 1: main-blog reply. Starter 2: sideblog reply — must keep its own excerpt.
+    addStarter(db, ws, 'c6', 's1', 'root1', 'main.tumblr.com')
+    addStarter(db, ws, 'c6', 's2', 'root2', 'side.tumblr.com')
+    addPartner(db, ws, 'p1', 'main.tumblr.com')
+    addPartner(db, ws, 'p2', 'side.tumblr.com')
+    addBranch(db, ws, 's1', 'p1', 'main.tumblr.com')
+    addBranch(db, ws, 's2', 'p2', 'side.tumblr.com')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const mock = mockTumblr(fetchSpy, {
+      notesByRoot: { root1: [{ id: 'reply-main', blog: 'main', parentBlog: 'main' }], root2: [{ id: 'reply-side', blog: 'side', parentBlog: 'side' }] },
+      postPreviews: { 'reply-main': 'Main blog reply body.', 'reply-side': 'Sideblog reply body.' },
+    })
+    await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100)
+    const s1 = (await db.prepare('SELECT latest_reply_excerpt FROM reply_branches WHERE starter_id = ?').bind('s1').first()) as any
+    const s2 = (await db.prepare('SELECT latest_reply_excerpt, latest_post_id FROM reply_branches WHERE starter_id = ?').bind('s2').first()) as any
+    expect(s1?.latest_reply_excerpt).toBe('Main blog reply body.')
+    expect(s2?.latest_reply_excerpt).toBe('Sideblog reply body.')
+    expect(s2?.latest_post_id).toBe('reply-side')
+    // Each distinct reply fetched once; the two branches never share an excerpt.
+    expect(mock.postCalls()).toBe(2)
+    fetchSpy.mockRestore()
+    await dispose()
+  })
+
+  it('trims a long reply to 500 chars on a word boundary', async () => {
+    const { env, dispose } = await makeEnv()
+    const db = env.DB
+    const ws = 'w7'
+    await seedBase(db, ws, 'conn7', 'main.tumblr.com', 'c7')
+    addStarter(db, ws, 'c7', 's1', 'root1', 'main.tumblr.com')
+    addPartner(db, ws, 'p1', 'main.tumblr.com')
+    addBranch(db, ws, 's1', 'p1', 'main.tumblr.com')
+    const longReply = 'word '.repeat(120).trim() // 600 chars, spaces every 5
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const mock = mockTumblr(fetchSpy, { notesByRoot: { root1: [{ id: 'r1', blog: 'main', parentBlog: 'main' }] }, postPreviews: { r1: longReply } })
+    await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100)
+    const row = (await db.prepare('SELECT latest_reply_excerpt FROM reply_branches WHERE starter_id = ?').bind('s1').first()) as any
+    const excerpt = row?.latest_reply_excerpt as string
+    expect(excerpt.length).toBeLessThanOrEqual(500)
+    expect(excerpt).not.toMatch(/\s$/)
+    expect(longReply.startsWith(excerpt)).toBe(true)
     fetchSpy.mockRestore()
     await dispose()
   })

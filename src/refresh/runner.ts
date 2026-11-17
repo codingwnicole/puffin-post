@@ -7,6 +7,17 @@ import { refreshStarterBranches, type RefreshBranch } from '../tumblr/refresh'
 import { sendWorkspacePush } from '../routes/push'
 
 export interface RefreshBatchResult { selected: number; refreshed: number; failed: number; skipped?: number; fetchesUsed?: number }
+
+// Trim a reply's preview to at most 500 chars, breaking on a word boundary so
+// a stored excerpt never ends mid-word. Returns null for empty input.
+export function replyExcerpt(preview: string | null | undefined): string | null {
+  const text = (preview ?? '').replace(/\s+/g, ' ').trim()
+  if (!text) return null
+  if (text.length <= 500) return text
+  const cut = text.slice(0, 500)
+  const lastSpace = cut.lastIndexOf(' ')
+  return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()
+}
 interface RefreshTarget { id: string; workspaceId: string; characterId: string; blogIdentifier: string; tokenEncrypted: string; tokenSecretEncrypted: string }
 interface StarterRow { id: string; rootPostId: string; rootBlogId: string }
 interface BranchRow extends RefreshBranch { starterId: string; lastRefreshAt: string | null }
@@ -69,6 +80,9 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   // One summary push per workspace per run: collect counts here, send once
   // after the target loop, and count its cost against the budget.
   const summary = new Map<string, { tagCount: number; replyCount: number }>()
+  // One getPost per distinct latest reply across the whole run: a reply shared
+  // by several branches (same starter root) is fetched once, not per branch.
+  const excerptCache = new Map<string, string | null>()
   let lastTargetId: string | null = null
   for (const target of selected) {
     if (budget.remaining() <= FINAL_WRITE_HEADROOM) { skipped++; continue }
@@ -159,9 +173,17 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
           const overrideWins = branch.statusManualOverrideAt !== null && !(activity.timestamp > branch.statusManualOverrideAt)
           const finalStatus = overrideWins ? branch.status : status
           const clearedOverride = branch.statusManualOverrideAt !== null && !overrideWins
+          // The notes carry no text; fetch the reply post once per distinct post
+          // (cached) to read its preview. A failure never sinks the refresh — the
+          // branch still records the new reply, just without an excerpt.
+          let excerpt = excerptCache.get(activity.postId)
+          if (excerpt === undefined) {
+            try { excerpt = replyExcerpt((await client.getPost(activity.blogIdentifier, activity.postId)).preview) } catch { excerpt = null }
+            excerptCache.set(activity.postId, excerpt)
+          }
           writes.push(
-            db.prepare(`UPDATE reply_branches SET latest_post_id=?,last_poster=?,last_activity_at=?,last_refresh_at=?,refresh_error=NULL,status=?,status_manual_override_at=? WHERE workspace_id=? AND id=?`)
-              .bind(activity.postId, activity.blogIdentifier, activity.timestamp, now.toISOString(), finalStatus, clearedOverride ? null : branch.statusManualOverrideAt, target.workspaceId, branch.id),
+            db.prepare(`UPDATE reply_branches SET latest_post_id=?,last_poster=?,last_activity_at=?,latest_reply_excerpt=?,last_refresh_at=?,refresh_error=NULL,status=?,status_manual_override_at=? WHERE workspace_id=? AND id=?`)
+              .bind(activity.postId, activity.blogIdentifier, activity.timestamp, excerpt, now.toISOString(), finalStatus, clearedOverride ? null : branch.statusManualOverrideAt, target.workspaceId, branch.id),
             db.prepare(`INSERT INTO activities (id,workspace_id,starter_id,reply_branch_id,type,actor,source,metadata_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
               .bind(crypto.randomUUID(), target.workspaceId, starter.id, branch.id, 'tumblr_reply_detected', activity.blogIdentifier, 'tumblr', JSON.stringify({ postId: activity.postId }), now.toISOString()),
           )
