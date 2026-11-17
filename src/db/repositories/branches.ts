@@ -133,6 +133,7 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
   const { db, userId, workspaceId, status } = input
   await requireMembership(db, userId, workspaceId)
   if (status !== undefined && !REPLY_STATUSES.includes(status)) throw new Error('Invalid reply status')
+  const hideArchived = !(input.includeArchived || input.characterId)
   const result = await db.prepare(`
     SELECT b.id, b.workspace_id AS workspaceId, b.starter_id AS starterId, b.partner_id AS partnerId,
       b.status, b.notes, b.latest_post_id AS latestPostId, b.last_poster AS lastPoster,
@@ -156,7 +157,7 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
       AND (SELECT COUNT(*) FROM rp_group_characters rgc WHERE rgc.workspace_id = s.workspace_id AND rgc.character_id = s.character_id) = 1
       AND fallback_g.id = (SELECT rgc.group_id FROM rp_group_characters rgc WHERE rgc.workspace_id = s.workspace_id AND rgc.character_id = s.character_id)
     LEFT JOIN partners p ON p.workspace_id = b.workspace_id AND p.id = b.partner_id
-    WHERE b.workspace_id = ? AND ${status === undefined ? (input.includeArchived ? '1 = 1' : '(b.archived_at IS NULL AND s.archived = 0)') : '(b.status = ? AND s.archived = 0)'}
+    WHERE b.workspace_id = ? AND ${status === undefined ? (input.includeArchived ? '1 = 1' : '(b.archived_at IS NULL AND s.archived = 0)') : '(b.status = ? AND s.archived = 0)'}${hideArchived ? " AND c.state <> 'archived'" : ''}
       ${input.starterId ? 'AND b.starter_id = ?' : ''}
       ${input.characterId ? 'AND s.character_id = ?' : ''}
       ${input.tagId ? 'AND EXISTS (SELECT 1 FROM starter_tags st WHERE st.workspace_id=b.workspace_id AND st.starter_id=b.starter_id AND st.tag_id=?)' : ''}
