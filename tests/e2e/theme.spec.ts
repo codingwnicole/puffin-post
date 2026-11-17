@@ -153,3 +153,37 @@ for (const mode of ['light', 'dark'] as const) {
     }
   })
 }
+
+test('dark reply-run text is readable on its card surface', async ({ page }) => {
+  const branch = { id: 'b1', workspaceId: 'w1', starterId: 's1', partnerId: null, status: 'your_turn', notes: '', latestPostId: null, lastPoster: null, lastActivityAt: null, latestReplyExcerpt: null, lastRefreshAt: null, refreshError: null, statusManualOverrideAt: null, archivedAt: null, createdAt: '2026-11-16T00:00:00Z', nextCheckAt: null, title: 'First branch', description: '', characterId: 'c1', characterName: 'Remy', groupId: null, groupName: null, rpUnsortedReason: 'no_rps', iconObjectKey: null, source: 'tumblr', rootPostId: '1', rootBlogId: 'x.tumblr.com', starterArchived: 0, partnerLabel: null }
+  await page.route('**/api/**', route => {
+    const url = new URL(route.request().url())
+    let body: unknown = { user: { id: 'u1', name: 'Test User', email: 'test@example.com' } }
+    if (url.pathname === '/api/inbox') body = { branches: [branch], yourTurnCount: 1, overdueDraftCount: 0, dueSoonCount: 0 }
+    else if (url.pathname === '/api/starters/options') body = { characters: [], partners: [] }
+    else if (url.pathname === '/api/tags') body = []
+    else if (url.pathname === '/api/rp-groups') body = []
+    else if (url.pathname === '/api/settings') body = { user: { id: 'u1', name: 'Test User', email: 'test@example.com' } }
+    else if (url.pathname === '/api/push/subscription') body = { enabled: false }
+    else if (url.pathname === '/api/tumblr-activity/unread-count') body = { count: 0 }
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
+  })
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
+  await page.goto('/#inbox')
+  await expect(page.locator('.reply-run strong').first()).toBeVisible()
+  const contrast = await page.evaluate(() => {
+    function luminance(color: string) {
+      const channels = color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(value => {
+        const channel = value / 255
+        return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4
+      })
+      return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722
+    }
+    const el = document.querySelectorAll<HTMLElement>('.reply-run strong')[0]
+    const style = getComputedStyle(el)
+    let background = getComputedStyle(el.closest('.reply-run')!).backgroundColor
+    const a = luminance(style.color), b = luminance(background)
+    return (Math.max(a, b) + .05) / (Math.min(a, b) + .05)
+  })
+  expect(contrast).toBeGreaterThanOrEqual(4.5)
+})

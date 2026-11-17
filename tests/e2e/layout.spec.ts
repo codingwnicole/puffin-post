@@ -149,6 +149,43 @@ test.describe('sidebar footer at 1280x720', () => {
 })
 })
 
+test('390px inbox reply-run hugs content so the first branch card stays on screen', async ({ page }) => {
+  const branch = { id: 'b1', workspaceId: 'w1', starterId: 's1', partnerId: null, status: 'your_turn', notes: '', latestPostId: null, lastPoster: null, lastActivityAt: null, latestReplyExcerpt: null, lastRefreshAt: null, refreshError: null, statusManualOverrideAt: null, archivedAt: null, createdAt: '2026-11-16T00:00:00Z', nextCheckAt: null, title: 'First branch', description: '', characterId: 'c1', characterName: 'Remy', groupId: null, groupName: null, rpUnsortedReason: 'no_rps', iconObjectKey: null, source: 'tumblr', rootPostId: '1', rootBlogId: 'x.tumblr.com', starterArchived: 0, partnerLabel: null }
+  await mockApi(page, { inbox: { branches: [branch], yourTurnCount: 1, overdueDraftCount: 0, dueSoonCount: 0 } })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('#inbox')
+  const replyRun = page.locator('.reply-run').first()
+  await test.expect(replyRun).toBeVisible()
+  // The 8rem min-height / 22rem flex-basis is gone on phones: the card hugs its content.
+  test.expect((await replyRun.boundingBox())!.height).toBeLessThan(160)
+  const card = page.locator('.branch-card').first()
+  await test.expect(card).toBeVisible()
+  // Pre-fix the forced card height pushed the first thread to ~1250px (off the 844 fold).
+  // It must now sit on the first screen. (The remaining distance to 844 is the
+  // separately-audited always-expanded filter bar, out of scope for this item.)
+  test.expect((await card.boundingBox())!.y).toBeLessThan(1000)
+})
+
+test('390px bottom nav More button shows no stray chevron', async ({ page }) => {
+  await mockApi(page)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('#inbox')
+  await test.expect(page.locator('.mobile-more')).toBeVisible()
+  const display = await page.evaluate(() => getComputedStyle(document.querySelector('.mobile-more>summary') as HTMLElement, '::after').display)
+  test.expect(display).toBe('none')
+})
+
+test('character card lifecycle buttons never clip their label', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('#characters')
+  await page.waitForSelector('.character-card', { timeout: 15000 })
+  const buttons = page.locator('.character-card .character-lifecycle button')
+  const count = await buttons.count()
+  test.expect(count).toBeGreaterThan(0)
+  const clipped = await buttons.evaluateAll(els => els.map(el => el.scrollWidth > el.clientWidth + 1))
+  test.expect(clipped).toEqual(clipped.map(() => false))
+})
+
 test.describe('expanded More menu stays on top of cards', () => {
   // Widths from the scaling audit where the bottom "More" menu shows (<=1024px).
   const WIDTHS = [375, 600, 760, 761, 800, 900, 1024]
