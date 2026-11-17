@@ -28,7 +28,7 @@ export function InitialsAvatar({ name, imageUrl, color }: { name: string; imageU
   return (
     <span className="initials-avatar" style={style}>
       {showImage
-        ? <img src={imageUrl!} alt={name} className={loaded ? 'avatar-img-loaded' : 'avatar-img-pending'} onError={() => { setFailedUrl(imageUrl ?? null); setLoaded(false) }} onLoad={() => setLoaded(true)} />
+        ? <img src={imageUrl!} alt={name} width={44} height={44} className={loaded ? 'avatar-img-loaded' : 'avatar-img-pending'} onError={() => { setFailedUrl(imageUrl ?? null); setLoaded(false) }} onLoad={() => setLoaded(true)} />
         : <span role="img" aria-label={name || 'Unnamed character'}>{initialsFor(name)}</span>}
     </span>
   )

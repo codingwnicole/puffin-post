@@ -160,6 +160,9 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,v
 
 /* Item 21: skeleton blocks that reserve the height of the real row/card while the first load is pending. */
 .skeletons{display:grid;gap:.85rem;margin:1.25rem 0}
+/* Item 21: skeleton blocks that reserve the height of the real row/card while the first load is pending.
+   Row height matches BranchRow (branch-card) exactly: same padding/border, and the 2.75rem avatar line
+   matches the 44px avatar so a load or an empty view doesn't shift the first card. */
 .skeleton-row{display:flex;align-items:center;gap:.85rem;padding:1rem 1.1rem;border:1px solid var(--border);border-radius:.85rem;background:var(--surface);min-height:4.5rem}
 .skeleton-card{display:flex;align-items:center;gap:.85rem;padding:1rem 1.15rem;border:1px solid var(--border);border-radius:1rem;background:var(--surface);min-height:5.5rem}
 .skeleton-line{height:.85rem;border-radius:.4rem;flex:1 1 auto}
@@ -227,8 +230,34 @@ h1,h2,h3,.page-heading{text-wrap:balance}
 @media (min-width:1025px){.primary-nav{display:flex;flex-direction:column;padding-bottom:1.5rem;overflow-y:auto}.primary-nav .nav-note{position:static;margin-top:auto;padding-top:1.25rem}}
 .primary-nav .shortcut-hint{color:#fff;border-color:#81949a;background:transparent}.primary-nav .shortcut-hint:hover{background:#2e4650}
 
+/* T7c: 24px minimum hit area for audit-flagged inline links, applied at all widths
+   BEFORE the 760px media query so the 44px mobile rule can override. */
+.reminder-summary a,.inbox-summary a.text-action,.field-help a{display:inline-flex;align-items:center;min-height:1.5rem;padding:.125rem 0}
+.filter-more>summary,.more-styles>summary{display:inline-flex;align-items:center;min-height:1.5rem}
+.text-button{display:inline-flex;align-items:center;min-height:1.5rem;padding:.25rem .5rem}
+
 /* Audit #14: phones — text links and selects need 44px tap targets. */
 @media (max-width:760px){
   .text-button,.text-action,.reminder-summary a,a[href="#inbox"],.planner-resources a,details>summary{display:inline-flex;align-items:center;min-height:2.75rem}
   select{min-height:2.75rem}
 }
+
+/* T7c: 44px hit areas on touch devices (overrides the 24px base above). */
+@media (pointer:coarse){.text-button{min-height:2.75rem;padding:.5rem .75rem}}
+@media (pointer:coarse){.reminder-summary a,.inbox-summary a.text-action,.field-help a,.filter-more>summary,.more-styles>summary{min-height:2.75rem;padding:.5rem 0}}
+/* 36: tabular numbers on every count/stat; min-width keeps 2-3 digits from reflowing the box. */
+.reply-donut strong{min-width:2.5ch;text-align:center}
+.group-count,.count-pill,.character-stats strong,.turn-button{min-width:3ch}
+/* 37: balanced headings, pretty paragraphs; previews/excerpts (preserve-lines) are excluded. */
+p{text-wrap:pretty}
+.preserve-lines,.preserve-lines p{text-wrap:auto}
+/* 28: avatar <img> boxes — neutral placeholder behind the image so a 404 or slow load never jumps
+   (sizes are already set by the existing rules; the width/height attributes reserve the same box). */
+.initials-avatar img,.character-avatar,.planner-avatar,.archived-avatar,.shortcut-avatar{background:var(--surface-3);object-fit:cover}
+/* 34: top + horizontal safe-area insets on the phone top bar and fixed bottom nav (bottom already exists). */
+@media (max-width:760px){
+  .brand{padding-top:calc(env(safe-area-inset-top,0px) + .75rem)}
+  .primary-nav{padding-left:calc(.75rem + env(safe-area-inset-left,0px));padding-right:calc(.75rem + env(safe-area-inset-right,0px))}
+}
+/* 38: squircle corners where supported; border-radius above stays as the fallback. */
+@supports (corner-shape:squircle){.branch-card,.rp-group,.character-card,.planner-card,.modal-card,.connection-card,.command-card{corner-shape:squircle}}
