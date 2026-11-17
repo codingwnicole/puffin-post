@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { InboxBranch } from '../../db/repositories/branches'
 import { REPLY_STATUSES, type ReplyStatus } from '../../shared/domain'
-import { api, type TrackingOptions } from '../lib/api'
+import { api, prefetch, type TrackingOptions } from '../lib/api'
 import InitialsAvatar from './InitialsAvatar'
 
 export const statusLabel = (status: string) => status.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase())
@@ -53,7 +53,7 @@ export default function BranchRow({ branch, options, onChange }: { branch: Inbox
 
   return <article className={`tracking-card branch-card status-${branch.status}${expanded ? ' is-expanded' : ''}`}>
     <button type="button" className="scene-card-trigger" aria-expanded={expanded} onClick={() => setExpanded(value => !value)}>
-      <span className="branch-heading"><InitialsAvatar name={branch.characterName} imageUrl={branch.iconObjectKey ? `/api/characters/${branch.characterId}/icon?v=${encodeURIComponent(branch.iconObjectKey)}` : null}/><span className="branch-title"><span className="branch-meta">{branch.characterName} × {partner}</span><strong>{displayTitle}</strong></span><span className="status-badge">{statusLabel(status)}</span></span>
+      <span className="branch-heading"><InitialsAvatar name={branch.characterName} imageUrl={branch.iconObjectKey ? `/api/characters/${branch.characterId}/icon?v=${encodeURIComponent(branch.iconObjectKey)}` : null}/><span className="branch-title"><span className="branch-meta">{branch.characterName} × {partner}</span><a className="branch-title-link" href={`#starter/${branch.id}`} onClick={(event) => { const link = event.currentTarget; link.style.viewTransitionName = `starter-${branch.id}`; prefetch('/starters/options'); }}>{displayTitle}</a></span><span className="status-badge">{statusLabel(status)}</span></span>
       <span className="branch-premise">{summary}</span>
       <span className="scene-card-hint">{expanded ? 'Hide scene details' : 'Open scene details'}</span>
     </button>

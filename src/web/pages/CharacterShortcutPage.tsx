@@ -42,7 +42,7 @@ export default function CharacterShortcutPage({ id }: { id: string }) {
 
   return (
     <section aria-labelledby="shortcut-title">
-      <div className="shortcut-header">
+      <div className="shortcut-header" style={{ viewTransitionName: `character-${id}` }}>
         <img className="shortcut-avatar" alt="" width={72} height={72} hidden={!character.iconObjectKey} src={character.iconObjectKey ? '/api/characters/' + character.id + '/icon?v=' + character.iconObjectKey : undefined} onError={event => event.currentTarget.classList.add('avatar-fallback')} data-initials={initialsFor(character.name)} />
         <div>
           <h2 id="shortcut-title" className="page-heading">{character.name}</h2>

@@ -29,4 +29,17 @@ export async function staleGet<T>(path: string): Promise<T> {
 // Sign-out and user switches must not leak one account's data into the next.
 export function clearApiCache() { getCache.clear() }
 
+// Safe prefetch: warm the destination's main D1-backed GET on hover/focus so the
+// page seeds from cache. Only list-style, never-Tumblr GETs are eligible — starter
+// detail and Tumblr activity touch the Tumblr client, and refresh routes are off-limits.
+const PREFETCHABLE: Record<string, string> = { characters: '/characters', connections: '/connections', planner: '/character-planner', 'parking-lot': '/reply-drafts', tools: '/starters/options', settings: '/settings', support: '/support', inbox: '/inbox' }
+const prefetchedAt = new Map<string, number>()
+export function prefetch(path: string) {
+  const key = path, now = Date.now()
+  if (now - (prefetchedAt.get(key) ?? 0) < 30_000) return
+  prefetchedAt.set(key, now)
+  staleGet(path).catch(() => undefined) // best-effort; pages load their own copy
+}
+export function prefetchNav(page: string) { const target = PREFETCHABLE[page]; if (target) prefetch(target) }
+
 export interface TrackingOptions { characters: { id:string; name:string }[]; partners: { id:string; name:string }[]; groups?:{id:string;name:string}[] }

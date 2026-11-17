@@ -35,7 +35,10 @@ main{max-width:94rem;margin-left:18rem;padding:2.5rem clamp(1.5rem,4vw,5rem) 5re
 /* The only two Puffin Post themes: the paper dashboard and its ink-dark counterpart. */
 :root[data-theme="dark"]{--canvas:#182126;--surface:#223037;--surface-muted:#2d3a40;--text:#f8f3e9;--muted:#c9c8c0;--accent:#a9d4dc;--on-accent:#142c35;--subtle:#324e58;--border:#526169;--success:#8fcdb0;--warning:#f0bc79;--danger:#e0917b;--highlight:#e0917b}
 @media (prefers-color-scheme:dark){:root:not([data-theme]){--canvas:#182126;--surface:#223037;--surface-muted:#2d3a40;--text:#f8f3e9;--muted:#c9c8c0;--accent:#a9d4dc;--on-accent:#142c35;--subtle:#324e58;--border:#526169;--success:#8fcdb0;--warning:#f0bc79;--danger:#e0917b;--highlight:#e0917b}}
-.character-page-heading{display:flex;align-items:end;justify-content:space-between;gap:1rem}.character-page-heading .page-description{margin-bottom:0}.character-create{display:flex;align-items:end;gap:.75rem;max-width:38rem}.character-create label{flex:1;display:grid;gap:.4rem;font-weight:700;color:var(--muted)}.character-create input{min-height:2.75rem;padding:.6rem;border:1px solid var(--border);border-radius:.65rem;background:var(--surface);color:var(--text)}.character-card-top{display:flex;align-items:center;gap:1rem}.character-card .character-avatar{width:5rem;margin:0;flex:0 0 auto}.character-card h3{margin:.25rem 0;font-size:1.45rem}.icon-picker{display:inline-flex;align-items:center;justify-content:center;min-height:2.5rem;margin-top:1rem;padding:.55rem .8rem;border:1px solid var(--accent);border-radius:.65rem;color:var(--accent);font-weight:800;cursor:pointer}.icon-picker input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.character-card .danger-button{margin-top:1rem;align-self:flex-start}@media (max-width:760px){.character-page-heading{align-items:flex-start;flex-direction:column}.character-create{align-items:stretch;flex-direction:column}}
+.character-page-heading{display:flex;align-items:end;justify-content:space-between;gap:1rem}.character-page-heading .page-description{margin-bottom:0}.character-create{display:flex;align-items:end;gap:.75rem;max-width:38rem}.character-create label{flex:1;display:grid;gap:.4rem;font-weight:700;color:var(--muted)}.character-create input{min-height:2.75rem;padding:.6rem;border:1px solid var(--border);border-radius:.65rem;background:var(--surface);color:var(--text)}.character-card-top{display:flex;align-items:center;gap:1rem}
+/* Card top is now a link (navigates to the character shortcut); reset the anchor's
+   inherited color/underline so it looks exactly like the old div. */
+.character-card-top-link{display:flex;align-items:center;gap:1rem;flex:1;min-width:0;color:inherit;text-decoration:none;cursor:pointer}.character-card .character-avatar{width:5rem;margin:0;flex:0 0 auto}.character-card h3{margin:.25rem 0;font-size:1.45rem}.icon-picker{display:inline-flex;align-items:center;justify-content:center;min-height:2.5rem;margin-top:1rem;padding:.55rem .8rem;border:1px solid var(--accent);border-radius:.65rem;color:var(--accent);font-weight:800;cursor:pointer}.icon-picker input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}.character-card .danger-button{margin-top:1rem;align-self:flex-start}@media (max-width:760px){.character-page-heading{align-items:flex-start;flex-direction:column}.character-create{align-items:stretch;flex-direction:column}}
 
 /* Phone-first repair: the reply desk becomes a single vertical task flow. */
 @media (max-width:760px){
@@ -139,7 +142,18 @@ input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,v
    make the exit (display:none) return toward the nav over --motion-exit. */
 .mobile-more>summary{position:relative;z-index:1}
 .mobile-more .mobile-more-menu{transform-origin:bottom;transform:translateY(.5rem) scaleY(.985);opacity:0;transition:transform var(--motion-exit) var(--ease-in-out),opacity var(--motion-exit) var(--ease-in-out);transition-behavior:allow-discrete;@starting-style{transform:translateY(.5rem) scaleY(.985);opacity:0}}
-.mobile-more[open] .mobile-more-menu{animation:sheet-up var(--motion-med) var(--ease-out) both}
+.mobile-more[open] .mobile-more-menu{animation:sheet-up var(--motion-med) var(--ease-out) backwards}
+/* Phone bottom sheet: a grabber strip and a visible Close button; the drag offset is
+   driven from JS (translateY) with the transition disabled while the finger is down. */
+.sheet-grabber{display:block;width:2.4rem;height:.55rem;margin:.35rem auto .4rem;border-radius:999px;background:var(--border);touch-action:none;cursor:grab}
+.sheet-menu-head{display:flex;align-items:center;justify-content:space-between;margin:0 .3rem .2rem;padding:.15rem .2rem;color:var(--muted);font-size:.7rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.sheet-close{display:inline-flex;align-items:center;justify-content:center;min-height:1.7rem;min-width:2.4rem;padding:.2rem .5rem;border:1px solid var(--border);border-radius:.55rem;background:var(--surface-muted);color:var(--text);font:600 .75rem/1 var(--font-ui);cursor:pointer}
+.sheet-close:hover{background:var(--surface-hover)}
+.sheet-notice{margin:.2rem .4rem .3rem;padding:.35rem .5rem;border:1px solid var(--danger);border-radius:.5rem;background:color-mix(in srgb,var(--danger) 12%,var(--surface));color:var(--text);font-size:.78rem}
+.sheet-note{display:block;width:100%;margin:.2rem .4rem .4rem;padding:.45rem .55rem;border:1px solid var(--border);border-radius:.5rem;background:var(--surface);color:var(--text);font:400 .8rem/1.3 var(--font-ui)}
+.sheet-note:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent)}
+.branch-title-link{color:inherit;text-decoration:none;font-weight:700}
+.branch-title-link:hover{text-decoration:underline}
 .shared-blog-option label,.password-option form,.parking-add form,.more-styles div{animation:sheet-up var(--motion-med) var(--ease-out) both}
 
 /* Toast / alert entrance. */
