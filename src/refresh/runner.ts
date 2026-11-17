@@ -177,13 +177,13 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
           // (cached) to read its preview. A failure never sinks the refresh — the
           // branch still records the new reply, just without an excerpt.
           let excerpt = excerptCache.get(activity.postId)
-          if (excerpt === undefined) {
+          if (excerpt === undefined && budget.remaining() > FINAL_WRITE_HEADROOM + 1) { // ponytail: never spend the final-write headroom on an excerpt
             try { excerpt = replyExcerpt((await client.getPost(activity.blogIdentifier, activity.postId)).preview) } catch { excerpt = null }
             excerptCache.set(activity.postId, excerpt)
           }
           writes.push(
             db.prepare(`UPDATE reply_branches SET latest_post_id=?,last_poster=?,last_activity_at=?,latest_reply_excerpt=?,last_refresh_at=?,refresh_error=NULL,status=?,status_manual_override_at=? WHERE workspace_id=? AND id=?`)
-              .bind(activity.postId, activity.blogIdentifier, activity.timestamp, excerpt, now.toISOString(), finalStatus, clearedOverride ? null : branch.statusManualOverrideAt, target.workspaceId, branch.id),
+              .bind(activity.postId, activity.blogIdentifier, activity.timestamp, excerpt ?? null, now.toISOString(), finalStatus, clearedOverride ? null : branch.statusManualOverrideAt, target.workspaceId, branch.id),
             db.prepare(`INSERT INTO activities (id,workspace_id,starter_id,reply_branch_id,type,actor,source,metadata_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
               .bind(crypto.randomUUID(), target.workspaceId, starter.id, branch.id, 'tumblr_reply_detected', activity.blogIdentifier, 'tumblr', JSON.stringify({ postId: activity.postId }), now.toISOString()),
           )
