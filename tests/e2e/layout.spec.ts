@@ -92,6 +92,16 @@ async function assertNavFooterButtonsClear(page: Page) {
   test.expect(overlap?.intersects).toBe(false)
 }
 
+// On wide viewports the planner card's name h3 must have room to actually
+// display the (long) name — not be squeezed into a sliver by the avatar/badge.
+async function assertPlannerHeadingWidth(page: Page) {
+  const width = await page.evaluate(() => {
+    const h3 = document.querySelector<HTMLElement>('.planner-card .planner-card-heading h3')
+    return h3 ? h3.getBoundingClientRect().width : 0
+  })
+  test.expect(width).toBeGreaterThanOrEqual(160)
+}
+
 const VIEWPORTS = [
   { name: 'laptop-1280', width: 1280, height: 720 },
   { name: 'laptop-1366', width: 1366, height: 768 },
@@ -120,6 +130,7 @@ for (const viewport of VIEWPORTS) {
 
         await assertCardsFit(page)
         await assertNavFooterClear(page)
+        if (pageName === 'planner' && viewport.width >= 1024) await assertPlannerHeadingWidth(page)
 
         await page.screenshot({ path: `test-results/layout/${pageName}-${viewport.width}x${viewport.height}.png` })
       })

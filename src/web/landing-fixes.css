@@ -43,3 +43,9 @@ html,body,#root{min-width:0;max-width:100%}main,section,form,.tracking-card,.set
 /* Keep one native document scroller on phones and tablets; no nested panel may capture a swipe. */
 @media(max-width:1024px){html{height:auto;overscroll-behavior-y:auto;-webkit-text-size-adjust:100%}body{min-height:100%;overflow-x:clip;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch}.app-shell,main,.inbox-workspace,.rp-groups,.character-stacks{overflow:visible;overscroll-behavior:auto}.primary-nav,.mobile-more{touch-action:manipulation}}
  .branch-details .secondary-button{min-height:2.15rem;padding:.35rem .55rem;font-size:.74rem;white-space:nowrap}
+
+/* Planner card: heading wraps so the name gets the full card width on narrow cards instead of being squeezed between avatar and stage badge. */
+.planner-card-heading{flex-wrap:wrap;align-items:flex-start}
+.planner-card-heading>.planner-avatar{width:3.5rem;height:3.5rem;flex:0 0 auto}
+.planner-card-heading>div{flex:1 1 12rem;min-width:0}
+.planner-card-heading h3{overflow-wrap:break-word}
