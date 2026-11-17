@@ -91,7 +91,7 @@ main{max-width:94rem;margin-left:18rem;padding:2.5rem clamp(1.5rem,4vw,5rem) 5re
 @media (max-width:1100px){.character-grid{grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))}.planner-grid{grid-template-columns:repeat(auto-fill,minmax(15rem,1fr))}}
 
 /* Motion layer: a single coherent rhythm, 160–220ms, transform/opacity only, GPU-composited, fully opt-out via prefers-reduced-motion. */
-:root{--motion-fast:.16s;--motion-med:.22s;--motion-slow:.28s;--motion-stagger:.03s;--motion-stagger-max:.3s;--ease-out:cubic-bezier(.2,.7,.3,1);--ease-in-out:cubic-bezier(.45,0,.25,1);--ease-spring:cubic-bezier(.34,1.56,.64,1)}
+:root{--motion-fast:.15s;--motion-med:.22s;--motion-exit:.176s;--motion-slow:.28s;--motion-stagger:.03s;--motion-stagger-max:.3s;--ease-out:cubic-bezier(.2,.7,.3,1);--ease-in-out:cubic-bezier(.45,0,.25,1)}
 @keyframes fade-in{from{opacity:0}to{opacity:1}}
 @keyframes rise{from{opacity:0;transform:translateY(.55rem)}to{opacity:1;transform:translateY(0)}}
 /* Item 1: ease-out entrance for page sections (rise is already defined above). */
@@ -102,7 +102,11 @@ a.button:active,.text-action:active,.text-button:active,.quick-add-link:active{t
 /* Item 10-12: the delete/archive modal settles from .95 toward its center-top anchor.
    Exit is a state unmount (no CSS transition) so there is no separate exit duration (item 15 N/A). */
 .modal-overlay{animation:fade-in var(--motion-fast) var(--ease-out) both}
-.modal-card{animation:rise var(--motion-med) var(--ease-out) both;transform-origin:50% 0}
+.modal-card{transform-origin:50% 0}
+.modal-card{opacity:0;transform:scale(.95);transition:transform var(--motion-exit) var(--ease-in-out),opacity var(--motion-exit) var(--ease-in-out);transition-behavior:allow-discrete;@starting-style{opacity:0;transform:scale(.95)}}
+.modal-card{opacity:1;transform:scale(1);transition-duration:var(--motion-med),var(--motion-med);transition-timing-function:var(--ease-out),var(--ease-out)}
+/* The command menu opens centered: scale in from the middle, no directional origin. */
+.command-card{transform-origin:center}
 /* Item 18: crossfade icon swaps in place, alignment stable. */
 .icon,.scene-card-hint{transition:opacity var(--motion-fast) var(--ease-in-out)}
 @keyframes sheet-up{from{opacity:0;transform:translateY(.5rem) scaleY(.985)}to{opacity:1;transform:translateY(0) scaleY(1)}}
@@ -113,23 +117,30 @@ a.button:active,.text-action:active,.text-button:active,.quick-add-link:active{t
 
 /* Micro-interactions: buttons, inputs, cards. transform/opacity/filter only. */
 button,.button,a,.quick-add-link,.icon-picker,.do-next{transition:transform var(--motion-fast) var(--ease-out),background-color var(--motion-fast) linear,border-color var(--motion-fast) linear,box-shadow var(--motion-fast) linear,filter var(--motion-fast) linear,color var(--motion-fast) linear}
-button:active,.button:active,.do-next[aria-pressed="true"]:active{transform:translateY(.06rem) scale(.99)}
+button:active,.button:active,a:active,.quick-add-link:active,.icon-picker:active,.do-next:active{transform:scale(.97)}
 .branch-card,.tracking-card,.settings-section,.character-card,.rp-group,.connection-card,.empty-state{transition:box-shadow var(--motion-med) var(--ease-out),border-color var(--motion-med) linear,transform var(--motion-med) var(--ease-out)}
 .branch-card:hover,.character-card:hover,.connection-card:hover{box-shadow:0 .5rem 1.2rem rgba(23,36,42,.07)}
 .branch-card:focus-within,.character-card:focus-within{box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%,transparent)}
 input,select,textarea{transition:border-color var(--motion-fast) linear,box-shadow var(--motion-fast) linear,background-color var(--motion-fast) linear}
 input:focus,select:focus,textarea:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent);border-color:var(--accent)}
 
-/* List entry: staggered rise via CSS custom property --i set inline. Delay is capped
-   (min(--i,10) * 30ms) so long lists settle fast and never replay wholesale on update.
+/* List entry: staggered rise via CSS custom property --i set inline per row. Delay is
+   capped (min(--i,8) * 30ms, max 240ms). data-entered (set once by the page after
+   first render) stops the animation so data refreshes never replay the stagger.
    transform+opacity only. */
-.rp-group,.character-stack,.branch-card,.character-card,.connection-card{animation:rise var(--motion-med) var(--ease-out) both;animation-delay:calc(min(var(--i,0),10)*var(--motion-stagger))}
+.rp-group,.character-stack,.branch-card,.character-card,.connection-card{animation:rise var(--motion-med) var(--ease-out) both;animation-delay:calc(min(var(--i,0),8)*var(--motion-stagger))}
+.rp-groups[data-entered] .rp-group,.rp-groups[data-entered] .branch-card,.rp-groups[data-entered] .character-stack,.character-grid[data-entered] .character-card,.connection-list[data-entered] .connection-card{animation:none}
 /* Chevron rotate for the real <details> summaries (mobile nav, options, tools). */
 .mobile-more>summary::after,.shared-blog-option>summary::after,.password-option>summary::after,.parking-add>summary::after,.more-styles>summary::after{content:"";width:.5rem;height:.5rem;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);transition:transform var(--motion-fast) var(--ease-out);margin-left:auto}
 .mobile-more>summary::after{display:none}
 .mobile-more[open]>summary::after,.shared-blog-option[open]>summary::after,.password-option[open]>summary::after,.parking-add[open]>summary::after,.more-styles[open]>summary::after{transform:rotate(225deg)}
-/* Collapse: <details> content fades+rises when opened. */
-.mobile-more div,.shared-blog-option label,.password-option form,.parking-add form,.more-styles div{animation:sheet-up var(--motion-med) var(--ease-out) both}
+/* Collapse: the phone "More" panel opens upward from the bottom nav, so its transform-origin
+   is on the trigger (bottom) side. sheet-up is the entrance; @starting-style + allow-discrete
+   make the exit (display:none) return toward the nav over --motion-exit. */
+.mobile-more>summary{position:relative;z-index:1}
+.mobile-more .mobile-more-menu{transform-origin:bottom;transform:translateY(.5rem) scaleY(.985);opacity:0;transition:transform var(--motion-exit) var(--ease-in-out),opacity var(--motion-exit) var(--ease-in-out);transition-behavior:allow-discrete;@starting-style{transform:translateY(.5rem) scaleY(.985);opacity:0}}
+.mobile-more[open] .mobile-more-menu{animation:sheet-up var(--motion-med) var(--ease-out) both}
+.shared-blog-option label,.password-option form,.parking-add form,.more-styles div{animation:sheet-up var(--motion-med) var(--ease-out) both}
 
 /* Toast / alert entrance. */
 [role="alert"]{animation:toast-in var(--motion-med) var(--ease-out) both}
@@ -165,12 +176,16 @@ img.avatar-fallback::after{content:attr(data-initials);font-weight:600;font-size
 
 /* Reduced motion: every animation above collapses to a no-op; color/state changes are preserved. */
 @media (prefers-reduced-motion:reduce){
-  :root{--motion-fast:0s;--motion-med:0s;--motion-slow:0s}
+  :root{--motion-fast:0s;--motion-med:0s;--motion-exit:0s;--motion-slow:0s}
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
   .rp-group,.character-stack,.branch-card,.character-card,.connection-card{animation:none}
   section[aria-labelledby],.modal-overlay,.modal-card{animation:none}
   .refresh-ring,.skeleton,.do-next.is-waiting{animation:none}
   .success-pulse{animation:none}
+  /* No motion, no scale, no stagger: transforms removed, popover/modal scale flattened to an
+     instant opacity fade. Status text is content, not motion. */
+  button:active,.button:active,a:active,.quick-add-link:active,.icon-picker:active,.do-next:active,.text-button:active,.text-action:active{transform:none}
+  .filter-more-grid,.modal-card,.mobile-more .mobile-more-menu{transform:none!important}
   .avatar-img-pending{opacity:1}
   .avatar-img-loaded{transition:none}
   ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none}

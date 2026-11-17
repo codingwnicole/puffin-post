@@ -103,6 +103,7 @@ export default function CharactersPage() {
   const [deleteStep, setDeleteStep] = useState<'choose' | 'confirm'>('choose')
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [loaded, setLoaded] = useState(() => ['/characters', '/connections', '/rp-groups', '/inbox'].every(path => peekCache(path) !== undefined))
+  useEffect(() => { const t = window.setTimeout(() => { document.querySelector('.character-grid')?.setAttribute('data-entered', '') }, 700); return () => window.clearTimeout(t) }, [])
   const load = () => Promise.all([staleGet<Character[]>('/characters'), staleGet<Connection[]>('/connections'), staleGet<Group[]>('/rp-groups'), staleGet<{ branches: InboxBranch[] }>('/inbox')]).then(([characters, connections, nextGroups, inbox]) => { setRows(characters); setAssignments(connections.flatMap(connection => connection.assignments)); setGroups(nextGroups); setBranches(inbox.branches); setLoaded(true) }).catch(problem => { setError(problem.message); setLoaded(true) })
   useEffect(() => { void load() }, [])
   const counts = useMemo(() => Object.fromEntries(rows.map(character => { const current = branches.filter(branch => branch.characterId === character.id); return [character.id, { total: current.length, mine: current.filter(branch => branch.status === 'your_turn').length, theirs: current.filter(branch => branch.status === 'their_turn').length }] })), [rows, branches]) as Record<string, Counts>
