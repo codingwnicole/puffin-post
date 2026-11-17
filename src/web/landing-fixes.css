@@ -64,3 +64,32 @@ html,body,#root{min-width:0;max-width:100%}main,section,form,.tracking-card,.set
 .scene-card-trigger{grid-template-columns:minmax(0,1fr);justify-items:stretch}
 .scene-card-trigger>*{min-width:0}
 @media(min-width:1025px){.character-stacks{grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr))}}
+
+/* ===== S7 (2026-11-16): inbox first-screen fit + compact bars at 200% ===== */
+.page-heading{font-size:clamp(2rem,3.5vw,3.25rem)!important}
+.workspace-heading{margin-bottom:1rem!important;padding-bottom:.6rem!important}
+/* Reply run: compact donut, sits in the hero row at >=1025px */
+.reply-run{display:flex;align-items:center;gap:.75rem;margin:1rem 0 0;padding:.55rem .9rem;border:1px solid var(--line);border-radius:.9rem;background:var(--surface);color:var(--ink)}
+.reply-donut{width:3.25rem;height:3.25rem;min-width:3.25rem;flex:none}
+@media (min-width:1025px){
+  .inbox-hero{display:flex;align-items:flex-start;gap:1.5rem}
+  .inbox-hero-copy{flex:1;min-width:0}
+  .reply-run{margin:0;align-self:center}
+}
+/* FilterBar: Show + Search on top, rest under a "More filters" summary */
+.filter-bar{display:flex;flex-wrap:wrap;align-items:flex-start;gap:.6rem}
+.filter-more{min-width:0}
+.filter-more summary{cursor:pointer;font-size:.85rem;font-weight:600;padding:.45rem .65rem;border:1px solid var(--line);border-radius:.55rem;background:var(--surface);color:var(--ink);user-select:none}
+.filter-more[open] summary{border-radius:.55rem .55rem 0 0}
+.filter-more-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:.5rem .75rem;padding:.6rem .55rem;border:1px solid var(--line);border-top:0;border-radius:0 0 .55rem .55rem;background:var(--surface);width:100%}
+/* <=1024px wide AND <=600px tall (200% zoom): compact fixed bars, together <=110px */
+@media (max-width:1024px) and (max-height:600px){
+  .brand{min-height:2.7rem!important;padding:.25rem .9rem!important}
+  .brand-mark{width:1.5rem;height:1.5rem}
+  .brand-home{font-size:.75rem}
+  .beta-label{display:none}
+  .primary-nav{padding:.15rem .25rem calc(.15rem + env(safe-area-inset-bottom))!important}
+  .primary-nav>a{min-height:2.15rem;padding:.2rem .1rem;font-size:.75rem}
+  .primary-nav .nav-icon{width:1.05rem;height:1.05rem}
+  .mobile-more{display:none}
+}

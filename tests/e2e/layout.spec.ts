@@ -5,7 +5,7 @@ const LONG_GROUP = 'The Unnamed Cartographers of the Endless Grey Archipelago'
 
 // Signed-in mock of every endpoint App.tsx + the two pages hit on load.
 // /api/inbox must be the inbox shape (object), not a list. Unmatched /api/** → [].
-async function mockApi(page: Page) {
+async function mockApi(page: Page, overrides: { inbox?: unknown } = {}) {
   await page.route('**/api/**', route => {
     const url = route.request().url()
     const respond = (data: unknown, status = 200) =>
@@ -13,7 +13,7 @@ async function mockApi(page: Page) {
 
     if (url.includes('/api/auth/session')) return respond({ user: { name: 'Tester' } })
     if (url.includes('/api/tumblr-activity/unread-count')) return respond({ count: 0 })
-    if (url.includes('/api/inbox')) return respond({ branches: [], yourTurnCount: 0, overdueDraftCount: 0, dueSoonCount: 0 })
+    if (url.includes('/api/inbox')) return respond(overrides.inbox ?? { branches: [], yourTurnCount: 0, overdueDraftCount: 0, dueSoonCount: 0 })
     if (url.includes('/api/starters/options')) return respond({ characters: [], partners: [] })
     if (url.includes('/api/tags')) return respond([])
     if (url.includes('/api/connections')) return respond([])
@@ -147,4 +147,31 @@ test.describe('sidebar footer at 1280x720', () => {
   await page.waitForTimeout(300)
   await assertNavFooterButtonsClear(page)
 })
+})
+
+test.describe('inbox first screen shows a thread', () => {
+  const VIEWPORTS = [ { width: 1280, height: 720 }, { width: 1536, height: 864 } ]
+  for (const viewport of VIEWPORTS) {
+    test.describe(`first branch card visible at ${viewport.width}x${viewport.height}`, () => {
+      test.use({ viewport })
+      test('first branch card on first screen', async ({ page }) => {
+        await mockApi(page, {
+          inbox: {
+            yourTurnCount: 3, dueSoonCount: 1, overdueDraftCount: 0,
+            branches: [
+              { id: 'b1', branchKey: 'k1', title: 'Branch one', characterName: 'A', status: 'your_turn', latest: 'Hi', updatedAt: '2026-11-16T00:00:00.000Z' },
+              { id: 'b2', branchKey: 'k2', title: 'Branch two', characterName: 'B', status: 'your_turn', latest: 'Hi', updatedAt: '2026-11-16T00:00:00.000Z' },
+              { id: 'b3', branchKey: 'k3', title: 'Branch three', characterName: 'C', status: 'their_turn', latest: 'Hi', updatedAt: '2026-11-16T00:00:00.000Z' }
+            ]
+          }
+        })
+        await page.goto('#inbox')
+        await page.waitForSelector('article.branch-card', { timeout: 15000 })
+        await page.waitForTimeout(300)
+        const box = await (await page.$('article.branch-card'))!.boundingBox()
+        test.expect(box!.y).toBeLessThan(viewport.height)
+        await page.screenshot({ path: `test-results/layout/inbox-first-screen-${viewport.width}x${viewport.height}.png` })
+      })
+    })
+  }
 })
