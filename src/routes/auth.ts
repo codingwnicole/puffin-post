@@ -27,6 +27,9 @@ export function authRoutes(env: Env, sender: MailSender) {
     const intent = body.intent ?? 'sign_in'
     if (intent !== 'sign_in' && intent !== 'accept_invite') throw new HTTPException(400, { message: 'Invalid intent' })
     if (intent === 'sign_in') await provisionMagicLinkAccount(env.DB,email)
+    // ponytail: per-email cap via unexpired links; add per-IP limiting if abuse shows up
+    const open = await env.DB.prepare('SELECT COUNT(*) AS n FROM magic_links WHERE email = ? COLLATE NOCASE AND expires_at > ?').bind(email, new Date().toISOString()).first<{ n: number }>()
+    if (open && open.n >= 3) return c.json({ message: 'If you have access, a sign-in link is on its way.' }, 202)
     await links.sendMagicLink(email, intent, intent === 'accept_invite'
       ? { inviteToken: String(body.inviteToken ?? ''), workspaceId: String(body.workspaceId ?? '') } : undefined)
     return c.json({ message: 'If you have access, a sign-in link is on its way.' }, 202)

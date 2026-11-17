@@ -291,4 +291,26 @@ describe('public magic-link sign-up and invites against local D1', () => {
     expect((await request('/api/workspaces/home/invites', { email: 'new@example.com' }, cookie)).status).toBe(403)
     expect((await request('/api/workspaces/home/invites', { email: 'new@example.com' })).status).toBe(401)
   })
+
+  it('caps magic-link emails at three per address while links are unexpired', async () => {
+    for (let i = 0; i < 4; i++) {
+      expect((await request('/api/auth/magic-link', { email: 'capped@example.com' })).status).toBe(202)
+    }
+    expect(sent.filter((m) => m.to === 'capped@example.com')).toHaveLength(3)
+    // A different address is not affected by the cap.
+    expect((await request('/api/auth/magic-link', { email: 'other@example.com' })).status).toBe(202)
+    expect(sent).toHaveLength(4)
+  })
+
+  it('stamps X-Build-Revision on 404 and 400 error responses', async () => {
+    const cookie = await login()
+    const notFound = await createApp(env, { mailSender: mail }).request('/api/characters/does-not-exist', { method: 'PATCH', headers: { cookie, 'content-type': 'application/json', origin: env.APP_ORIGIN }, body: JSON.stringify({ name: 'Ghost' }) }, env)
+    expect(notFound.status).toBe(404)
+    expect(notFound.headers.get('X-Build-Revision')).toBe('dev')
+    const bad = await createApp(env, { mailSender: mail }).request('/api/auth/magic-link', {
+      method: 'POST', headers: { 'content-type': 'application/json', origin: env.APP_ORIGIN }, body: '{not-json',
+    }, env)
+    expect(bad.status).toBe(400)
+    expect(bad.headers.get('X-Build-Revision')).toBe('dev')
+  })
 })

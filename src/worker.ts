@@ -63,14 +63,15 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
       const response = error.getResponse()
       response.headers.set('Cache-Control', 'no-store')
       response.headers.set('Referrer-Policy', 'no-referrer')
+      response.headers.set('X-Build-Revision', BUILD_REVISION)
       return response
     }
-    if (error instanceof SyntaxError) return c.json({ error: 'Invalid request body' }, 400)
-    if (error instanceof ZodError) return c.json({ error: 'Invalid request body or query' },400)
-    if (['Starter not found','Branch not found','Draft not found','Character not found','Partner not found'].includes(error.message)) return c.json({ error: error.message },404)
-    if (['Draft is archived','Draft is already converted'].includes(error.message)) return c.json({ error: error.message },409)
+    if (error instanceof SyntaxError) { const response = c.json({ error: 'Invalid request body' }, 400); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
+    if (error instanceof ZodError) { const response = c.json({ error: 'Invalid request body or query' },400); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
+    if (['Starter not found','Branch not found','Draft not found','Character not found','Partner not found'].includes(error.message)) { const response = c.json({ error: error.message },404); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
+    if (['Draft is archived','Draft is already converted'].includes(error.message)) { const response = c.json({ error: error.message },409); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
     console.error('Unhandled request error', { path:c.req.path, method:c.req.method, message:error instanceof Error ? error.message : String(error) })
-    return c.json({ error: error instanceof Error ? error.message : 'Request failed' }, 500)
+    const response = c.json({ error: error instanceof Error ? error.message : 'Request failed' }, 500); response.headers.set('X-Build-Revision', BUILD_REVISION); return response
   })
   const sender = options.mailSender ?? resendMailSender(env)
   app.route('/api/auth', authRoutes(env, sender))
