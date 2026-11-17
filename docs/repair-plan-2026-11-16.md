@@ -32,7 +32,9 @@ WHERE thread_root_blog_id = 'starsashore.tumblr.com'
 What happens: the newer of the two is deleted; its reply branches, tags,
 activities, and converted drafts re-point to the older one. Whichever row is
 newer is the one that disappears — its title/tags are the ones folded in.
-Keep = oldest row of the two. Verify the two rows really are the same thread
+Keep = the "ilyas x dimas" row (the one you named), whichever is older; the
+"Tagged starter" row is `dup`. The two rows have different roots, so the B10
+script will NOT pick this pair up on its own; it is a hand repair. Verify the two rows really are the same thread
 before running (same characters, same replies); if the "Tagged starter" has
 replies the other doesn't, they move over, nothing is lost.
 
@@ -76,8 +78,10 @@ backup shows they came from the duplicate.
 ## Case 2 — two "Catherine Read" starters, no blog, no branches
 
 `apxtropaic.tumblr.com/826609859511353344` and `apxtropaic.tumblr.com/825882541271760896`.
-The character has no blog, and neither starter has reply branches. These are
-two trackers for a thread with nothing behind them. Delete both.
+The character has no blog, and neither starter has reply branches. They track
+two different posts with nothing behind them yet. Owner's choice: (a) delete
+both, (b) keep them and assign Catherine Read a blog so refresh can find
+replies. The SQL below is option (a).
 
 Look up first:
 
@@ -111,6 +115,6 @@ the backup.
 
 - Run case 1, verify, then case 2 (or case 2 first — it's the simpler, fully
   reversible one; order doesn't matter since they touch different rows).
-- Re-run the B10 dry-run after: it should report no duplicate groups.
+- Re-run the B10 dry-run after: it should report no duplicate groups (case 1 was never one of its groups, so check it by opening "ilyas x dimas").
 - No deploy or push is part of this; SQL runs only against live D1 once
   approved, via the normal D1 access the owner already uses.

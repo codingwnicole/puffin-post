@@ -26,18 +26,20 @@ the site, and the domain is signed + locked down.
 4. **Email authentication for the sending domain** (the domain used in
    MAIL_FROM — check `worker.ts` / `.dev.vars` for the exact host, e.g.
    `mail.puffinpost.app` or the apex). In DNS → Records for that domain:
-   - SPF: `v=spf1 include:resend._domainkey.resend.com -all` (TXT)
-   - DKIM: copy the three (or two) TXT records from Resend's domain settings
-     page and add them exactly.
+   - SPF + DKIM: open Resend → Domains → your domain and copy every record it
+     lists (the DKIM TXT `resend._domainkey`, and the MX + SPF TXT on the
+     `send` subdomain) exactly as shown. Good: Resend marks the domain
+     "Verified".
    - DMARC: start with `v=DMARC1; p=none; rua=mailto:dmarc@<your email>` and
      watch aggregate reports; once things look clean, move to
      `v=DMARC1; p=quarantine; rua=mailto:dmarc@<your email>`.
    Good: a checker (e.g. mail-tester.com or MXToolbox) shows SPF/DKIM/DMARC
    all passing for that domain.
 
-5. **CAA record (optional).** Add `0 issue "letsencrypt.org"` (plus any other
-   CA you actually use) as a CAA record so only your chosen CAs can issue
-   certs for the domain. Skip if you don't want to manage it.
+5. **CAA record: leave it alone.** Cloudflare's free certificates rotate
+   between several issuers and Cloudflare adds the CAA entries it needs. A
+   hand-made CAA that lists only one issuer can break the site's certificate,
+   so don't add one unless you move to your own certificates.
 
 6. **Re-checking later.** Repeat step 1 quarterly (new takeovers are usually
    found that way) and after any infra change. Steps 3–4 need re-checking only
