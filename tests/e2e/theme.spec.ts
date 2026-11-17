@@ -20,7 +20,7 @@ async function signIn(page: Page) {
 }
 
 async function setMode(page: Page, mode: 'light' | 'dark') {
-  await page.getByLabel('Appearance').selectOption(mode)
+  await page.getByLabel('Theme').selectOption(mode)
   await expect(page.locator('html')).toHaveAttribute('data-theme', mode)
 }
 
@@ -42,11 +42,11 @@ test('system preference follows changes until the user chooses a mode', async ({
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   await page.emulateMedia({ colorScheme: 'light' })
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
-  await page.getByLabel('Appearance').selectOption('dark')
+  await page.getByLabel('Theme').selectOption('dark')
   await page.reload()
-  await expect(page.getByLabel('Appearance')).toHaveValue('dark')
+  await expect(page.getByLabel('Theme')).toHaveValue('dark')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await page.getByLabel('Appearance').selectOption('system')
+  await page.getByLabel('Theme').selectOption('system')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
 })
 

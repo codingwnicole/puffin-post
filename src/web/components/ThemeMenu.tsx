@@ -24,7 +24,7 @@ export default function ThemeMenu() {
   return (
     <fieldset className="theme-menu">
       <legend>Make yourself at home</legend>
-      <label>Appearance
+      <label>Theme
         <select value={preference.mode} onChange={event => change({ ...preference, mode: event.target.value as ThemePreference['mode'] })}>
           <option value="system">Use system</option>
           <option value="light">Light</option>

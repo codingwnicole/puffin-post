@@ -135,7 +135,7 @@ export default function TumblrActivityPage() {
     {failedBlogs.length > 0 && <p role="alert" className="refresh-warning">Could not load: {failedBlogs.map(blog => blogLabel(blog.blogIdentifier)).join(', ')}. Items from those blogs are missing from this list.</p>}
     {diagnostics.length > 0 && <p role="alert" className="refresh-warning">Could not check {diagnostics.join('; ')}</p>}
     <div className="activity-controls">
-      <label>Blog<select value={blogFilter} onChange={event => setBlogFilter(event.target.value)}><option value="">All blogs</option>{blogs.map(blog => <option key={blog.blogIdentifier} value={blog.blogIdentifier}>{blogLabel(blog.blogIdentifier)}</option>)}</select></label>
+      <label className="activity-blog-filter">Blog<select value={blogFilter} onChange={event => setBlogFilter(event.target.value)}><option value="">All blogs</option>{blogs.map(blog => <option key={blog.blogIdentifier} value={blog.blogIdentifier}>{blogLabel(blog.blogIdentifier)}</option>)}</select></label>
       {hasMore && <button className="secondary-button" disabled={busy === 'older'} onClick={loadOlder}>{busy === 'older' ? 'Loading...' : 'Load older'}</button>}
     </div>
     {!loaded ? (
