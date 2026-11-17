@@ -70,7 +70,9 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
     if (error instanceof ZodError) { const response = c.json({ error: 'Invalid request body or query' },400); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
     if (['Starter not found','Branch not found','Draft not found','Character not found','Partner not found'].includes(error.message)) { const response = c.json({ error: error.message },404); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
     if (['Draft is archived','Draft is already converted'].includes(error.message)) { const response = c.json({ error: error.message },409); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
-    console.error('Unhandled request error', { path:c.req.path, method:c.req.method, message:error instanceof Error ? error.message : String(error) })
+    // Never log the raw error message: a DB/OAuth error could carry a token or email in
+    // its text, and the 500 below already returns a safe client-facing message.
+    console.error('Unhandled request error', { path:c.req.path, method:c.req.method, name:error instanceof Error ? error.name : 'unknown' })
     const response = c.json({ error: error instanceof Error ? error.message : 'Request failed' }, 500); response.headers.set('X-Build-Revision', BUILD_REVISION); return response
   })
   const sender = options.mailSender ?? resendMailSender(env)

@@ -6,6 +6,7 @@ import { acceptInvite, normalizeEmail } from '../auth/invites'
 import { createMagicLinks, type MailSender } from '../auth/magic-links'
 import { endSession, requireWorkspace, startSession } from '../auth/sessions'
 import { hashPassword, validPassword, verifyPassword } from '../auth/passwords'
+import { checkRateLimit } from '../auth/rate-limits'
 
 async function provisionMagicLinkAccount(db: Env['DB'], email: string) {
   const existing = await db.prepare('SELECT id FROM users WHERE email=?').bind(email).first<{id:string}>()
@@ -84,13 +85,28 @@ export function authRoutes(env: Env, sender: MailSender) {
   })
   app.post('/password-sign-in', async c => {
     const body=await c.req.json<{email?:unknown;password?:unknown}>(), email=typeof body.email==='string' ? normalizeEmail(body.email) : ''
+    const ip=c.req.header('cf-connecting-ip') || 'unknown'
+    // Throttle credential guessing: 10 failed attempts per email, 10 per IP,
+    // each over 15 minutes. Successful sign-ins reset that key's window.
+    // ponytail ceiling: D1 rows are the only state; at this scale a per-IP +
+    // per-email rolling window is enough, move to a token-bucket/Redis if it ever
+    // has to survive a fleet of coordinated IPs behind one address.
+    const rate=(await checkRateLimit(env.DB,`password:email:${email}`,10,15*60_000)).allowed
+      &&(await checkRateLimit(env.DB,`password:ip:${ip}`,10,15*60_000)).allowed
+    if(!rate) throw new HTTPException(429,{message:'Too many sign-in attempts, please wait'})
     if(!email || !validPassword(body.password)) throw new HTTPException(401,{message:'Email or password is incorrect'})
     const user=await env.DB.prepare('SELECT u.id,u.password_hash AS passwordHash,m.workspace_id AS workspaceId FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.email=? ORDER BY m.role=' + "'owner'" + ' DESC LIMIT 1').bind(email).first<{id:string;passwordHash:string|null;workspaceId:string}>()
-    if(!user || !await verifyPassword(body.password,user.passwordHash)) throw new HTTPException(401,{message:'Email or password is incorrect'})
-    await startSession(c,user.id,user.workspaceId); return c.json({message:'Signed in'})
+    const ok=!!user && await verifyPassword(body.password,user.passwordHash)
+    if(!ok) throw new HTTPException(401,{message:'Email or password is incorrect'})
+    await env.DB.prepare('DELETE FROM rate_limits WHERE key IN (?,?)').bind(`password:email:${email}`,`password:ip:${ip}`).run()
+    await startSession(c,user!.id,user!.workspaceId); return c.json({message:'Signed in'})
   })
   app.post('/password-sign-up', async c => {
     const body=await c.req.json<{email?:unknown;password?:unknown}>(),email=normalizeEmail(body.email)
+    const ip=c.req.header('cf-connecting-ip') || 'unknown'
+    const signUp=(await checkRateLimit(env.DB,`sign_up:ip:${ip}`,20,15*60_000)).allowed
+      &&(await checkRateLimit(env.DB,`sign_up:email:${email}`,10,15*60_000)).allowed
+    if(!signUp) throw new HTTPException(429,{message:'Too many sign-ups, please wait'})
     if(!validPassword(body.password)) throw new HTTPException(400,{message:'Use a password between 8 and 200 characters'})
     if(await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(email).first()) throw new HTTPException(409,{message:'An account already exists for this email. Sign in instead.'})
     const userId=crypto.randomUUID(),workspaceId=crypto.randomUUID(),displayName=email.split('@')[0]
