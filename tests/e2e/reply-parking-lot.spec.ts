@@ -99,3 +99,28 @@ test('edits notes and archives an open draft', async ({ page }) => {
   await card.getByRole('button',{ name:'Archive draft' }).click()
   await expect(page.getByRole('article')).toHaveCount(0)
 })
+
+test('parking lot renders no duplicate element ids across multiple drafts', async ({ page }) => {
+  // Two drafts (characterIds: [] so DraftCard does not throw) plus the
+  // open park form: the page must not emit the same id twice.
+  let drafts: any[] = [
+    withDraftShape({ id: 'a', title: 'First owed reply', notes: 'First', state: 'open', purpose: 'reply', reminderAt: null, sourceUrl: null }),
+    withDraftShape({ id: 'b', title: 'Second owed reply', notes: 'Second', state: 'open', purpose: 'reply', reminderAt: null, sourceUrl: null }),
+  ]
+  await mockApi(page)
+  await page.route('**/api/**', async route => {
+    const url = new URL(route.request().url())
+    if (!url.pathname.startsWith('/api/reply-drafts')) return route.fallback()
+    if (url.pathname === '/api/reply-drafts') return route.fulfill({ json: drafts })
+    return route.fallback()
+  })
+  await page.goto('/#parking-lot')
+  await expect(page.getByRole('article')).toHaveCount(2)
+  // Open the park form so its fields are in the document too.
+  await page.getByText('Save something for later').click()
+  const duplicateIds = await page.evaluate(() => {
+    const ids = [...document.querySelectorAll('[id]')].map(e => e.id)
+    return ids.filter((id, i) => ids.indexOf(id) !== i)
+  })
+  expect(duplicateIds).toEqual([])
+})

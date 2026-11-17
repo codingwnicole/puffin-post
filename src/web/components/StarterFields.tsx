@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { api, type TrackingOptions } from '../lib/api'
 
 type Resolution = { title?:string; suggestedTitle?:string; parsedCharacterNames?:string[]; preview?:string; sourceBlogAssigned:boolean; participants:string[]; candidates:{characterId:string;characterName:string;characterTag:string|null}[] }
 const blogLabel=(value:string)=>value.replace(/\.tumblr\.com$/i,'')
 
 export default function StarterFields({options,title='',characterId=''}:{options:TrackingOptions;title?:string;characterId?:string}) {
+  // One id per field per component instance so no two fields ever share an id
+  // (a label/for pointing at a same-named sibling form would bind the wrong field).
+  const [titleId,postUrlId,descriptionId,groupId,characterIdField,partnerIdField,partnerNameId]=Array.from({length:7},()=>useId())
   const [selectedCharacter,setSelectedCharacter]=useState(characterId),[titleValue,setTitleValue]=useState(title),[postUrl,setPostUrl]=useState(''),[description,setDescription]=useState(''),[message,setMessage]=useState(''),[participants,setParticipants]=useState<string[]>([]),[selectedPartner,setSelectedPartner]=useState(''),[manualPartner,setManualPartner]=useState('')
   async function resolve(chosenCharacter=selectedCharacter) {
     if(!postUrl.trim()) return
@@ -23,13 +26,13 @@ export default function StarterFields({options,title='',characterId=''}:{options
     } catch(error) { setMessage((error as Error).message) }
   }
   return <>
-    <label>Scene label <span className="field-help">(Puffin suggests one from a link; edit it freely.)</span><input name="title" required maxLength={300} value={titleValue} onChange={event=>setTitleValue(event.target.value)} placeholder="your character × their character #1"/></label>
-    <label>Post or message link <span className="field-help">(optional)</span><input name="postUrl" type="url" maxLength={2000} value={postUrl} onChange={event=>setPostUrl(event.target.value)} onBlur={()=>void resolve()} placeholder="Paste a Tumblr link when you have one"/></label>
+    <label>Scene label <span className="field-help">(Puffin suggests one from a link; edit it freely.)</span><input id={titleId} name="title" required maxLength={300} value={titleValue} onChange={event=>setTitleValue(event.target.value)} placeholder="your character × their character #1"/></label>
+    <label>Post or message link <span className="field-help">(optional)</span><input id={postUrlId} name="postUrl" type="url" maxLength={2000} value={postUrl} onChange={event=>setPostUrl(event.target.value)} onBlur={()=>void resolve()} placeholder="Paste a Tumblr link when you have one"/></label>
     <p className="field-help">A link lets Puffin suggest names and a premise. No link? Track a Discord or manual scene anyway.</p>
     {message&&<p role="status">{message}</p>}
-    <label>Scene premise<textarea name="description" maxLength={20000} value={description} onChange={event=>setDescription(event.target.value)} placeholder="Optional: what is happening in this scene?"/></label>
-    <label>RP section<select name="groupId" defaultValue=""><option value="">Unsorted</option>{options.groups?.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
-    <label>Character<select aria-label="Character" name="characterId" required value={selectedCharacter} onChange={event=>{setSelectedCharacter(event.target.value);void resolve(event.target.value)}}><option value="">Choose a character</option>{options.characters.map(character=><option value={character.id} key={character.id}>{character.name}</option>)}</select></label>
-    {participants.length>0?<label>Writing partner<select name="partnerBlogIdentifier" value={selectedPartner} onChange={event=>setSelectedPartner(event.target.value)} required><option value="">Choose who this exchange is with</option>{participants.map(blog=><option value={blog} key={blog}>{blogLabel(blog)}</option>)}</select></label>:<label>Writing partner <span className="field-help">(optional)</span><input name="partnerName" maxLength={200} value={manualPartner} onChange={event=>setManualPartner(event.target.value)} placeholder="Their character or display name"/></label>}
+    <label>Scene premise<textarea id={descriptionId} name="description" maxLength={20000} value={description} onChange={event=>setDescription(event.target.value)} placeholder="Optional: what is happening in this scene?"/></label>
+    <label>RP section<select id={groupId} name="groupId" defaultValue=""><option value="">Unsorted</option>{options.groups?.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
+    <label>Character<select id={characterIdField} aria-label="Character" name="characterId" required value={selectedCharacter} onChange={event=>{setSelectedCharacter(event.target.value);void resolve(event.target.value)}}><option value="">Choose a character</option>{options.characters.map(character=><option value={character.id} key={character.id}>{character.name}</option>)}</select></label>
+    {participants.length>0?<label>Writing partner<select id={partnerIdField} name="partnerBlogIdentifier" value={selectedPartner} onChange={event=>setSelectedPartner(event.target.value)} required><option value="">Choose who this exchange is with</option>{participants.map(blog=><option value={blog} key={blog}>{blogLabel(blog)}</option>)}</select></label>:<label>Writing partner <span className="field-help">(optional)</span><input id={partnerNameId} name="partnerName" maxLength={200} value={manualPartner} onChange={event=>setManualPartner(event.target.value)} placeholder="Their character or display name"/></label>}
   </>
 }
