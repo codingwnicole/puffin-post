@@ -6,7 +6,6 @@ import CommandMenu from './CommandMenu'
 import ToastHost from './ToastHost'
 
 export type AppPage = 'inbox' | 'characters' | 'planner' | 'settings' | 'parking-lot' | 'connections' | 'tools' | 'activity' | 'support' | 'starter'
-export type LegalRoute = 'terms' | 'privacy' | 'cookies'
 
 const navigation = [
   ['inbox', 'Inbox', 'inbox'],
@@ -70,7 +69,7 @@ function useSwipeToClose(open: boolean, close: () => void, hasUnsaved: () => boo
   return { offset, notice, clearNotice: () => setNotice('') }
 }
 
-export default function AppShell({ page, legalRoute = null, children }: { page:AppPage; legalRoute?: LegalRoute | null; children:ReactNode }) {
+export default function AppShell({ page, children }: { page:AppPage; children:ReactNode }) {
   const [signingOut, setSigningOut] = useState(false)
   const [signedIn, setSignedIn] = useState(false)
   const [offline, setOffline] = useState(!navigator.onLine)
@@ -113,7 +112,7 @@ export default function AppShell({ page, legalRoute = null, children }: { page:A
     {signedIn && <nav className="primary-nav" aria-label="Primary"><p className="nav-label">Workspace</p>
       {navigation.map(([item, label, icon], index) => <a key={item} href={`#${item}`} data-secondary={index > 2 || undefined} aria-current={page === item ? 'page' : undefined} onPointerEnter={navPrefetch(item)} onFocus={navPrefetch(item)}><Icon name={icon}/><span>{label}{item==='activity'&&activityUnread>0?<b className="nav-unread" aria-label={`${activityUnread} unread activity items`}>{activityUnread>9?'9+':activityUnread}</b>:null}</span></a>)}
       <details className="mobile-more" open={menuOpen} onToggle={() => { if (!menuOpen) setMenuOpen(false) }}><summary onClick={event => { event.preventDefault(); setMenuOpen(value => !value) }} aria-expanded={menuOpen}><Icon name="more"/><span>More</span></summary><div className="mobile-more-menu" style={offset ? { transform: `translateY(${offset}px)`, transition: 'none' } : undefined}><span className="sheet-grabber" aria-hidden="true"></span><div className="sheet-menu-head"><span>More</span><button type="button" className="sheet-close" onClick={() => { setMenuOpen(false); clearNotice() }}>Close</button></div>{notice && <p className="sheet-notice" role="status">{notice}</p>}<label className="sheet-note-label"><span>Note</span><input className="sheet-note" type="text" placeholder="Quick note" aria-label="Quick note" /></label><a href="#activity" onClick={clearNotice}><Icon name="activity"/>Tumblr activity</a><a href="#tools" onClick={clearNotice}><Icon name="tools"/>Writing tools</a><a href="#planner" onClick={clearNotice}><Icon name="planner"/>Character planner</a><a href="#connections" onClick={clearNotice}><Icon name="connections"/>Connected accounts</a><a href="#settings" onClick={clearNotice}><Icon name="settings"/>Settings</a><a href="#support" onClick={clearNotice}><Icon name="more"/>Support &amp; feedback</a></div></details>
-      <p className="nav-note"><button type="button" className="shortcut-hint" onClick={() => setCommandOpen(true)} aria-keyshortcuts="Control+K Meta+K"><Icon name="search" />Search / commands<kbd>{shortcutKey}</kbd></button>Track scenes, not spreadsheets.<button className="sign-out" disabled={signingOut} onClick={async () => { setSigningOut(true); clearApiCache(); await fetch('/api/auth/sign-out', { method:'POST', headers:{ origin:window.location.origin } }); window.history.replaceState(null, '', '/'); window.location.reload() }}>{signingOut ? 'Signing out.' : 'Sign out'}</button><p className="nav-legal"><a href="#terms" aria-current={legalRoute==='terms'?'page':undefined}>Terms</a> · <a href="#privacy" aria-current={legalRoute==='privacy'?'page':undefined}>Privacy</a> · <a href="#cookies" aria-current={legalRoute==='cookies'?'page':undefined}>Cookies</a></p></p>
+      <p className="nav-note"><button type="button" className="shortcut-hint" onClick={() => setCommandOpen(true)} aria-keyshortcuts="Control+K Meta+K"><Icon name="search" />Search / commands<kbd>{shortcutKey}</kbd></button>Track scenes, not spreadsheets.<button className="sign-out" disabled={signingOut} onClick={async () => { setSigningOut(true); clearApiCache(); await fetch('/api/auth/sign-out', { method:'POST', headers:{ origin:window.location.origin } }); window.history.replaceState(null, '', '/'); window.location.reload() }}>{signingOut ? 'Signing out.' : 'Sign out'}</button><p className="nav-legal"><a href="#terms">Terms</a> · <a href="#privacy">Privacy</a> · <a href="#cookies">Cookies</a></p></p>
     </nav>}
     <main id="main-content" tabIndex={-1}>{signedIn && <div className="workspace-heading"><p className="eyebrow">Your writing space</p><p className="tagline">Keep every thread moving.</p></div>}{offline && <p className="offline-banner" role="status">You're offline. Changes can't be saved until you're back online.</p>}{children}</main>
     {signedIn && <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} />}

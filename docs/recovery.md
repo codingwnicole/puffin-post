@@ -4,7 +4,7 @@ Last reviewed: 2026-11-17. This document is the recovery plan for the live Puffi
 
 ## What we back up, and what that means
 
-- Cloudflare D1 Time Travel is the standing backup. D1 keeps a point-in-time history of the database for **up to 30 days**; after that, restored points fall out of the window and the deleted data is gone from backups.
+- Cloudflare D1 Time Travel is the standing backup. D1 keeps a point-in-time history of the database for **up to 30 days on the Workers Paid plan (7 days on Workers Free)**; after that, restored points fall out of the window and the deleted data is gone from backups.
 - In addition, before every migration the operator runs a dated export of the database:
 
   ```
