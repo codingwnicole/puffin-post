@@ -1,6 +1,10 @@
 # Puffin Post private-beta runbook
 
-This runbook gets a private Worker beta online without putting credentials, Tumblr tokens, or personal test URLs in Git.
+This runbook gets a private Worker beta online without putting credentials, Tumblr tokens, or personal test URLs in Git. Companion documents: `recovery.md` (database and deploy recovery) and `repair-plan-2026-11-16.md` (the Tumblr import bug fixes).
+
+## Recovery
+
+For database backups, restores, deletion re-application, partial imports, interrupted deploys, and checking the live revision: read `recovery.md` first. The short version: D1 Time Travel keeps 30 days, run a dated `wrangler d1 export` before every migration, and restore into a scratch database before touching the live one.
 
 ## Before touching production
 

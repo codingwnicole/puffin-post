@@ -12,6 +12,13 @@ import TumblrActivityPage from './pages/TumblrActivityPage'
 import CharacterPlannerPage from './pages/CharacterPlannerPage'
 import CharacterShortcutPage from './pages/CharacterShortcutPage'
 import SupportPage from './pages/SupportPage'
+import { LegalPage } from './pages/LegalPage'
+
+const LEGAL_ROUTES = ['terms', 'privacy', 'cookies'] as const
+type LegalRoute = (typeof LEGAL_ROUTES)[number]
+function legalRouteFor(route: string): LegalRoute | null {
+  return (LEGAL_ROUTES as readonly string[]).includes(route) ? (route as LegalRoute) : null
+}
 
 function pageForRoute(route: string): AppPage {
   if (route.startsWith('character-shortcut/')) return 'inbox'
@@ -20,21 +27,27 @@ function pageForRoute(route: string): AppPage {
 
 export default function App() {
   const [route, setRoute] = useState(() => window.location.hash.slice(1))
-  const page = pageForRoute(route)
+  const legalRoute = legalRouteFor(route)
+  const page = legalRoute ? 'settings' : pageForRoute(route)
   const starterId = route.slice('starter/'.length)
   const shortcutId = route.startsWith('character-shortcut/') ? route.slice('character-shortcut/'.length) : null
   useEffect(() => {
     const navigate = () => {
       const next = window.location.hash.slice(1)
-      // View Transitions API: supported browsers crossfade page swaps, others take the plain path.
+      // View Transitions API: supported browsers crossfade app page swaps. Legal routes are full-page
+      // documents, not app navigation, so skip the crossfade (it would keep the old page visible over
+      // the legal doc).
+      if (legalRouteFor(next)) { setRoute(next); return }
       document.startViewTransition ? document.startViewTransition(() => flushSync(() => setRoute(next))) : setRoute(next)
     }
     window.addEventListener('hashchange', navigate)
     return () => window.removeEventListener('hashchange', navigate)
   }, [])
 
+  // Legal routes are full-page documents, not app navigation: render them standalone, outside AppShell.
+  if (legalRoute) return <LegalPage doc={legalRoute} />
   return (
-    <AppShell page={page}>
+    <AppShell page={page} legalRoute={legalRoute}>
       {shortcutId ? <CharacterShortcutPage key={shortcutId} id={shortcutId} /> : page === 'inbox' ? <InboxPage /> : page === 'parking-lot' ? <ReplyParkingLotPage /> : page === 'connections' ? <ConnectionsPage /> : page === 'characters' ? <CharactersPage /> : page === 'planner' ? <CharacterPlannerPage /> : page === 'tools' ? <WritingToolsPage /> : page === 'activity' ? <TumblrActivityPage /> : page === 'support' ? <SupportPage /> : page === 'settings' ? <SettingsPage /> : page === 'starter' ? <StarterPage key={starterId} id={starterId} /> : (
         <section aria-labelledby="page-title">
           <h2 id="page-title" className="page-heading">{page === 'settings' ? 'Settings' : 'Characters'}</h2>

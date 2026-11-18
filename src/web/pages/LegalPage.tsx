@@ -1,0 +1,100 @@
+import type { ReactElement } from 'react'
+
+export const EFFECTIVE_DATE = 'November 17, 2026'
+const CONTACT = 'privacy@puffinpost.app'
+
+type Block = { h?: string; p?: string; li?: string[] }
+
+function LegalDoc({ title, blocks }: { title: string; blocks: Block[] }): ReactElement {
+  const headings = blocks.filter((b) => b.h).map((b, i) => ({ id: `sec-${i}`, text: b.h as string }))
+  return (
+    <div className="legal-doc">
+      <h1 className="page-heading">{title}</h1>
+      <p className="legal-effective">Effective date: {EFFECTIVE_DATE}</p>
+      {headings.length > 1 && (
+        <nav className="legal-toc" aria-label="Contents">
+          <strong>Contents</strong>
+          <ol>
+            {headings.map((h, i) => (
+              <li key={i}>
+                <a href={window.location.hash || '#'} onClick={(e) => { e.preventDefault(); document.getElementById(`sec-${i}`)?.scrollIntoView() }}>{h.text}</a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      )}
+      {blocks.map((block, i) => (
+        <section key={i} id={block.h ? `sec-${i}` : undefined} className="legal-section">
+          {block.h && <h2>{block.h}</h2>}
+          {block.p && <p>{block.p}</p>}
+          {block.li && (
+            <ul>
+              {block.li.map((item, j) => (
+                <li key={j}>{item}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ))}
+    </div>
+  )
+}
+
+const TERMS: Block[] = [
+  { h: '1. The service', p: 'Puffin Post is a free beta service for tracking reply threads and roleplay scenes, with Tumblr as the current integration. Puffin Post is run by Nicole @ the Puffin Post team. Puffin Post is not affiliated with, sponsored by, or endorsed by Tumblr. By creating an account you agree to these Terms and confirm you are 16 or older. People under 16 must not use Puffin Post.' },
+  { h: '2. Your account', p: 'You are responsible for keeping your email address current and for all activity under your account. You may create more than one account only with our permission. If you share a workspace, each member is responsible for their own actions.' },
+  { h: '3. What you keep and what you grant us', p: 'You own the characters, threads, drafts, notes, and other writing you create in Puffin Post. You grant us only the licence needed to store that content on your account, display it to you and to people you explicitly invite into a shared workspace, and keep it safe while you use the service. We do not publish your writing, sell it, or show it to anyone you have not invited. You may delete your content at any time, and deleting your account removes everything described in the Privacy Policy.' },
+  { h: '4. Acceptable use', p: `Do not use Puffin Post to harass anyone, to post or track content you do not have the right to use, or for anything illegal. Do not scrape the service or abuse Tumblr's API through it (including hammering the API, circumventing rate limits, or automating access). We may suspend or terminate accounts that abuse the service, and we will tell you why when we can.`, li: [] },
+  { h: '5. Tumblr integration limits', p: 'Puffin Post reads posts from the Tumblr blogs you track using your own Tumblr connection. We are not affiliated with or endorsed by Tumblr. Tumblr rate limits and outages may delay updates of your tracked threads. Tumblr applies its own terms to your Tumblr account, and disconnecting your Tumblr connection in Settings stops Puffin Post from reading your blogs.' },
+  { h: '6. Beta, as-is', p: 'Puffin Post is a free beta. It is provided as-is, without warranties of any kind. The service may change, and we will give notice in-app before material changes. There are no payments, no ads, and no marketing email.' },
+  { h: '7. Termination', p: 'You may end your use at any time by deleting your account in Settings, which deletes your data as described in the Privacy Policy. We may end or restrict access for abuse of the service.' },
+  { h: '8. Governing law', p: `These Terms are governed by the laws of the United States. For privacy, account, and legal requests, contact us at ${CONTACT}.` },
+]
+
+const PRIVACY: Block[] = [
+  { h: '1. Who we are', p: `Puffin Post is run by Nicole @ the Puffin Post team. We use a single contact address for privacy, account, and legal requests: ${CONTACT}.` },
+  { h: '2. Minimum age', p: 'Puffin Post is for people 16 and older. We do not knowingly collect data from people under 16.' },
+  { h: '3. What we store about you', p: 'When you create an account we store:', li: [
+    'Your email address, and (if you set one) a password hash for signing in',
+    'Your workspaces and who is a member or has an invite to each one',
+    'Your writing: characters, RP groups, planner entries and resources, notes, and icons',
+    'The Tumblr blogs you track, plus the threads and posts we import from them',
+    'Your reply drafts, reminders, and the reply branches you are working on',
+    'Your Tumblr OAuth connection, stored server-side and never shown to your browser',
+    'Your browser push subscription, if you turn on notifications',
+    'Support posts and comments you make on the Support board, and votes and feature suggestions',
+    'Server logs, including client error reports you send us (see below)',
+  ] },
+  { h: '4. Your writing is private', p: 'Each person\'s writing space (characters, threads, drafts, notes, Tumblr connections) is private to that account and to the people they explicitly invite into a shared workspace. Other users cannot see it. Two honest exceptions: the Support board, where posts and comments are visible to all signed-in users (authors are shown as "You", "Puffin Post team", or "Another user", never by email), and people you invite into a shared workspace.' },
+  { h: '5. Who we share it with', p: 'We store the service on Cloudflare (hosting, its D1 database, R2 for icons, and Workers Logs), send the sign-in, support, and suggestion emails through Resend, and talk to Tumblr to read the posts you track. No other company sees your writing, and there are no trackers or pixels on the site.' },
+  { h: '6. Retention', p: 'We keep your data until you delete it or delete your account. Sessions expire after 30 days. Magic-link emails stop working after 15 minutes. Invites stop working after 7 days. Deleted data leaves Cloudflare D1 point-in-time recovery backups after 30 days, at which point it is gone from backups too.' },
+  { h: '7. Deletion', p: 'You can delete one tracked thread from its scene, disconnect your Tumblr connection in Settings, or delete your whole account in Settings. Account deletion removes your account, your workspaces, and everything stored for you, as described above.' },
+  { h: '8. Client error reports', p: 'When the app hits a problem it can send us a short error report (message, page, browser, build). The server strips email addresses and long token-looking strings from the text before it reaches our logs, keeps only the first 300 characters of the message, and rate-limits these reports per IP. These reports cannot be turned off from the app; they are the only way the team can see that a page broke on your machine.' },
+  { h: '9. Your rights', p: `You may ask us to access, export, correct, or delete your data, or to object to how we use it. People in the EU, UK, or California have additional rights under their local laws; this policy does not claim any certification. To exercise any of these, email ${CONTACT}.` },
+  { h: '10. Security', p: 'Sessions are signed with a server-only secret and the database stores a hash, not the session token, so a leaked database does not give working sessions. Passwords are stored as PBKDF2 hashes, not as passwords. Tumblr OAuth tokens are stored on our server side encrypted and are never sent to your browser. We do not make broader security promises than what the code and configuration support.' },
+]
+
+const COOKIES: Block[] = [
+  { h: '1. What this notice covers', p: 'This notice lists every piece of storage Puffin Post uses in your browser, and every outside service the app talks to. Puffin Post uses only essential storage: the things the app needs to sign you in, keep your place, and do what you asked. There are no tracking cookies, no ad pixels, and no analytics.' },
+  { h: '2. The session cookie', p: 'When you sign in we set one cookie called __Host-threadums_session. It is httpOnly (your browser scripts cannot read it), it is sent only over HTTPS, it uses SameSite=Lax (browsers will not send it on cross-site requests), and it expires after 7 days, when the app simply asks you to sign in again. The __Host- prefix forces the Secure flag and path=/ automatically. It exists only so the app knows who you are. You cannot use the app while signed in without it.' },
+  { h: '3. Browser storage we keep for you', p: 'The app keeps a small amount of your own preferences and unsent work in your browser:', li: [
+    'puffin-post.theme (localStorage): which of the two themes you picked. Stored only on this device.',
+    'puffin-draft:* (sessionStorage): the text you have not saved yet in a long form, kept only so a failed save or reload does not lose it. Cleared when the save lands or when you sign out.',
+    'puffin-scroll:* (sessionStorage): your scroll position per page, so a reload puts you back where you were. Gone when the tab closes.',
+  ] },
+  { h: '4. Browser notifications', p: 'If you turn on browser notifications in Settings, we ask your browser for permission and register a push subscription with the notification service your browser already provides (for example Apple Push or FCM for Chrome). We store that subscription on our server only so we can send you the reminder you asked for. You can turn notifications off at any time in Settings.' },
+  { h: '5. No consent banner, by design', p: 'Because every piece of storage above is essential to the service and none of it is used for tracking, advertising, or profiling, there is no cookie consent banner. A banner asking you to agree to essential-only storage would be a form with no function. If we ever add a non-essential tracker, we will add a real consent control first and update this notice.' },
+  { h: '6. Services the app talks to', p: 'The app calls these outside services, and only these:', li: [
+    'Cloudflare: hosting, its D1 database, R2 for the icons you upload, and Workers Logs for our own debugging',
+    'Resend: sending the sign-in magic links and the support and suggestion emails',
+    'Tumblr: reading the posts from the blogs you track, using the connection you set up in Settings',
+    'Your browser\'s push notification service, if and only if you turn notifications on',
+  ] },
+  { h: '7. Contact', p: `Questions about this notice go to ${CONTACT}.` },
+]
+
+export function LegalPage({ doc }: { doc: 'terms' | 'privacy' | 'cookies' }): ReactElement {
+  if (doc === 'privacy') return <LegalDoc title="Privacy Policy" blocks={PRIVACY} />
+  if (doc === 'cookies') return <LegalDoc title="Cookie Notice" blocks={COOKIES} />
+  return <LegalDoc title="Terms of Service" blocks={TERMS} />
+}
