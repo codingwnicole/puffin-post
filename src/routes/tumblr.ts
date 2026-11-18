@@ -34,6 +34,9 @@ export function tumblrRoutes() {
     const hash = await hashToken(state)
     const row = await c.env.DB.prepare('SELECT * FROM tumblr_oauth_states WHERE state_hash=? AND consumed_at IS NULL AND expires_at>?').bind(hash, new Date().toISOString()).first<{ workspace_id:string; request_token_encrypted:string; request_secret_encrypted:string }>()
     if (!row) throw new HTTPException(400, { message:'Invalid Tumblr connection' })
+    // The browser finishing the connection must be signed in to the workspace that started it,
+    // so a stranger's Allow link can never attach their Tumblr account to someone else's space.
+    if ((await requireWorkspace(c)).workspaceId !== row.workspace_id) throw new HTTPException(403, { message:'Sign in to the Puffin Post account that started this connection.' })
     // Consume before exchanging so a second callback cannot redeem the same state.
     const claimed = await c.env.DB.prepare('UPDATE tumblr_oauth_states SET consumed_at=? WHERE state_hash=? AND consumed_at IS NULL').bind(new Date().toISOString(), hash).run()
     if (!claimed.meta.changes) throw new HTTPException(400, { message:'Invalid Tumblr connection' })

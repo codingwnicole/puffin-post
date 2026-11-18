@@ -176,6 +176,56 @@ describe('tracking refresh runner', () => {
     await dispose()
   })
 
+  it('two strangers tracking the same blog and thread: syncing one never touches the other', async () => {
+    const { env, dispose } = await makeEnv()
+    const db = env.DB
+    await seedBase(db, 'wa', 'connA', 'shared.tumblr.com', 'ca')
+    await seedBase(db, 'wz', 'connZ', 'shared.tumblr.com', 'cz')
+    for (const [ws, char] of [['wa', 'ca'], ['wz', 'cz']] as const) {
+      await addStarter(db, ws, char, 's-' + ws, 'root-shared', 'shared.tumblr.com')
+      await addPartner(db, ws, 'p-' + ws, 'partner.tumblr.com')
+      await addBranch(db, ws, 's-' + ws, 'p-' + ws, 'partner.tumblr.com')
+    }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    mockTumblr(fetchSpy, {})
+    const first = new Date('2026-11-15T12:00:00Z'), second = new Date('2026-11-15T12:30:00Z')
+    const stamp = async (ws: string) => (await db.prepare('SELECT last_refresh_at AS at FROM reply_branches WHERE workspace_id=?').bind(ws).first<{ at: string | null }>())?.at ?? null
+    await runRefreshBatch(env, first, 1)
+    const after1 = [await stamp('wa'), await stamp('wz')]
+    expect(after1.filter(Boolean)).toEqual([first.toISOString()])
+    await runRefreshBatch(env, second, 1)
+    const after2 = [await stamp('wa'), await stamp('wz')]
+    // The second run served the other stranger only; the first stranger's row was not rewritten.
+    expect(after2.sort()).toEqual([first.toISOString(), second.toISOString()])
+    expect((await db.prepare("SELECT COUNT(*) AS n FROM reply_branches").first<{ n: number }>())?.n).toBe(2)
+    fetchSpy.mockRestore()
+    await dispose()
+  })
+
+  it('fairness: every blog in a big workspace gets its turn while a small workspace is served every run', async () => {
+    const { env, dispose } = await makeEnv()
+    const db = env.DB
+    await seedBase(db, 'wb', 'connB', 'blogB.tumblr.com', 'cb')
+    for (let i = 1; i < 3; i++) {
+      await db.prepare("INSERT INTO character_blogs (id, workspace_id, character_id, tumblr_connection_id, blog_identifier, display_label) VALUES (?,?,?,?,?,?)")
+        .bind('cb-b' + i, 'wb', 'cb', 'connB', 'blogB-' + i + '.tumblr.com', 'blogB-' + i + '.tumblr.com').run()
+    }
+    await seedBase(db, 'ws1', 'connS1', 'blogS1.tumblr.com', 'cs1')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    mockTumblr(fetchSpy, {})
+    const tried = new Set<string>()
+    for (let run = 0; run < 3; run++) {
+      await runRefreshBatch(env, new Date(Date.UTC(2026, 10, 15, 12, run * 30)), 2)
+      const rows = await db.prepare("SELECT character_blog_id AS id, last_attempt_at AS at FROM refresh_cursors WHERE workspace_id='wb'").all<{ id: string; at: string }>()
+      for (const row of rows.results) tried.add(row.id)
+      const small = await db.prepare("SELECT last_attempt_at AS at FROM refresh_cursors WHERE workspace_id='ws1'").first<{ at: string }>()
+      expect(small?.at).toBe(new Date(Date.UTC(2026, 10, 15, 12, run * 30)).toISOString())
+    }
+    expect(tried.size).toBe(3)
+    fetchSpy.mockRestore()
+    await dispose()
+  })
+
   it('fairness: a workspace with 50 due blogs cannot starve two 1-blog workspaces (budget 5, first run)', async () => {
     const { env, dispose } = await makeEnv()
     const db = env.DB
@@ -243,14 +293,14 @@ describe('tracking refresh runner', () => {
     }
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     const mock = mockTumblr(fetchSpy, {})
-    const first = await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100, { fetchBudget: 8 })
+    const first = await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100, { fetchBudget: 7 })
     const firstNotes = mock.notesCalls()
     expect(firstNotes).toBeGreaterThan(0)
     expect(firstNotes).toBeLessThan(6)
     expect(first.failed).toBe(0)
     const err1 = (await db.prepare('SELECT COUNT(*) AS count FROM reply_branches WHERE refresh_error IS NOT NULL').first()) as any
     expect(err1?.count).toBe(0)
-    const second = await runRefreshBatch(env, new Date('2026-11-15T12:30:00Z'), 100, { fetchBudget: 8 })
+    const second = await runRefreshBatch(env, new Date('2026-11-15T12:30:00Z'), 100, { fetchBudget: 7 })
     const totalNotes = mock.notesCalls()
     expect(totalNotes).toBe(6)
     const err2 = (await db.prepare('SELECT COUNT(*) AS count FROM reply_branches WHERE refresh_error IS NOT NULL').first()) as any

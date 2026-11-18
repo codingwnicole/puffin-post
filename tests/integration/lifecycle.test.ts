@@ -147,6 +147,21 @@ describe('data lifecycle: disconnect, account deletion, refresh lock', () => {
     expect(ids).toEqual(['connection-a2'])
   })
 
+  it('a Tumblr Allow link started by one user cannot be finished by another user', async () => {
+    const { hashToken } = await import('../../src/auth/sessions')
+    const { encryptToken } = await import('../../src/tumblr/oauth')
+    const state = 'd'.repeat(64)
+    await env.DB.prepare('INSERT INTO tumblr_oauth_states (state_hash,workspace_id,request_token_encrypted,request_secret_encrypted,expires_at) VALUES (?,?,?,?,?)').bind(await hashToken(state), 'a', await encryptToken('rt', env.TOKEN_ENCRYPTION_KEY), await encryptToken('x', env.TOKEN_ENCRYPTION_KEY), '2999-01-01T00:00:00.000Z').run()
+    const before = (await env.DB.prepare('SELECT COUNT(*) AS n FROM tumblr_connections').first()).n
+    const realFetch = globalThis.fetch
+    globalThis.fetch = (async () => { throw new Error('must not reach Tumblr') }) as typeof fetch
+    try {
+      expect((await fixture.request(`/api/tumblr/callback?state=${state}&oauth_token=rt&oauth_verifier=v`, 'GET', undefined, 'b')).status).toBe(403)
+      expect((await fixture.request(`/api/tumblr/callback?state=${state}&oauth_token=rt&oauth_verifier=v`, 'GET', undefined, 'signed-out')).status).toBe(401)
+    } finally { globalThis.fetch = realFetch }
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM tumblr_connections').first()).n).toBe(before)
+  })
+
   it('a second overlapping refresh is a no-op while another run is live', async () => {
     // connection-a is active; a refresh with a given run id grabs the lock.
     const first = await runRefreshBatch(env, new Date('2026-02-02T10:00:00.000Z'), 100, { fetchBudget: 5, runId: 'overlap-1' })
