@@ -8,3 +8,4 @@ wrangler.production.jsonc
 playwright-report/
 test-results/
 debug.log
+.hermes/
