@@ -2,7 +2,7 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
   const response = await fetch(`/api${path}`, { method, headers: { 'content-type':'application/json' },
     ...(body !== undefined ? { body:JSON.stringify(body) } : {}) })
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Sign in to see your writing space.')
+    if (response.status === 401) throw new Error("You've been signed out. Your text is kept; sign in again.")
     const text = await response.text()
     let error: { error?: string; code?: string } | null = null
     try { error = JSON.parse(text) as { error?: string; code?: string } } catch { /* Some platform errors are plain text. */ }
@@ -18,16 +18,29 @@ export async function api<T>(path: string, method = 'GET', body?: unknown): Prom
 // Stale-while-revalidate for page-load GETs: pages seed their first render from
 // peekCache(path) (instant, possibly stale), then staleGet(path) always hits the
 // network and records the fresh value. A failed refresh throws, so the page keeps
-// its current content and shows the error instead of blanking.
+// its current content and shows the error instead of blanking. Cache keys include
+// the query string: a ?limit=/?cursor= page must never serve another page's rows.
 const getCache = new Map<string, unknown>()
-export function peekCache<T>(path: string): T | undefined { return getCache.get(path) as T | undefined }
+export function peekCache<T>(path: string, params?: URLSearchParams): T | undefined {
+  const key = params && params.size ? `${path}?${params}` : path
+  return getCache.get(key) as T | undefined
+}
 export async function staleGet<T>(path: string): Promise<T> {
   const value = await api<T>(path)
   getCache.set(path, value)
   return value
 }
 // Sign-out and user switches must not leak one account's data into the next.
-export function clearApiCache() { getCache.clear() }
+export function clearApiCache() { getCache.clear(); for (let i = sessionStorage.length - 1; i >= 0; i--) { const k = sessionStorage.key(i); if (k && k.startsWith('puffin-draft:')) sessionStorage.removeItem(k) } }
+
+// ---- item 7a: unsent-text safety net -------------------------------------
+// Long text fields (draft editor, premise, planner notes) mirror their value
+// into sessionStorage on every change and restore it after a failed save or a
+// reload. Clear on successful save so the server copy wins.
+const DRAFT_PREFIX = 'puffin-draft:'
+export function saveDraftLocal(key: string, text: string) { try { sessionStorage.setItem(DRAFT_PREFIX + key, text) } catch { /* quota or private mode: text stays in the field either way */ } }
+export function restoreDraftLocal(key: string): string | null { try { return sessionStorage.getItem(DRAFT_PREFIX + key) } catch { return null } }
+export function clearDraftLocal(key: string) { try { sessionStorage.removeItem(DRAFT_PREFIX + key) } catch { /* ignore */ } }
 
 // Safe prefetch: warm the destination's main D1-backed GET on hover/focus so the
 // page seeds from cache. Only list-style, never-Tumblr GETs are eligible — starter

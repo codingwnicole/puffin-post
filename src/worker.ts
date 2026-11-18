@@ -24,6 +24,7 @@ import { tumblrActivityRoutes } from './routes/tumblr-activity'
 import { characterPlannerRoutes } from './routes/character-planner'
 import { featureSuggestionRoutes } from './routes/feature-suggestions'
 import { supportRoutes } from './routes/support'
+import { clientErrorRoutes } from './routes/client-errors'
 
 export interface Env {
   DB: D1Database
@@ -95,6 +96,7 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   app.route('/api/character-planner',characterPlannerRoutes())
   app.route('/api/feature-suggestions',featureSuggestionRoutes())
   app.route('/api/support',supportRoutes())
+  app.route('/api/client-errors',clientErrorRoutes(BUILD_REVISION))
   return app
 }
 

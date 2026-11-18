@@ -25,9 +25,16 @@ export function characterPlannerRoutes() {
 
   app.get('/', async c => {
     const s = await requireWorkspace(c)
-    const plans = await s.db.prepare('SELECT id,name,faceclaim,notes,state,icon_object_key AS iconObjectKey,created_at AS createdAt,updated_at AS updatedAt FROM character_plans WHERE workspace_id=? ORDER BY updated_at DESC, name').bind(s.workspaceId).all()
-    const resources = await s.db.prepare('SELECT id,plan_id AS planId,label,url FROM character_plan_resources WHERE workspace_id=? ORDER BY created_at').bind(s.workspaceId).all()
-    return c.json(plans.results.map(plan => ({ ...plan, resources: resources.results.filter(resource => resource.planId === plan.id) })))
+    // Bounded paging for very large idea banks: ?limit= (default 100, max 200)
+    // + ?before=<updatedAt> keyset cursor over (updated_at, name).
+    const limit=Math.min(200,Math.max(1,Number(c.req.query('limit'))||100))
+    const before=c.req.query('before')
+    const beforeParams:unknown[]=before?[before,s.workspaceId,limit]:[s.workspaceId,limit]
+    const beforeClause=before?' AND (updated_at, name) < (?, ?)':' '
+    const plans = await s.db.prepare(`SELECT id,name,faceclaim,notes,state,icon_object_key AS iconObjectKey,created_at AS createdAt,updated_at AS updatedAt FROM character_plans WHERE workspace_id=?${beforeClause} ORDER BY updated_at DESC, name LIMIT ?`).bind(...beforeParams).all()
+    const resourcePlanIds=plans.results.map(p=>p.id)
+    const resources = resourcePlanIds.length ? await s.db.prepare(`SELECT id,plan_id AS planId,label,url FROM character_plan_resources WHERE workspace_id=? AND plan_id IN (${resourcePlanIds.map(()=>'?').join(',')}) ORDER BY created_at`).bind(s.workspaceId,...resourcePlanIds).all() : {results:[]}
+    return c.json({ plans: plans.results.map(plan => ({ ...plan, resources: resources.results.filter(resource => resource.planId === plan.id) })), hasMore: plans.results.length===limit, nextCursor: plans.results.length===limit ? plans.results[plans.results.length-1].updatedAt : null })
   })
 
   app.post('/', async c => {

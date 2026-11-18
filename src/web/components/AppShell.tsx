@@ -72,6 +72,7 @@ function useSwipeToClose(open: boolean, close: () => void, hasUnsaved: () => boo
 export default function AppShell({ page, children }: { page:AppPage; children:ReactNode }) {
   const [signingOut, setSigningOut] = useState(false)
   const [signedIn, setSignedIn] = useState(false)
+  const [offline, setOffline] = useState(!navigator.onLine)
   const [activityUnread, setActivityUnread] = useState(0)
   const [menuOpen, setMenuOpen] = useState(false)
   const [commandOpen, setCommandOpen] = useState(false)
@@ -96,6 +97,13 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
   const shortcutKey = /Mac|iP/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K'
+  useEffect(() => {
+    const goOffline = () => setOffline(true)
+    const goOnline = () => setOffline(false)
+    window.addEventListener('offline', goOffline)
+    window.addEventListener('online', goOnline)
+    return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline) }
+  }, [])
   useEffect(() => { fetch('/api/auth/session').then(async response => { setSignedIn(response.ok); if(response.ok) { const session = (await response.json().catch(() => ({}))) as { user?: { id?: string | number; name?: string } }; const userId = String(session.user?.id ?? session.user?.name ?? 'default'); if (lastUserId.current !== undefined && lastUserId.current !== userId) clearApiCache(); lastUserId.current = userId; void fetch('/api/tumblr-activity/unread-count').then(value=>value.ok?value.json():{count:0}).then(value=>setActivityUnread((value as {count?:number}).count??0)) } }).catch(() => setSignedIn(false)) }, [page])
 
   return <div className={`app-shell${signedIn ? '' : ' app-shell-guest'}`}>
@@ -106,7 +114,7 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
       <details className="mobile-more" open={menuOpen} onToggle={() => { if (!menuOpen) setMenuOpen(false) }}><summary onClick={event => { event.preventDefault(); setMenuOpen(value => !value) }} aria-expanded={menuOpen}><Icon name="more"/><span>More</span></summary><div className="mobile-more-menu" style={offset ? { transform: `translateY(${offset}px)`, transition: 'none' } : undefined}><span className="sheet-grabber" aria-hidden="true"></span><div className="sheet-menu-head"><span>More</span><button type="button" className="sheet-close" onClick={() => { setMenuOpen(false); clearNotice() }}>Close</button></div>{notice && <p className="sheet-notice" role="status">{notice}</p>}<label className="sheet-note-label"><span>Note</span><input className="sheet-note" type="text" placeholder="Quick note" aria-label="Quick note" /></label><a href="#activity" onClick={clearNotice}><Icon name="activity"/>Tumblr activity</a><a href="#tools" onClick={clearNotice}><Icon name="tools"/>Writing tools</a><a href="#planner" onClick={clearNotice}><Icon name="planner"/>Character planner</a><a href="#connections" onClick={clearNotice}><Icon name="connections"/>Connected accounts</a><a href="#settings" onClick={clearNotice}><Icon name="settings"/>Settings</a><a href="#support" onClick={clearNotice}><Icon name="more"/>Support &amp; feedback</a></div></details>
       <p className="nav-note"><button type="button" className="shortcut-hint" onClick={() => setCommandOpen(true)} aria-keyshortcuts="Control+K Meta+K"><Icon name="search" />Search / commands<kbd>{shortcutKey}</kbd></button>Track scenes, not spreadsheets.<button className="sign-out" disabled={signingOut} onClick={async () => { setSigningOut(true); clearApiCache(); await fetch('/api/auth/sign-out', { method:'POST', headers:{ origin:window.location.origin } }); window.history.replaceState(null, '', '/'); window.location.reload() }}>{signingOut ? 'Signing out.' : 'Sign out'}</button></p>
     </nav>}
-    <main id="main-content" tabIndex={-1}>{signedIn && <div className="workspace-heading"><p className="eyebrow">Your writing space</p><p className="tagline">Keep every thread moving.</p></div>}{children}</main>
+    <main id="main-content" tabIndex={-1}>{signedIn && <div className="workspace-heading"><p className="eyebrow">Your writing space</p><p className="tagline">Keep every thread moving.</p></div>}{offline && <p className="offline-banner" role="status">You're offline. Changes can't be saved until you're back online.</p>}{children}</main>
     {signedIn && <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} />}
     <ToastHost />
   </div>

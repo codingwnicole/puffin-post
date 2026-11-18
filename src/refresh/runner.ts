@@ -18,7 +18,7 @@ export function replyExcerpt(preview: string | null | undefined): string | null 
   const lastSpace = cut.lastIndexOf(' ')
   return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()
 }
-interface RefreshTarget { id: string; workspaceId: string; characterId: string; blogIdentifier: string; tokenEncrypted: string; tokenSecretEncrypted: string }
+interface RefreshTarget { id: string; workspaceId: string; characterId: string; blogIdentifier: string; connectionId: string; tokenEncrypted: string; tokenSecretEncrypted: string }
 interface StarterRow { id: string; rootPostId: string; rootBlogId: string }
 interface BranchRow extends RefreshBranch { starterId: string; lastRefreshAt: string | null }
 
@@ -76,7 +76,7 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   const effectiveLimit = Math.max(1, Math.min(limit, options.targetLimit ?? limit))
   const state = await db.prepare('SELECT last_character_blog_id AS lastCharacterBlogId FROM refresh_scheduler_state WHERE id=1').first<{ lastCharacterBlogId: string | null }>()
   const candidates = await db.prepare(`SELECT cb.id, cb.workspace_id AS workspaceId, cb.character_id AS characterId, cb.blog_identifier AS blogIdentifier,
-      tc.token_encrypted AS tokenEncrypted, tc.token_secret_encrypted AS tokenSecretEncrypted
+      tc.id AS connectionId, tc.token_encrypted AS tokenEncrypted, tc.token_secret_encrypted AS tokenSecretEncrypted
     FROM character_blogs cb JOIN characters c ON c.workspace_id=cb.workspace_id AND c.id=cb.character_id
     JOIN tumblr_connections tc ON tc.workspace_id=cb.workspace_id AND tc.id=cb.tumblr_connection_id
     WHERE c.state='active' AND tc.status='active' ORDER BY cb.id`).all<RefreshTarget>()
@@ -226,6 +226,9 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
         break
       }
       const message = error instanceof Error ? error.message.slice(0, 500) : 'Tumblr refresh failed'
+      // Item 3c: one structured log line per failing connection — id + status only,
+      // never post text, drafts, or tokens.
+      console.warn('refresh failure', { connectionId: target.connectionId, status: message })
       const cursor = db.prepare(`INSERT INTO refresh_cursors (workspace_id,character_blog_id,last_attempt_at,last_error,failure_count) VALUES (?,?,?,?,1)
         ON CONFLICT(workspace_id,character_blog_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,last_error=excluded.last_error,failure_count=refresh_cursors.failure_count+1`).bind(target.workspaceId, target.id, now.toISOString(), message)
       const branches = db.prepare(`UPDATE reply_branches SET refresh_error=?,last_refresh_at=? WHERE workspace_id=? AND starter_id IN (SELECT id FROM starters WHERE workspace_id=? AND archived=0 AND character_id=(SELECT character_id FROM character_blogs WHERE workspace_id=? AND id=?))`)

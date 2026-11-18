@@ -40,6 +40,11 @@ export interface InboxQuery extends WorkspaceScope {
   tagId?: string
   q?: string
   oldestFirst?: boolean
+  // Bounded paging for large accounts: limit rows returned and skip back with
+  // offset. The inbox is the one genuinely growing list; the other list routes
+  // return small, fixed-shape data and stay unbounded.
+  limit?: number
+  offset?: number
 }
 
 export type RpUnsortedReason = 'none' | 'no_rps' | 'multiple_rps'
@@ -168,6 +173,7 @@ export async function listInboxBranches(input: InboxQuery): Promise<InboxBranch[
       ${input.tagId ? 'AND EXISTS (SELECT 1 FROM starter_tags st WHERE st.workspace_id=b.workspace_id AND st.starter_id=b.starter_id AND st.tag_id=?)' : ''}
       ${input.q ? "AND (lower(s.title) LIKE ? OR lower(c.name) LIKE ? OR lower(COALESCE(p.display_label,'')) LIKE ?)" : ''}
     ORDER BY COALESCE(b.last_activity_at, b.created_at) ${input.oldestFirst ? 'ASC' : 'DESC'}, b.id
+    LIMIT ${input.limit ?? 200} OFFSET ${input.offset ?? 0}
   `).bind(...[workspaceId, ...(status === undefined ? [] : [status]), ...(input.starterId ? [input.starterId] : []), ...(input.characterId ? [input.characterId] : []), ...(input.tagId ? [input.tagId] : []), ...(input.q ? Array(3).fill(`%${input.q.toLocaleLowerCase()}%`) : [])]).all<InboxBranch>()
   return result.results
 }
