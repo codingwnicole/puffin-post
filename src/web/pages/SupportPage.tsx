@@ -3,7 +3,7 @@ import { useEffect,useState,type FormEvent } from 'react'
 import { api } from '../lib/api'
 
 type Status='reported'|'acknowledged'|'investigating'|'planned'|'fixed'
-type Comment={id:string;body:string;createdAt:string;email:string}
+type Comment={id:string;body:string;createdAt:string}
 type Item={id:string;kind:'bug'|'feature';title:string;description:string;status:Status;createdAt:string;voteCount:number;voted:number;comments:Comment[]}
 type SupportData={items:Item[];canManage:boolean}
 const labels:Record<Status,string>={reported:'Reported',acknowledged:'Known issue',investigating:'Investigating',planned:'Planned',fixed:'Fixed'}
