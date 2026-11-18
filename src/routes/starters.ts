@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { Env } from '../worker'
 import type { WorkspaceScope } from '../db/client'
 import { requireWorkspace } from '../auth/sessions'
+import { checkRateLimit } from '../auth/rate-limits'
 import { createStarter, findTrackedThread, getStarter, updateStarterTitle } from '../db/repositories/starters'
 import { createReplyBranch, listInboxBranches, upsertReplyBranch } from '../db/repositories/branches'
 import { branchSchema, starterSchema } from './tracking-validation'
@@ -239,6 +240,7 @@ export function starterRoutes() {
   })
   app.post('/:starterId/reparse', async c => {
     const scope = await requireWorkspace(c)
+    if (!(await checkRateLimit(scope.db, `reparse:${scope.workspaceId}`, 6, 60_000)).allowed) throw new HTTPException(429, { message:'Too many refreshes. Wait a minute and try again.' })
     const starter = await getStarter(scope, c.req.param('starterId'))
     if (starter.rootBlogId === 'manual') throw new HTTPException(400, { message:'Manual scenes do not have a Tumblr post to read' })
     const found = await findPost(scope, c.env, `https://www.tumblr.com/${starter.rootBlogId.replace(/\.tumblr\.com$/i, '')}/${starter.rootPostId}`, starter.characterId)

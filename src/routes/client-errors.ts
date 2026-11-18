@@ -14,11 +14,11 @@ export function clientErrorRoutes(revision: string = 'rev') {
     // Read the body inside the handler (some runtimes only expose it while the
     // request is live), then log it in the background.
     const body = await c.req.text().catch(() => '')
-    let parsed: { message?: string } = {}
-    try { parsed = JSON.parse(body.slice(0, 2048)) as { message?: string } } catch { /* malformed: log nothing but the shape */ }
+    let parsed: { message?: string; route?: string } = {}
+    try { parsed = JSON.parse(body.slice(0, 2048)) as { message?: string; route?: string } } catch { /* malformed: log nothing but the shape */ }
     const entry = {
       message: redact(String(parsed.message ?? '').slice(0, 300)),
-      route: new URL(c.req.url).pathname,
+      route: redact(String(parsed.route ?? '').split('?')[0].slice(0, 100)),
       build: revision,
       userAgent: redact((c.req.header('user-agent') ?? '').slice(0, 200)),
     }

@@ -31,7 +31,7 @@ export async function staleGet<T>(path: string): Promise<T> {
   return value
 }
 // Sign-out and user switches must not leak one account's data into the next.
-export function clearApiCache() { getCache.clear(); for (let i = sessionStorage.length - 1; i >= 0; i--) { const k = sessionStorage.key(i); if (k && k.startsWith('puffin-draft:')) sessionStorage.removeItem(k) } }
+export function clearApiCache() { getCache.clear(); try { for (let i = sessionStorage.length - 1; i >= 0; i--) { const k = sessionStorage.key(i); if (k && k.startsWith('puffin-draft:')) sessionStorage.removeItem(k) } } catch { /* no storage: nothing to clear */ } }
 
 // ---- item 7a: unsent-text safety net -------------------------------------
 // Long text fields (draft editor, premise, planner notes) mirror their value

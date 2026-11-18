@@ -26,11 +26,11 @@ async function mockApi(page: Page, overrides: { inbox?: unknown } = {}) {
       { id: 'c2', name: 'Mira', faceclaim: '', icon: 'cat', description: '', status: 'active', rp_group_id: 'g1', rp_group_name: LONG_GROUP, quick_links: 1, quick_link_characters: [{ id: 'c3', name: 'Juno' }] },
       { id: 'c3', name: 'Juno', faceclaim: '', icon: 'owl', description: '', status: 'archived', rp_group_id: null, rp_group_name: null, quick_links: 0, quick_link_characters: [] },
     ])
-    if (url.includes('/api/character-planner')) return respond([
+    if (url.includes('/api/character-planner')) return respond({ hasMore: false, nextCursor: null, plans: [
       { id: 'p1', name: LONG_NAME, faceclaim: 'An extremely long faceclaim line for the planner card, repeated: Aurelius Vermeer von Blackwood, third of the house, cartographer of the endless grey archipelago.', notes: '', state: 'idea', iconObjectKey: null, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', resources: [] },
       { id: 'p2', name: 'Mira', faceclaim: '', notes: '', state: 'developing', iconObjectKey: null, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', resources: [] },
       { id: 'p3', name: 'Juno', faceclaim: '', notes: '', state: 'ready', iconObjectKey: null, createdAt: '2026-11-01T00:00:00Z', updatedAt: '2026-11-01T00:00:00Z', resources: [] },
-    ])
+    ] })
     return respond([])
   })
 }

@@ -36,7 +36,7 @@ describe('B01/B02 stable character identity across planner round-trip', () => {
     // The plan should be gone.
     const plans = await fixture.request('/api/character-planner', 'GET')
     expect(plans.status).toBe(200)
-    const planList = (await plans.json()) as Array<{ id: string }>
+    const planList = ((await plans.json()) as { plans: Array<{ id: string }> }).plans
     expect(planList.some(p => p.id === planId)).toBe(false)
 
     // The character should be active again.

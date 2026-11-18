@@ -123,7 +123,31 @@ describe('data lifecycle: disconnect, account deletion, refresh lock', () => {
     expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM characters WHERE workspace_id=?').bind('b').first()).n).toBe(1)
   })
 
-  it('a second overlapping refresh for the same run id is a no-op', async () => {
+  it('reconnecting moves only that account’s blogs off the disconnected connection', async () => {
+    const { hashToken } = await import('../../src/auth/sessions')
+    const { encryptToken } = await import('../../src/tumblr/oauth')
+    const cipher = await encryptToken('x', env.TOKEN_ENCRYPTION_KEY)
+    // A second (other) Tumblr account in workspace a, also disconnected, with its own blog.
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO tumblr_connections (id,workspace_id,token_encrypted,token_secret_encrypted,account_metadata_json,status) VALUES ('connection-a2','a','','','{}','disconnected')"),
+      env.DB.prepare("INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label) VALUES ('blog-a2','a','character-a','connection-a2','other.tumblr.com','other')"),
+    ])
+    expect((await fixture.request('/api/connections/connection-a', 'DELETE', undefined, 'a')).status).toBeLessThan(300)
+    const state = 'c'.repeat(64)
+    await env.DB.prepare('INSERT INTO tumblr_oauth_states (state_hash,workspace_id,request_token_encrypted,request_secret_encrypted,expires_at) VALUES (?,?,?,?,?)').bind(await hashToken(state), 'a', await encryptToken('rt', env.TOKEN_ENCRYPTION_KEY), cipher, '2999-01-01T00:00:00.000Z').run()
+    const realFetch = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL) => String(input instanceof Request ? input.url : input).includes('access_token')
+      ? new Response('oauth_token=t&oauth_token_secret=s')
+      : Response.json({ response: { user: { blogs: [{ name: 'a' }] } } })) as typeof fetch
+    try { expect((await fixture.request(`/api/tumblr/callback?state=${state}&oauth_token=rt&oauth_verifier=v`, 'GET', undefined, 'a')).status).toBe(302) } finally { globalThis.fetch = realFetch }
+    const rows = await env.DB.prepare("SELECT cb.id, tc.status FROM character_blogs cb JOIN tumblr_connections tc ON tc.id=cb.tumblr_connection_id WHERE cb.workspace_id='a' ORDER BY cb.id").all()
+    expect(rows.results).toEqual([{ id: 'blog-a', status: 'active' }, { id: 'blog-a2', status: 'disconnected' }])
+    // The emptied old connection is gone; the other account's disconnected row stays (it still has a blog).
+    const ids = (await env.DB.prepare("SELECT id FROM tumblr_connections WHERE workspace_id='a' AND status='disconnected'").all()).results.map((r: any) => r.id)
+    expect(ids).toEqual(['connection-a2'])
+  })
+
+  it('a second overlapping refresh is a no-op while another run is live', async () => {
     // connection-a is active; a refresh with a given run id grabs the lock.
     const first = await runRefreshBatch(env, new Date('2026-02-02T10:00:00.000Z'), 100, { fetchBudget: 5, runId: 'overlap-1' })
     expect(first.selected).toBeGreaterThanOrEqual(1)
@@ -140,7 +164,7 @@ describe('data lifecycle: disconnect, account deletion, refresh lock', () => {
     // A concurrent run with the SAME id is a no-op: it sees the live lock.
     // Simulate an in-flight run by inserting an unfinished lock, then re-running.
     await env.DB.prepare('INSERT INTO refresh_runs (id,started_at,finished_at) VALUES (?,?,NULL)').bind('overlap-live', '2026-02-02T10:00:00.000Z').run()
-    const blocked = await runRefreshBatch(env, new Date('2026-02-02T10:01:00.000Z'), 100, { fetchBudget: 5, runId: 'overlap-live' })
+    const blocked = await runRefreshBatch(env, new Date('2026-02-02T10:01:00.000Z'), 100, { fetchBudget: 5, runId: 'overlap-other' })
     expect(blocked.selected).toBe(0)
     expect(blocked.refreshed).toBe(0)
     expect(blocked.fetchesUsed).toBe(0)

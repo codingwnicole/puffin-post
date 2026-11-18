@@ -23,6 +23,6 @@ export async function checkRateLimit(db: Env['DB'], key: string, limit: number, 
     await db.prepare('UPDATE rate_limits SET count=count+1 WHERE key=?').bind(key).run()
     return { allowed: true, remaining: limit - row.count - 1, retryAfterSeconds: 0 }
   }
-  await db.prepare('INSERT INTO rate_limits (key, count, window_start) VALUES (?,1,?)').bind(key, iso).run()
+  await db.prepare('INSERT INTO rate_limits (key, count, window_start) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET count=count+1').bind(key, iso).run()
   return { allowed: true, remaining: limit - 1, retryAfterSeconds: 0 }
 }

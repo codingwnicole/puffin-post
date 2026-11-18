@@ -41,13 +41,13 @@ describe('redact()', () => {
 
 describe('POST /api/client-errors', () => {
   it('logs the redacted shape and answers 204 without a session', async () => {
-    const response = await post('/api/client-errors', JSON.stringify({ message: 'boom at bob@corp.io key ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456789' }))
+    const response = await post('/api/client-errors', JSON.stringify({ message: 'boom at bob@corp.io key ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef0123456789', route: '#starter/abc?q=secret' }))
     expect(response.status).toBe(204)
     // waitUntil runs after the response; let the microtask queue drain.
     await new Promise(resolve => setTimeout(resolve, 50))
     expect(logSpy).toHaveBeenCalledWith('client error', expect.objectContaining({
       message: expect.stringContaining('[email]'),
-      route: '/api/client-errors',
+      route: '#starter/abc',
       build: expect.any(String),
     }))
     const logged = logSpy.mock.calls.find(call => call[0] === 'client error')?.[1] as { message: string }

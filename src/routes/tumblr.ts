@@ -4,6 +4,7 @@ import type { Env } from '../worker'
 import { requireWorkspace, hashToken, randomToken } from '../auth/sessions'
 import { createOauthState, decryptToken, encryptToken, oauthAuthorizationHeader } from '../tumblr/oauth'
 import { createTumblrClient } from '../tumblr/client'
+import { canonicalBlogIdentifier } from '../tumblr/normalize'
 
 const REQUEST_TOKEN_URL = 'https://www.tumblr.com/oauth/request_token'
 const ACCESS_TOKEN_URL = 'https://www.tumblr.com/oauth/access_token'
@@ -45,8 +46,18 @@ export function tumblrRoutes() {
     if (!access.oauth_token || !access.oauth_token_secret) throw new HTTPException(502, { message:'Tumblr connection unavailable' })
     const client = createTumblrClient({ consumerKey:c.env.TUMBLR_CONSUMER_KEY, consumerSecret:c.env.TUMBLR_CONSUMER_SECRET, token:access.oauth_token, tokenSecret:access.oauth_token_secret })
     const blogs = await client.getBlogs()
-    await c.env.DB.prepare('INSERT INTO tumblr_connections (id,workspace_id,token_encrypted,token_secret_encrypted,account_metadata_json) VALUES (?,?,?,?,?)')
-      .bind(randomToken(), row.workspace_id, await encryptToken(access.oauth_token, c.env.TOKEN_ENCRYPTION_KEY), await encryptToken(access.oauth_token_secret, c.env.TOKEN_ENCRYPTION_KEY), JSON.stringify({ blogs })).run()
+    const connectionId = randomToken()
+    // Reconnecting: blog assignments left on a disconnected connection move to this one, but only for
+    // blogs this Tumblr account actually has (another account's blogs stay put). Emptied old rows go.
+    const owned = JSON.stringify(blogs.map(canonicalBlogIdentifier))
+    await c.env.DB.batch([
+      c.env.DB.prepare('INSERT INTO tumblr_connections (id,workspace_id,token_encrypted,token_secret_encrypted,account_metadata_json) VALUES (?,?,?,?,?)')
+        .bind(connectionId, row.workspace_id, await encryptToken(access.oauth_token, c.env.TOKEN_ENCRYPTION_KEY), await encryptToken(access.oauth_token_secret, c.env.TOKEN_ENCRYPTION_KEY), JSON.stringify({ blogs })),
+      c.env.DB.prepare("UPDATE character_blogs SET tumblr_connection_id=? WHERE workspace_id=? AND blog_identifier IN (SELECT value FROM json_each(?)) AND tumblr_connection_id IN (SELECT id FROM tumblr_connections WHERE workspace_id=? AND status='disconnected')")
+        .bind(connectionId, row.workspace_id, owned, row.workspace_id),
+      c.env.DB.prepare("DELETE FROM tumblr_connections WHERE workspace_id=? AND status='disconnected' AND id NOT IN (SELECT tumblr_connection_id FROM character_blogs WHERE workspace_id=?)")
+        .bind(row.workspace_id, row.workspace_id),
+    ])
     return c.redirect('/#/connections?connected=1')
   })
   return app

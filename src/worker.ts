@@ -25,6 +25,7 @@ import { characterPlannerRoutes } from './routes/character-planner'
 import { featureSuggestionRoutes } from './routes/feature-suggestions'
 import { supportRoutes } from './routes/support'
 import { clientErrorRoutes } from './routes/client-errors'
+import { redact } from './shared/redact'
 
 export interface Env {
   DB: D1Database
@@ -73,7 +74,7 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
     if (['Draft is archived','Draft is already converted'].includes(error.message)) { const response = c.json({ error: error.message },409); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
     // Never log the raw error message: a DB/OAuth error could carry a token or email in
     // its text, and the 500 below already returns a safe client-facing message.
-    console.error('Unhandled request error', { path:c.req.path, method:c.req.method, name:error instanceof Error ? error.name : 'unknown' })
+    console.error('Unhandled request error', { path:c.req.path, method:c.req.method, name:error instanceof Error ? error.name : 'unknown', message:redact((error instanceof Error ? error.message : String(error)).slice(0,300)) })
     const response = c.json({ error: error instanceof Error ? error.message : 'Request failed' }, 500); response.headers.set('X-Build-Revision', BUILD_REVISION); return response
   })
   const sender = options.mailSender ?? resendMailSender(env)

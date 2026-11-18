@@ -66,10 +66,12 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   // while the first is still running sees the live lock and bails out, so the
   // same blog is never refreshed twice in one window. The lock is released by
   // the finishing run (or expires once started_at ages past 10 min).
-  const runId = options.runId ?? `run-${now.getTime()}`
-  const lock = await env.DB.prepare('SELECT id FROM refresh_runs WHERE id=?').bind(runId).first<{ id: string }>()
-  if (lock) return { selected: 0, refreshed: 0, failed: 0, skipped: 0, fetchesUsed: 0 }
-  await env.DB.prepare('INSERT INTO refresh_runs (id,started_at,finished_at) VALUES (?,?,NULL)').bind(runId, now.toISOString()).run()
+  // ponytail: one global lock (any unfinished run younger than 10 min blocks); per-connection locks if runs ever need to overlap.
+  const runId = options.runId ?? crypto.randomUUID()
+  const staleBefore = new Date(now.getTime() - 10 * 60_000).toISOString()
+  const claimed = await env.DB.prepare('INSERT INTO refresh_runs (id,started_at,finished_at) SELECT ?,?,NULL WHERE NOT EXISTS (SELECT 1 FROM refresh_runs WHERE finished_at IS NULL AND started_at > ?)').bind(runId, now.toISOString(), staleBefore).run()
+  if (!claimed.meta.changes) return { selected: 0, refreshed: 0, failed: 0, skipped: 0, fetchesUsed: 0 }
+  await env.DB.prepare('DELETE FROM refresh_runs WHERE id<>? AND started_at < ?').bind(runId, new Date(now.getTime() - 86_400_000).toISOString()).run()
   try {
     const budget = new SubrequestBudget(Math.max(1, options.fetchBudget ?? SUBREQUEST_BUDGET))
   const db = countingDB(env.DB, budget)

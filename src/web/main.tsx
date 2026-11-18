@@ -10,7 +10,7 @@ let reported = 0
 function reportClientError(message: string) {
   if (reported >= 5) return
   reported++
-  const payload = JSON.stringify({ message, route: window.location.pathname, ua: navigator.userAgent })
+  const payload = JSON.stringify({ message, route: window.location.hash.split('?')[0] || '/', ua: navigator.userAgent })
   if (navigator.sendBeacon && navigator.sendBeacon('/api/client-errors', new Blob([payload], { type: 'application/json' }))) return
   fetch('/api/client-errors', { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload, keepalive: true }).catch(() => undefined)
 }
