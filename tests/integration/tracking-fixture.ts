@@ -24,7 +24,11 @@ export async function trackingFixture() {
       const trail = stub?.trail ?? null
       return new Response(JSON.stringify({ response:{ blog:{ name:blog }, id_string:id, tags:['ooc','open','a/o'], reblogged_root_id: rootId ?? null, reblogged_root_name: rootName ?? null, trail } }), { status:200, headers:{'content-type':'application/json'} })
     }
-    if (url.includes('/notes?')) return new Response(JSON.stringify({ response:{ notes:[] } }), { status:200, headers:{'content-type':'application/json'} })
+    if (url.includes('/notes?')) {
+      const notesStub = (globalThis as any).__tumblrStubNotes
+      const notes = notesStub?.notes ?? []
+      return new Response(JSON.stringify({ response:{ notes } }), { status:200, headers:{'content-type':'application/json'} })
+    }
     return new Response(JSON.stringify({ response:{ user:{ blogs:[{ name:'a' },{ name:'b' }] } } }), { status:200, headers:{'content-type':'application/json'} })
   }
   const platform = await getPlatformProxy<Env>({ persist: false })

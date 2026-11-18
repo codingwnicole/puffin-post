@@ -111,7 +111,9 @@ it('persists RP membership and can remove a Tumblr account with its assignments'
   expect((await fixture.request(`/api/rp-groups/${group.id}/characters`,'POST',{characterId:'character-a'})).status).toBe(204)
   expect(await (await fixture.request('/api/rp-groups')).json()).toEqual([{id:group.id,name:'Avast',characterIds:['character-a']}])
   expect((await fixture.request('/api/connections/connection-a','DELETE')).status).toBe(204)
-  expect(await (await fixture.request('/api/connections')).json()).toEqual([])
+  const remaining = await (await fixture.request('/api/connections')).json() as Array<{ id: string; status: string }>
+  // Disconnect keeps the row (characters/threads/drafts survive) but clears tokens.
+  expect(remaining.some(c => c.id === 'connection-a' && c.status === 'disconnected')).toBe(true)
 })
 
 it('creates and signs in with an eight character password', async () => {

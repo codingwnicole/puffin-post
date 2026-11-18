@@ -263,3 +263,4 @@ p{text-wrap:pretty}
 }
 /* 38: squircle corners where supported; border-radius above stays as the fallback. */
 @supports (corner-shape:squircle){.branch-card,.rp-group,.character-card,.planner-card,.modal-card,.connection-card,.command-card{corner-shape:squircle}}
+.connection-sync{margin:.4rem 0 0;font-size:.82rem;color:var(--muted)}.connection-sync-error{margin:.2rem 0 0;font-size:.82rem;color:var(--danger)}.danger-section{border-color:var(--danger)}.delete-account-help{max-width:40rem;margin:.65rem 0;padding-left:1.25rem;color:var(--muted);line-height:1.8}.delete-account-form{max-width:26rem}

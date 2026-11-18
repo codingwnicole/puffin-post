@@ -60,8 +60,18 @@ function countingDB(db: D1Database, budget: SubrequestBudget): D1Database {
   return { ...db, prepare, batch: (stmts: D1PreparedStatement[]) => { budget.consumeD1(); return db.batch(stmts) } } as unknown as D1Database
 }
 
-export async function runRefreshBatch(env: Env, now: Date, limit: number, options: { fetchBudget?: number; targetLimit?: number } = {}): Promise<RefreshBatchResult> {
-  const budget = new SubrequestBudget(Math.max(1, options.fetchBudget ?? SUBREQUEST_BUDGET))
+export async function runRefreshBatch(env: Env, now: Date, limit: number, options: { fetchBudget?: number; targetLimit?: number; runId?: string } = {}): Promise<RefreshBatchResult> {
+  // Overlap guard: the caller (the scheduled handler) supplies a run id that
+  // identifies the invocation. A second scheduled batch for the same workspace
+  // while the first is still running sees the live lock and bails out, so the
+  // same blog is never refreshed twice in one window. The lock is released by
+  // the finishing run (or expires once started_at ages past 10 min).
+  const runId = options.runId ?? `run-${now.getTime()}`
+  const lock = await env.DB.prepare('SELECT id FROM refresh_runs WHERE id=?').bind(runId).first<{ id: string }>()
+  if (lock) return { selected: 0, refreshed: 0, failed: 0, skipped: 0, fetchesUsed: 0 }
+  await env.DB.prepare('INSERT INTO refresh_runs (id,started_at,finished_at) VALUES (?,?,NULL)').bind(runId, now.toISOString()).run()
+  try {
+    const budget = new SubrequestBudget(Math.max(1, options.fetchBudget ?? SUBREQUEST_BUDGET))
   const db = countingDB(env.DB, budget)
   const effectiveLimit = Math.max(1, Math.min(limit, options.targetLimit ?? limit))
   const state = await db.prepare('SELECT last_character_blog_id AS lastCharacterBlogId FROM refresh_scheduler_state WHERE id=1').first<{ lastCharacterBlogId: string | null }>()
@@ -244,5 +254,8 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
     const scheduler = db.prepare(`INSERT INTO refresh_scheduler_state (id,last_character_blog_id,updated_at) VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET last_character_blog_id=excluded.last_character_blog_id,updated_at=excluded.updated_at`).bind(lastTargetId, now.toISOString())
     await db.batch([scheduler])
   }
-  return { selected: selected.length, refreshed, failed, skipped, fetchesUsed: budget.usedCount() }
+    return { selected: selected.length, refreshed, failed, skipped, fetchesUsed: budget.usedCount() }
+  } finally {
+    try { await env.DB.prepare('UPDATE refresh_runs SET finished_at=? WHERE id=?').bind(now.toISOString(), runId).run() } catch { /* best effort */ }
+  }
 }

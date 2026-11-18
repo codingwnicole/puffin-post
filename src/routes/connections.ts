@@ -67,10 +67,14 @@ export function connectionRoutes() {
   app.delete('/:connectionId', async c => {
     const scope=await requireWorkspace(c),connectionId=c.req.param('connectionId')
     if(!await scope.db.prepare('SELECT id FROM tumblr_connections WHERE workspace_id=? AND id=?').bind(scope.workspaceId,connectionId).first()) return c.json({error:'Tumblr account not found'},404)
+    // Disconnecting stops refresh work without destroying character data.
+    // Tokens are wiped, cursors reset (re-auth resumes from scratch), and the
+    // runner skips 'disconnected' connections. Characters, threads, drafts,
+    // and blog assignments all stay so the user's data survives a re-connect.
     await scope.db.batch([
-      scope.db.prepare('DELETE FROM refresh_cursors WHERE workspace_id=? AND character_blog_id IN (SELECT id FROM character_blogs WHERE workspace_id=? AND tumblr_connection_id=?)').bind(scope.workspaceId,scope.workspaceId,connectionId),
-      scope.db.prepare('DELETE FROM character_blogs WHERE workspace_id=? AND tumblr_connection_id=?').bind(scope.workspaceId,connectionId),
-      scope.db.prepare('DELETE FROM tumblr_connections WHERE workspace_id=? AND id=?').bind(scope.workspaceId,connectionId),
+      scope.db.prepare('UPDATE tumblr_connections SET status=\'disconnected\', token_encrypted=\'\', token_secret_encrypted=\'\', account_metadata_json=\'{}\' WHERE workspace_id=? AND id=?').bind(scope.workspaceId,connectionId),
+      scope.db.prepare('UPDATE refresh_cursors SET newest_post_timestamp=NULL, newest_post_id=NULL, last_error=NULL, failure_count=0 WHERE workspace_id=? AND character_blog_id IN (SELECT id FROM character_blogs WHERE workspace_id=? AND tumblr_connection_id=?)').bind(scope.workspaceId,scope.workspaceId,connectionId),
+      scope.db.prepare('DELETE FROM tumblr_oauth_states WHERE workspace_id=?').bind(scope.workspaceId),
     ])
     return c.body(null,204)
   })

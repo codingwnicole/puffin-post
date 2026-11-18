@@ -103,6 +103,7 @@ export default {
     return createApp(env).fetch(request, env, ctx)
   },
   scheduled(_event, env, ctx) {
-    ctx.waitUntil(Promise.all([runRefreshBatch(env, new Date(), 20),sendDuePushes(env)]))
+    const runId = `sched-${Date.now()}-${Math.floor(Math.random()*1e6)}`
+    ctx.waitUntil(Promise.all([runRefreshBatch(env, new Date(), 20, { runId }),sendDuePushes(env)]))
   },
 } satisfies ExportedHandler<Env>
