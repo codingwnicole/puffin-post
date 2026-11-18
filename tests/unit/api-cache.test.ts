@@ -32,4 +32,22 @@ describe('stale-while-revalidate cache', () => {
     clearApiCache()
     expect(peekCache('/things')).toBeUndefined()
   })
+
+  it('clearApiCache drops puffin-draft: sessionStorage keys and leaves others (sign-out / workspace switch)', () => {
+    // Stub sessionStorage (node env has none). clearApiCache must remove only
+    // draft keys so unrelated per-tab state survives a sign-out.
+    const store = new Map<string, string>([['puffin-draft:branch-1', 'hello'], ['theme', 'dark']])
+    const sessionStorage = {
+      get length() { return store.size },
+      key: (i: number) => [...store.keys()][i] ?? null,
+      getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+      clear: () => store.clear(),
+    }
+    vi.stubGlobal('sessionStorage', sessionStorage)
+    clearApiCache()
+    expect(sessionStorage.getItem('puffin-draft:branch-1')).toBeNull()
+    expect(sessionStorage.getItem('theme')).toBe('dark')
+  })
 })

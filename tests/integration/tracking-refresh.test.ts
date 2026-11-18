@@ -176,6 +176,36 @@ describe('tracking refresh runner', () => {
     await dispose()
   })
 
+  it('fairness: a workspace with 50 due blogs cannot starve two 1-blog workspaces (budget 5, first run)', async () => {
+    const { env, dispose } = await makeEnv()
+    const db = env.DB
+    // big workspace: 50 due blogs on one connection; small1/small2: 1 each.
+    await seedBase(db, 'wb', 'connB', 'blogB.tumblr.com', 'cb')
+    for (let i = 1; i < 50; i++) {
+      await db.prepare("INSERT INTO character_blogs (id, workspace_id, character_id, tumblr_connection_id, blog_identifier, display_label) VALUES (?,?,?,?,?,?)")
+        .bind('cb-b' + i, 'wb', 'cb', 'connB', 'blogB-' + i + '.tumblr.com', 'blogB-' + i + '.tumblr.com').run()
+    }
+    await seedBase(db, 'ws1', 'connS1', 'blogS1.tumblr.com', 'cs1')
+    await seedBase(db, 'ws2', 'connS2', 'blogS2.tumblr.com', 'cs2')
+    for (const [ws, char, blog] of [['wb', 'cb', 'blogB.tumblr.com'], ['ws1', 'cs1', 'blogS1.tumblr.com'], ['ws2', 'cs2', 'blogS2.tumblr.com']] as const) {
+      addStarter(db, ws, char, 's-' + ws, 'root-' + ws, blog)
+      addPartner(db, ws, 'pp-' + ws, 'partner-' + ws + '.tumblr.com')
+      addBranch(db, ws, 's-' + ws, 'pp-' + ws, 'partner-' + ws + '.tumblr.com')
+    }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    mockTumblr(fetchSpy, {})
+    const run = await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 5)
+    // Round-robin: both 1-blog workspaces land in the first round, so their
+    // single branch is stamped even though the big workspace has 50 due blogs.
+    const stamped = async (ws: string) => (await db.prepare('SELECT last_refresh_at FROM reply_branches WHERE workspace_id=?').bind(ws).first())?.last_refresh_at as string | null
+    expect(await stamped('ws1')).toBeTruthy()
+    expect(await stamped('ws2')).toBeTruthy()
+    expect(await stamped('wb')).toBeTruthy()
+    expect(run.refreshed).toBeGreaterThanOrEqual(3)
+    fetchSpy.mockRestore()
+    await dispose()
+  })
+
   it('uses only the characters own blogs for their_turn on a shared blog', async () => {
     const { env, dispose } = await makeEnv()
     const db = env.DB

@@ -2,9 +2,9 @@ import type { Env } from '../worker'
 import { createTumblrClient, type FetchBudget } from '../tumblr/client'
 import { decryptToken } from '../tumblr/oauth'
 import { canonicalBlogIdentifier } from '../tumblr/normalize'
-import { rotateAfter } from './cursor'
 import { refreshStarterBranches, type RefreshBranch } from '../tumblr/refresh'
 import { sendWorkspacePush } from '../routes/push'
+import { redact } from '../shared/redact'
 
 export interface RefreshBatchResult { selected: number; refreshed: number; failed: number; skipped?: number; fetchesUsed?: number }
 
@@ -25,8 +25,20 @@ interface BranchRow extends RefreshBranch { starterId: string; lastRefreshAt: st
 // Cloudflare free plan: 50 subrequests per invocation, counting fetches AND
 // D1 calls combined. sendDuePushes shares the invocation, so hold back: 30
 // leaves 20 for sendDuePushes' worst case (1 D1 query + 1 fetch per due
-// subscription + updates).
+// subscription + updates). Override via env REFRESH_FETCH_BUDGET (paid plans);
+// the owner can raise the ceiling without a code change.
 const SUBREQUEST_BUDGET = 30
+// ponytail: ceiling is ~2 targets per workspace per 30-minute cron (20 targets
+// x 12 runs/hour) at the default budget. Upgrade path when it becomes a
+// bottleneck: Cloudflare Queues fan-out per connection, so each workspace's
+// due blogs run as independent jobs instead of one global batch.
+function readFetchBudget(env: Env, explicit?: number): number {
+  if (explicit !== undefined) return Math.max(1, Math.min(900, explicit))
+  const raw = env.REFRESH_FETCH_BUDGET
+  const parsed = raw === undefined || raw === '' ? NaN : Number(raw)
+  const value = Number.isFinite(parsed) ? Math.floor(parsed) : SUBREQUEST_BUDGET
+  return Math.max(1, Math.min(900, value))
+}
 // The target and starter loops stop with this many subrequests still free, so
 // the per-target write batch (1) and the scheduler-state batch (1) always fit.
 const FINAL_WRITE_HEADROOM = 2
@@ -47,6 +59,8 @@ class SubrequestBudget {
 
 // Wraps a D1Database so every D1 operation (run/all/first/batch) consumes one
 // subrequest. prepare() is free in D1 — only executing a statement counts.
+// NOTE: bound queries (.bind().all()) escape the counter because bind() returns
+// the raw D1 statement; such reads are accounted for explicitly at the call site.
 function countingDB(db: D1Database, budget: SubrequestBudget): D1Database {
   const prepare = (sql: string): D1PreparedStatement => {
     const stmt = db.prepare(sql) as any
@@ -72,18 +86,57 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   const claimed = await env.DB.prepare('INSERT INTO refresh_runs (id,started_at,finished_at) SELECT ?,?,NULL WHERE NOT EXISTS (SELECT 1 FROM refresh_runs WHERE finished_at IS NULL AND started_at > ?)').bind(runId, now.toISOString(), staleBefore).run()
   if (!claimed.meta.changes) return { selected: 0, refreshed: 0, failed: 0, skipped: 0, fetchesUsed: 0 }
   await env.DB.prepare('DELETE FROM refresh_runs WHERE id<>? AND started_at < ?').bind(runId, new Date(now.getTime() - 86_400_000).toISOString()).run()
+  // Declared at function scope so the finally can stamp due/refreshed even if
+  // the run throws mid-batch.
+  let dueWorkspaces = 0
+  let refreshed = 0
   try {
-    const budget = new SubrequestBudget(Math.max(1, options.fetchBudget ?? SUBREQUEST_BUDGET))
+    const budget = new SubrequestBudget(readFetchBudget(env, options.fetchBudget))
   const db = countingDB(env.DB, budget)
   const effectiveLimit = Math.max(1, Math.min(limit, options.targetLimit ?? limit))
-  const state = await db.prepare('SELECT last_character_blog_id AS lastCharacterBlogId FROM refresh_scheduler_state WHERE id=1').first<{ lastCharacterBlogId: string | null }>()
-  const candidates = await db.prepare(`SELECT cb.id, cb.workspace_id AS workspaceId, cb.character_id AS characterId, cb.blog_identifier AS blogIdentifier,
-      tc.id AS connectionId, tc.token_encrypted AS tokenEncrypted, tc.token_secret_encrypted AS tokenSecretEncrypted
-    FROM character_blogs cb JOIN characters c ON c.workspace_id=cb.workspace_id AND c.id=cb.character_id
+  // Fairness: a round-robin fair queue. Every eligible target is ranked within
+  // its workspace (n, by cb.id for a stable order), then targets are emitted in
+  // round-robin order: workspace1's 1st, workspace2's 1st, workspace3's 1st,
+  // then workspace1's 2nd, ... (rounds ASC, then per-workspace rank). A single
+  // workspace can serve all its due blogs in one run (sideblogs on one
+  // connection still work), but a workspace with many blogs can never push
+  // another workspace past its first target before the budget is spent. The
+  // rotation cursor biases which workspace starts a round so successive runs
+  // interleave rather than always serving the same workspace first. Within a
+  // workspace the branch-level staleness is handled by the starter loop (it
+  // already orders branches by last_refresh_at), so the target rank here only
+  // needs to be stable, not staleness-ordered.
+  // Fairness: a plain-SELECT round-robin fair queue (no CTE, so it costs the
+  // same single D1 subrequest as the original query). Each target's per-workspace
+  // rank is a correlated count of earlier siblings in the same workspace, and the
+  // cursor biases which workspace leads a round. Result: workspace1's 1st, ws2's
+  // 1st, ws3's 1st, then ws1's 2nd, ... A single workspace can serve all its due
+  // blogs in one run (sideblogs on one connection still work), but a workspace
+  // with many blogs can never push another workspace past its first target before
+  // the budget is spent. Within a workspace, branch staleness is handled by the
+  // starter loop (it already orders branches by last_refresh_at).
+  const state = await db.prepare('SELECT last_workspace_id AS lastWorkspaceId FROM refresh_scheduler_state WHERE id=1').first<{ lastWorkspaceId: string | null }>()
+  const candidates = await db.prepare(`SELECT cb.id, cb.workspace_id AS workspaceId, cb.character_id AS characterId,
+      cb.blog_identifier AS blogIdentifier, tc.id AS connectionId,
+      tc.token_encrypted AS tokenEncrypted, tc.token_secret_encrypted AS tokenSecretEncrypted
+    FROM character_blogs cb
+    JOIN characters c ON c.workspace_id=cb.workspace_id AND c.id=cb.character_id
     JOIN tumblr_connections tc ON tc.workspace_id=cb.workspace_id AND tc.id=cb.tumblr_connection_id
-    WHERE c.state='active' AND tc.status='active' ORDER BY cb.id`).all<RefreshTarget>()
-  const selected = rotateAfter(candidates.results, state?.lastCharacterBlogId ?? null, effectiveLimit)
-  let refreshed = 0, failed = 0, skipped = 0
+    WHERE c.state='active' AND tc.status='active'
+    ORDER BY
+      CASE WHEN cb.workspace_id <= ? THEN 1 ELSE 0 END ASC,
+      (SELECT COUNT(*) FROM character_blogs x WHERE x.workspace_id=cb.workspace_id AND x.id < cb.id) ASC,
+      cb.workspace_id ASC,
+      cb.id ASC
+    LIMIT ?`).bind(state?.lastWorkspaceId ?? '', effectiveLimit).all<RefreshTarget>()
+  // bound queries (.bind().all()) escape countingDB's D1 counter (bind returns
+  // the raw statement), so account for this one read explicitly.
+  budget.consumeD1()
+  const selected = candidates.results
+  // distinct workspaces actually served this run is the "due" count for the
+  // runs table (one or more targets per workspace were selected and processed).
+  dueWorkspaces = new Set(selected.map(target => target.workspaceId)).size
+  let failed = 0, skipped = 0
   // A starter already refreshed through one target's blog is skipped for later
   // targets of the same character (main blog + sideblogs), so every thread's
   // notes are fetched once per run. Mentions are NOT deduped: each blog has
@@ -95,11 +148,9 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   // One getPost per distinct latest reply across the whole run: a reply shared
   // by several branches (same starter root) is fetched once, not per branch.
   const excerptCache = new Map<string, string | null>()
-  let lastTargetId: string | null = null
   for (const target of selected) {
     if (budget.remaining() <= FINAL_WRITE_HEADROOM) { skipped++; continue }
     try {
-      lastTargetId = target.id
       const client = createTumblrClient({ consumerKey: env.TUMBLR_CONSUMER_KEY, consumerSecret: env.TUMBLR_CONSUMER_SECRET,
         token: await decryptToken(target.tokenEncrypted, env.TOKEN_ENCRYPTION_KEY), tokenSecret: await decryptToken(target.tokenSecretEncrypted, env.TOKEN_ENCRYPTION_KEY),
         budget })
@@ -230,7 +281,7 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
       const message = error instanceof Error ? error.message.slice(0, 500) : 'Tumblr refresh failed'
       // Item 3c: one structured log line per failing connection — id + status only,
       // never post text, drafts, or tokens.
-      console.warn('refresh failure', { connectionId: target.connectionId, status: message })
+      console.warn('refresh failure', { connectionId: target.connectionId, status: redact(message).slice(0, 300) })
       const cursor = db.prepare(`INSERT INTO refresh_cursors (workspace_id,character_blog_id,last_attempt_at,last_error,failure_count) VALUES (?,?,?,?,1)
         ON CONFLICT(workspace_id,character_blog_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,last_error=excluded.last_error,failure_count=refresh_cursors.failure_count+1`).bind(target.workspaceId, target.id, now.toISOString(), message)
       const branches = db.prepare(`UPDATE reply_branches SET refresh_error=?,last_refresh_at=? WHERE workspace_id=? AND starter_id IN (SELECT id FROM starters WHERE workspace_id=? AND archived=0 AND character_id=(SELECT character_id FROM character_blogs WHERE workspace_id=? AND id=?))`)
@@ -253,14 +304,15 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
     const body = [counts.replyCount ? `${counts.replyCount} replies waiting` : null, counts.tagCount ? `${counts.tagCount} new tags` : null].filter(Boolean).join(', ')
     await sendWorkspacePush(env, workspaceId, { title: 'Puffin Post', body, url: '/#inbox' })
   }
-  // Save the last target actually processed, so targets postponed for budget
-  // go first next run instead of being rotated past.
-  if (lastTargetId) {
-    const scheduler = db.prepare(`INSERT INTO refresh_scheduler_state (id,last_character_blog_id,updated_at) VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET last_character_blog_id=excluded.last_character_blog_id,updated_at=excluded.updated_at`).bind(lastTargetId, now.toISOString())
+  // Save the last workspace handled, so the next run rotates past it and every
+  // workspace gets its one slot in turn. Round-robin is per workspace, not per
+  // blog, so a workspace with many blogs is capped at one target per run.
+  if (selected.length) {
+    const scheduler = db.prepare(`INSERT INTO refresh_scheduler_state (id,last_workspace_id,updated_at) VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET last_workspace_id=excluded.last_workspace_id,updated_at=excluded.updated_at`).bind(selected[selected.length - 1].workspaceId, now.toISOString())
     await db.batch([scheduler])
   }
     return { selected: selected.length, refreshed, failed, skipped, fetchesUsed: budget.usedCount() }
   } finally {
-    try { await env.DB.prepare('UPDATE refresh_runs SET finished_at=? WHERE id=?').bind(now.toISOString(), runId).run() } catch { /* best effort */ }
+    try { await env.DB.prepare('UPDATE refresh_runs SET finished_at=?,due=?,refreshed=? WHERE id=?').bind(now.toISOString(), dueWorkspaces, refreshed, runId).run() } catch { /* best effort */ }
   }
 }

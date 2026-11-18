@@ -10,6 +10,9 @@
   "vars": {
     "APP_ORIGIN": "http://localhost:5173",
     "MAIL_FROM": "Threadums <noreply@example.com>"
+    // Optional: REFRESH_FETCH_BUDGET (int, clamped 1..900, default 30). Raises the
+    // per-run Tumblr fetch ceiling on a paid plan without a code change. Deliberately
+    // NOT set here as a value — leave it unset so the default applies.
   },
   "d1_databases": [
     {

@@ -39,6 +39,7 @@ export interface Env {
   MAIL_FROM: string
   PUSH_VAPID_PRIVATE_KEY?: string
   BOOTSTRAP_OWNER_EMAIL?: string
+  REFRESH_FETCH_BUDGET?: string
 }
 
 export function createApp(env: Env, options: { mailSender?: MailSender } = {}): Hono<{ Bindings: Env }> {

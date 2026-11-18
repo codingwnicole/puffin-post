@@ -83,7 +83,7 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
   }, [])
   const { offset, notice, clearNotice } = useSwipeToClose(menuOpen, useCallback(() => setMenuOpen(false), []), hasUnsaved)
   const navPrefetch = (item: string) => () => prefetchNav(item)
-  const lastUserId = useRef<string | null | undefined>(undefined)
+  const lastIdentity = useRef<string | null | undefined>(undefined)
   // Ctrl/⌘K opens the command menu. Must not fire while typing in an input.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -104,7 +104,7 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
     window.addEventListener('online', goOnline)
     return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline) }
   }, [])
-  useEffect(() => { fetch('/api/auth/session').then(async response => { setSignedIn(response.ok); if(response.ok) { const session = (await response.json().catch(() => ({}))) as { user?: { id?: string | number; name?: string } }; const userId = String(session.user?.id ?? session.user?.name ?? 'default'); if (lastUserId.current !== undefined && lastUserId.current !== userId) clearApiCache(); lastUserId.current = userId; void fetch('/api/tumblr-activity/unread-count').then(value=>value.ok?value.json():{count:0}).then(value=>setActivityUnread((value as {count?:number}).count??0)) } }).catch(() => setSignedIn(false)) }, [page])
+  useEffect(() => { fetch('/api/auth/session').then(async response => { setSignedIn(response.ok); if(response.ok) { const session = (await response.json().catch(() => ({}))) as { userId?: string; workspaceId?: string }; const identity = String(session.userId ?? 'default') + ':' + String(session.workspaceId ?? 'default'); if (lastIdentity.current !== undefined && lastIdentity.current !== identity) clearApiCache(); lastIdentity.current = identity; void fetch('/api/tumblr-activity/unread-count').then(value=>value.ok?value.json():{count:0}).then(value=>setActivityUnread((value as {count?:number}).count??0)) } }).catch(() => setSignedIn(false)) }, [page])
 
   return <div className={`app-shell${signedIn ? '' : ' app-shell-guest'}`}>
     <a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus() }}>Skip to content</a>
