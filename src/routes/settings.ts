@@ -6,23 +6,29 @@ import { requireWorkspace, requireSession } from '../auth/sessions'
 
 const COOKIE = '__Host-threadums_session'
 
-// Every table that carries a workspace_id, in dependency order. Deleting a
-// workspace means clearing all of these. Keep in sync with migrations: if a
-// new table gains a workspace_id column, add it here. Order matters: child
-// tables (those with FKs to characters or other workspace tables without
-// ON DELETE CASCADE) must come before their parents.
+// Every table that carries a workspace_id, children before the parents they point at. Live D1
+// enforces foreign keys, so a parent deleted before its children fails the whole batch (nothing is
+// deleted). Keep in sync with migrations: a new workspace table goes above everything it references.
+// The lived-in account test in tests/integration/lifecycle.test.ts catches a wrong order.
 const WORKSPACE_TABLES = [
-  // deepest children first (FK to characters without cascade)
-  'character_blogs','character_quicklinks','rp_group_characters',
-  'starter_tags','starters','reply_drafts','reply_draft_characters',
-  // remaining workspace tables
-  'activity_dismissals','activity_notification_deliveries','character_plan_resources',
-  'character_plans','feature_suggestions','invites','magic_links','memberships',
-  'notification_preferences','partners','push_subscriptions','refresh_cursors',
-  'reply_branches','rp_groups','sessions','starter_templates','tags',
-  'tumblr_connections','tumblr_oauth_states','activities',
-  // parent last (children above reference it)
+  'activities',                        // -> starters, reply_branches
+  'starter_tags',                      // -> starters, tags
+  'reply_draft_characters',            // -> reply_drafts, characters
+  'reply_drafts',                      // -> characters, partners, reply_branches
+  'reply_branches',                    // -> starters, partners
+  'starters',                          // -> characters
+  'refresh_cursors',                   // -> character_blogs
+  'character_blogs',                   // -> characters, tumblr_connections
+  'character_quicklinks','rp_group_characters', // -> characters (rp_group_characters also -> rp_groups)
+  'rp_groups','partners','tags','tumblr_connections','tumblr_oauth_states','starter_templates',
+  'activity_dismissals','activity_notification_deliveries',
+  'character_plan_resources','character_plans','feature_suggestions',
   'characters',
+  'push_subscriptions','notification_preferences', // -> memberships
+  'sessions',
+  'magic_links',                       // -> invites
+  'invites',
+  'memberships',
 ] as const
 
 // Per-user rows inside a shared workspace that belong to the leaving member only.
