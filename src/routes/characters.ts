@@ -5,20 +5,22 @@ import { z } from 'zod'
 import { requireWorkspace } from '../auth/sessions'
 import { getAuthorizedCharacterIcon, putCharacterIcon, MAX_ICON_BYTES, validatedRasterType } from '../storage/icons'
 import { parsePlaylist, parseBoard, parsePin } from '../shared/embeds'
+import { CARD_SYMBOL_KEYS } from '../shared/card-symbols'
 
 const text = (max:number) => z.string().trim().max(max).default('')
 export const CARD_THEMES = ['holo','vamp','poet','coquette','cyber','whimsy','ice','wild','crime','deco'] as const
 const cardSchema = z.object({ theme:z.enum(CARD_THEMES).default('holo'), nickname:text(60), age:text(30), birthdate:text(40), quote:text(160), song:text(60), artist:text(60), favoriteColor:z.string().regex(/^#[0-9a-f]{6}$/i).default('#b07a9e'), facts:z.array(text(70)).max(5).default([]), likes:text(90), dislikes:text(90), notes:text(140),
   playlistUrl:z.string().default('').superRefine((value,ctx)=>{if(!value)return;if(!parsePlaylist(value))ctx.addIssue({code:'custom',message:'Use a Spotify, YouTube, or Apple Music link'})}),
   boardUrl:z.string().default('').superRefine((value,ctx)=>{if(!value)return;if(!parseBoard(value))ctx.addIssue({code:'custom',message:'Use a Pinterest board link'})}),
-  tracklist:z.array(z.string().max(80)).max(10).default([])
+  tracklist:z.array(z.string().max(80)).max(10).default([]),
+  symbol:z.enum(CARD_SYMBOL_KEYS).default('none')
 }).strict().transform(v=>{
   return {
     theme:v.theme,nickname:v.nickname,quote:v.quote,age:v.age,birthdate:v.birthdate,song:v.song,artist:v.artist,favoriteColor:v.favoriteColor,
     facts:v.facts,likes:v.likes,dislikes:v.dislikes,notes:v.notes,
     playlistUrl:v.playlistUrl?parsePlaylist(v.playlistUrl)!.openUrl:'',
     boardUrl:v.boardUrl?parseBoard(v.boardUrl)!.url:'',
-    tracklist:v.tracklist
+    tracklist:v.tracklist,symbol:v.symbol
   }
 })
 

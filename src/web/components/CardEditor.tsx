@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { api } from '../lib/api'
 import { IMAGE_ACCEPT, PORTRAIT_HINT } from '../lib/uploads'
+import { CARD_SYMBOLS, SYMBOL_FONT, type CardSymbol } from '../../shared/card-symbols'
 import TradingCard, { THEMES, type CardProfile, type CardStats, type ThemeId, emptyCard } from './TradingCard'
 
 type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; card?: CardProfile | null }
@@ -18,6 +19,7 @@ function CardEditor({ row, stats, portrait, upload, close, saved }: { row: Chara
       <div className="card-editor-fields">
         <h2 id="card-editor-title">{row.name}’s trading card</h2>
         <fieldset className="card-theme-picker"><legend>Style</legend>{(Object.keys(THEMES) as ThemeId[]).map(id => <label key={id} style={{ '--swatch': `linear-gradient(135deg, ${THEMES[id].bg[0]}, ${THEMES[id].foil[1]})` } as CSSProperties}><input type="radio" name="theme" value={id} checked={draft.theme === id} onChange={() => set('theme', id)} /><span>{THEMES[id].label}<small>{THEMES[id].group}</small></span></label>)}</fieldset>
+        <fieldset className="card-symbol-picker"><legend>Symbol by the name</legend>{(Object.keys(CARD_SYMBOLS) as CardSymbol[]).map(key => <label key={key} title={CARD_SYMBOLS[key].label}><input type="radio" name="symbol" value={key} checked={(draft.symbol ?? 'none') === key} onChange={() => set('symbol', key)} aria-label={CARD_SYMBOLS[key].label} /><span aria-hidden="true" style={{ fontFamily: SYMBOL_FONT }}>{CARD_SYMBOLS[key].glyph || 'None'}</span></label>)}</fieldset>
         <label className="icon-picker">{portrait ? 'Replace portrait' : 'Upload portrait'}<input type="file" accept={IMAGE_ACCEPT} aria-describedby="portrait-hint" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void upload(file).catch(problem => setError((problem as Error).message)) }} /></label><p className="field-help" id="portrait-hint">{PORTRAIT_HINT}</p>
         <div className="card-editor-row">{field('nickname', 'Nickname / alias', 60)}{field('age', 'Age', 30)}{field('birthdate', 'Birthdate', 40)}</div>
         <label>Quote<textarea value={draft.quote} maxLength={160} rows={2} onChange={event => set('quote', event.target.value)} /></label>

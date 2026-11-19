@@ -28,6 +28,10 @@ test('make a trading card, see it in the Cards view, flip it, and download it as
   await tile.getByRole('button', { name: 'Make this card' }).click()
   const editor = page.getByRole('dialog')
   await editor.getByText('Vamp Romantic').click()
+  // No sparkle by default; the symbol picker puts the chosen glyph by the name.
+  await expect(editor.locator('[data-side=front] [data-symbol]')).toHaveCount(0)
+  await editor.getByRole('radio', { name: 'Moon' }).check()
+  await expect(editor.locator('[data-side=front] [data-symbol]').first()).toHaveText('☾')
   await editor.getByLabel('Nickname / alias').fill('Little Fox')
   // A GIF portrait goes up untouched (animation kept) and shows on the card; the size hint is visible.
   await expect(editor.locator('#portrait-hint')).toContainText('600 × 600')
@@ -44,6 +48,7 @@ test('make a trading card, see it in the Cards view, flip it, and download it as
   await expect(editor).toBeHidden()
   await expect(tile.locator('.tcard')).toHaveAttribute('data-theme-id', 'vamp')
   await expect(tile.locator('[data-side=front]')).toContainText('Little Fox')
+  await expect(tile.locator('[data-side=front] [data-symbol]').first()).toHaveText('☾')
   await expect(tile.locator('[data-side=back]')).toContainText('Hates the rain')
   await expect(tile.locator('[data-side=back]')).toContainText('YOUR TURN')
   const flip = tile.getByRole('button', { name: /Flip Wren Marlowe/ })

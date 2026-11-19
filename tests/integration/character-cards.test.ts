@@ -15,6 +15,8 @@ describe('character trading cards', () => {
       expect((await fixture.request('/api/characters/character-a/card', 'PUT', { ...card, favoriteColor: 'red;}' }, 'a')).status).toBe(400)
       expect((await fixture.request('/api/characters/character-a/card', 'PUT', { ...card, facts: ['1', '2', '3', '4', '5', '6'] }, 'a')).status).toBe(400)
       expect((await fixture.request('/api/characters/character-a/card', 'PUT', { ...card, extra: 1 }, 'a')).status).toBe(400)
+      expect((await fixture.request('/api/characters/character-a/card', 'PUT', { ...card, symbol: 'sparkle-emoji' }, 'a')).status).toBe(400)
+      expect(await (await fixture.request('/api/characters/character-a/card', 'PUT', { ...card, symbol: 'moon' }, 'a')).json()).toMatchObject({ symbol: 'moon' })
       // Another workspace can neither write nor see it.
       expect((await fixture.request('/api/characters/character-a/card', 'PUT', card, 'b')).status).toBe(404)
       const other = await (await fixture.request('/api/characters', 'GET', undefined, 'b')).json() as { id: string }[]

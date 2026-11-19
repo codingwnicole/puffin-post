@@ -430,3 +430,11 @@ p{text-wrap:pretty}
 .profile-board{transition:none}
 .profile-board:hover{filter:none}
 }
+.card-symbol-picker{display:flex!important;flex-wrap:wrap;gap:.4rem!important}
+.card-symbol-picker legend{width:100%;margin-bottom:.2rem}
+.card-symbol-picker label{position:relative;display:block;cursor:pointer}
+.card-symbol-picker input{position:absolute;opacity:0}
+.card-symbol-picker span{display:grid;place-items:center;min-width:2.75rem;height:2.75rem;padding:0 .5rem;border:1px solid var(--border);border-radius:.6rem;background:var(--surface);color:var(--text);font-size:1.3rem;line-height:1}
+.card-symbol-picker label:first-of-type span{font:700 .8rem system-ui,sans-serif!important}
+.card-symbol-picker input:checked+span{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.card-symbol-picker input:focus-visible+span{outline:3px solid var(--accent);outline-offset:2px}

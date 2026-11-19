@@ -1,10 +1,11 @@
 import { useId, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { CARD_SYMBOLS, SYMBOL_FONT, type CardSymbol } from '../../shared/card-symbols'
 
 // A two-sided collectible card for a character, drawn as plain SVG so the same markup is shown
 // on the page and rasterised for the PNG download (no foreignObject, no dependencies).
 // Palettes adapted from the Character Card Studio brief; per-theme ornament art was left out.
 
-export type CardProfile = { theme: ThemeId; nickname: string; age: string; birthdate: string; quote: string; song: string; artist: string; favoriteColor: string; facts: string[]; likes: string; dislikes: string; notes: string; playlistUrl: string; boardUrl: string; tracklist: string[] }
+export type CardProfile = { theme: ThemeId; nickname: string; age: string; birthdate: string; quote: string; song: string; artist: string; favoriteColor: string; facts: string[]; likes: string; dislikes: string; notes: string; playlistUrl: string; boardUrl: string; tracklist: string[]; symbol?: CardSymbol }
 export type CardStats = { total: number; mine: number; theirs: number; rps: string[] }
 type Theme = { label: string; group: string; font: string; sans: string; corner: number; ink: string; sub: string; accent: string; stroke: string; panel: [string, string]; bg: [string, string, string]; foil: string[] }
 
@@ -22,7 +23,7 @@ export const THEMES = {
 } satisfies Record<string, Theme>
 export type ThemeId = keyof typeof THEMES
 
-export const emptyCard = (): CardProfile => ({ theme: 'holo', nickname: '', age: '', birthdate: '', quote: '', song: '', artist: '', favoriteColor: '#b07a9e', facts: ['', '', '', '', ''], likes: '', dislikes: '', notes: '', playlistUrl: '', boardUrl: '', tracklist: [] })
+export const emptyCard = (): CardProfile => ({ theme: 'holo', nickname: '', age: '', birthdate: '', quote: '', song: '', artist: '', favoriteColor: '#b07a9e', facts: ['', '', '', '', ''], likes: '', dislikes: '', notes: '', playlistUrl: '', boardUrl: '', tracklist: [], symbol: 'none' })
 
 /** Greedy word wrap by character count; the last line gets an ellipsis when text is cut. */
 export function wrap(text: string, width: number, lines: number) {
@@ -44,6 +45,9 @@ function Side({ side, name, profile, stats, portrait, uid }: { side: 'front' | '
   const label = { fill: t.sub, fontFamily: t.sans, fontSize: 11, letterSpacing: 3 } as const
   const body = { fill: t.ink, fontFamily: t.font, fontStyle: 'italic' as const }
   const box = (y: number, h: number, extra?: object) => <rect x={40} y={y} width={560} height={h} rx={Math.min(t.corner, 14)} fill={`url(#${id('panel')})`} stroke={t.stroke} strokeOpacity={.7} {...extra} />
+  // The writer's chosen symbol (none by default) sits beside the name, on the fun-fact bullets and in the footer.
+  const glyph: string = CARD_SYMBOLS[profile.symbol ?? 'none']?.glyph ?? ''
+  const symbolText = (x: number, y: number, size: number) => <text x={x} y={y} textAnchor="middle" fill={t.accent} fontFamily={SYMBOL_FONT} fontSize={size} data-symbol>{glyph}</text>
   const initials = name.split(/\s+/).map(part => part[0] ?? '').join('').slice(0, 2).toUpperCase() || '?'
   return <svg viewBox="0 0 640 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-label={`${name}'s card, ${side}`} data-side={side}>
     <defs>
@@ -56,7 +60,7 @@ function Side({ side, name, profile, stats, portrait, uid }: { side: 'front' | '
     <rect x={20} y={20} width={600} height={860} rx={t.corner + 6} fill="none" stroke={t.stroke} strokeOpacity={.55} />
     <text x={44} y={50} {...label}>{side === 'front' ? 'CHARACTER CARD ///' : 'CHARACTER DETAILS ///'}</text>
     <text x={596} y={50} textAnchor="end" {...label}>PUFFIN POST</text>
-    <path d="M320 864l5 11 11 5-11 5-5 11-5-11-11-5 11-5z" transform="translate(0 -14) scale(1)" fill={t.accent} />
+    {glyph && symbolText(320, 868, 18)}
     {side === 'front' ? <>
       <g clipPath={`url(#${id('portrait')})`}>
         <rect x={40} y={70} width={560} height={330} fill={`url(#${id('panel')})`} />
@@ -64,8 +68,8 @@ function Side({ side, name, profile, stats, portrait, uid }: { side: 'front' | '
       </g>
       <rect x={40} y={70} width={560} height={330} rx={Math.min(t.corner * 2, 40)} fill="none" stroke={`url(#${id('foil')})`} strokeWidth={3} />
       {box(420, 70, { stroke: `url(#${id('foil')})`, strokeOpacity: 1, strokeWidth: 2 })}
-      <path d="M72 442l5 12 12 5-12 5-5 12-5-12-12-5 12-5z" fill={t.accent} />
-      <text x={104} y={468} {...body} fontSize={name.length > 18 ? 30 : 40}>{name.slice(0, 26)}</text>
+      {glyph && symbolText(74, 468, 30)}
+      <text x={glyph ? 104 : 62} y={468} {...body} fontSize={name.length > 18 ? 30 : 40}>{name.slice(0, 26)}</text>
       {box(506, 44)}<text x={60} y={533} {...label}>NICKNAME / ALIAS</text><text x={250} y={534} {...body} fontSize={17}>{profile.nickname || '—'}</text>
       {box(562, 44)}<text x={60} y={589} {...label}>AGE</text><text x={120} y={590} {...body} fontSize={17}>{profile.age || '—'}</text><text x={330} y={589} {...label}>BIRTHDATE</text><text x={440} y={590} {...body} fontSize={17}>{profile.birthdate || '—'}</text>
       {box(618, 100)}<text x={56} y={652} fill={t.accent} fontFamily={t.font} fontSize={34}>“</text>
@@ -79,7 +83,7 @@ function Side({ side, name, profile, stats, portrait, uid }: { side: 'front' | '
       {([['THREADS', stats.total], ['YOUR TURN', stats.mine], ['THEIR TURN', stats.theirs]] as const).map(([what, value], i) => <g key={what}><text x={133 + i * 187} y={185} textAnchor="middle" fill={t.ink} fontFamily={t.font} fontSize={64}>{value}</text><text x={133 + i * 187} y={215} textAnchor="middle" {...label}>{what}</text></g>)}
       <text x={320} y={252} textAnchor="middle" {...body} fontSize={15}>{wrap(stats.rps.length ? 'Writes in ' + stats.rps.join(' / ') : 'Not in an RP section yet', 60, 1)[0]}</text>
       {box(286, 250)}<text x={60} y={316} {...label}>FUN FACTS</text>
-      {[0, 1, 2, 3, 4].map(i => <g key={i}><path d={`M66 ${343 + i * 38}l3 7 7 3-7 3-3 7-3-7-7-3 7-3z`} fill={t.accent} /><text x={88} y={358 + i * 38} {...body} fontSize={17}>{(profile.facts[i] || '—').slice(0, 52)}</text></g>)}
+      {[0, 1, 2, 3, 4].map(i => <g key={i}>{glyph ? symbolText(66, 358 + i * 38, 16) : <circle cx={66} cy={352 + i * 38} r={3} fill={t.accent} />}<text x={88} y={358 + i * 38} {...body} fontSize={17}>{(profile.facts[i] || '—').slice(0, 52)}</text></g>)}
       {box(552, 120, { width: 272 })}{box(552, 120, { x: 328, width: 272 })}
       <text x={60} y={580} {...label}>LIKES</text><text x={348} y={580} {...label}>DISLIKES</text>
       {wrap(profile.likes || '—', 26, 3).map((line, i) => <text key={'l' + i} x={60} y={608 + i * 22} {...body} fontSize={16}>{line}</text>)}
