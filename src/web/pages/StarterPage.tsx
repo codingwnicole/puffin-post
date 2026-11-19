@@ -16,7 +16,8 @@ export default function StarterPage({ id }: { id:string }) {
       .then(([detail,options]) => {
         setDetail(detail); setOptions(options)
         const kept = restoreDraftLocal(`premise:${id}`)
-        setPremise(kept !== null && kept !== (detail.starter.premise ?? '') ? kept : (detail.starter.premise ?? ''))
+        const saved = detail.starter.premise || detail.starter.description || ''
+        setPremise(kept !== null && kept !== saved ? kept : saved)
       }).catch(e => setError(e.message))
   },[id])
   async function savePremise() {
@@ -24,7 +25,7 @@ export default function StarterPage({ id }: { id:string }) {
       setPremiseBusy(true); setError('')
       await api(`/starters/${id}/premise`, 'PATCH', { premise })
       clearDraftLocal(`premise:${id}`)
-      setDetail(current => current ? { ...current, starter:{ ...current.starter, premise } } : current)
+      setDetail(current => current ? { ...current, starter:{ ...current.starter, premise, description:premise } } : current)
       setPremiseSaved(true); window.setTimeout(() => setPremiseSaved(false), 2500)
     } catch (problem) { setError((problem as Error).message) } finally { setPremiseBusy(false) }
   }
@@ -53,12 +54,12 @@ export default function StarterPage({ id }: { id:string }) {
     <h1 className="page-heading" id="starter-title" style={{ viewTransitionName: `starter-${id}` }}>{detail?.starter.title ?? 'Starter'}</h1>
     {error && <p role="alert">{error}</p>}
     {detail && <><div className="actions starter-actions"><p>{options.characters.find(c => c.id === detail.starter.characterId)?.name}</p>
-      <button onClick={toggleArchive} disabled={premiseBusy || archiveBusy}>{detail.starter.archived ? 'Restore thread' : 'Archive thread'}</button>
+      {detail.starter.rootBlogId !== 'manual' && <a className="button secondary-button" href={detail.starter.postUrl} target="_blank" rel="noreferrer noopener">Open on Tumblr</a>}
+      <button className="secondary-button" onClick={toggleArchive} disabled={premiseBusy || archiveBusy}>{detail.starter.archived ? 'Restore thread' : 'Archive thread'}</button>
       <button className="danger-button" onClick={async()=>{if(!window.confirm('Permanently delete this whole thread and every reply branch? This cannot be undone. If you just want it out of your inbox, Archive thread instead.'))return;try{await api(`/starters/${id}`,'DELETE');window.location.hash='inbox'}catch(problem){setError((problem as Error).message)}}}>Delete thread</button></div>
       {Boolean(detail.starter.archived) && <p className="field-help" role="status">This thread is archived. It is excluded from inbox counts and refreshes until you restore it.</p>}
-      <div className="tracking-card starter-premise"><p className="eyebrow">Premise · your notes</p><textarea rows={5} value={premise} onChange={e=>{ setPremise(e.target.value); saveDraftLocal(`premise:${id}`, e.target.value) }} placeholder="What is this scene about? Your own notes — sync never touches these."></textarea><div className="actions"><button onClick={savePremise} disabled={premiseBusy || premise === (detail.starter.premise ?? '')}>{premiseBusy ? 'Saving…' : 'Save premise'}</button>{premiseSaved && <span role="status">Premise saved</span>}</div></div>
-      <div className="tracking-card starter-latest"><p className="eyebrow">Latest reply · from Tumblr</p>{latestReply?.lastActivityAt ? <div className="space-y-2"><p className="preserve-lines">Last activity {new Date(latestReply.lastActivityAt).toLocaleString()}{latestReply.lastPoster ? ` · by ${latestReply.lastPoster}` : ''}</p>{latestReply.latestReplyExcerpt ? <p className="preserve-lines">{latestReply.latestReplyExcerpt}</p> : null}</div> : <p className="field-help">No Tumblr reply captured for this thread yet.</p>}</div>
-      <p className="preserve-lines">{detail.starter.description}</p><p>Tumblr: {detail.starter.rootBlogId} · Post {detail.starter.rootPostId}</p>
+      <div className="tracking-card starter-premise"><label className="eyebrow" htmlFor="scene-summary">Scene summary</label><textarea id="scene-summary" rows={5} value={premise} onChange={e=>{ setPremise(e.target.value); saveDraftLocal(`premise:${id}`, e.target.value) }} placeholder="What is this scene about? Puffin fills this in from the post; edit it freely. Sync never changes it."></textarea><div className="actions"><button onClick={savePremise} disabled={premiseBusy || premise === (detail.starter.premise || detail.starter.description || '')}>{premiseBusy ? 'Saving…' : 'Save summary'}</button>{premiseSaved && <span role="status">Summary saved</span>}</div></div>
+      {detail.starter.rootBlogId !== 'manual' && <div className="tracking-card starter-latest"><p className="eyebrow">Latest reply · from Tumblr</p>{latestReply?.lastActivityAt ? <div className="space-y-2"><p className="preserve-lines">Last activity {new Date(latestReply.lastActivityAt).toLocaleString()}{latestReply.lastPoster ? ` · by ${latestReply.lastPoster}` : ''}</p>{latestReply.latestReplyExcerpt ? <p className="preserve-lines">{latestReply.latestReplyExcerpt}</p> : null}</div> : <p className="field-help">No Tumblr reply captured for this thread yet.</p>}</div>}
       <StarterBranches starterId={id} branches={detail.branches} options={options} reload={reload} /></>}
   </section>
 }

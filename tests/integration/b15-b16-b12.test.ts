@@ -43,7 +43,7 @@ describe('B15: Thread archive/restore', () => {
 })
 
 describe('B16: Premise editing', () => {
-  it('should update starter premise independently from description', async () => {
+  it('saving the scene summary replaces the summary read from the post, so cards show it too', async () => {
     const created = await fixture.request('/api/starters', 'POST', starterInput)
     const starter = await created.json() as Starter
 
@@ -52,7 +52,7 @@ describe('B16: Premise editing', () => {
     expect(updated.status).toBe(200)
     const updatedBody = await updated.json() as Starter
     expect(updatedBody.premise).toBe('The world is ending')
-    expect(updatedBody.description).toBe('Shared scene') // Original description unchanged
+    expect(updatedBody.description).toBe('The world is ending') // one summary, shown on cards
   })
 })
 

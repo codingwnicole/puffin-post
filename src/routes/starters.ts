@@ -243,7 +243,8 @@ export function starterRoutes() {
     const starterId=c.req.param('starterId')
     const body=premiseSchema.parse(await c.req.json().catch(()=>({})))
     if(!await scope.db.prepare('SELECT id FROM starters WHERE workspace_id=? AND id=?').bind(scope.workspaceId,starterId).first()) throw new HTTPException(404,{message:'Starter not found'})
-    await scope.db.prepare('UPDATE starters SET premise=? WHERE workspace_id=? AND id=?').bind(body.premise,scope.workspaceId,starterId).run()
+    // One scene summary: the writer's text replaces the summary Puffin read from the post, so cards show it too.
+    await scope.db.prepare('UPDATE starters SET premise=?, description=? WHERE workspace_id=? AND id=?').bind(body.premise,body.premise,scope.workspaceId,starterId).run()
     return c.json(await getStarter(scope,starterId),200)
   })
   app.post('/:starterId/reparse', async c => {
@@ -253,7 +254,7 @@ export function starterRoutes() {
     if (starter.rootBlogId === 'manual') throw new HTTPException(400, { message:'Manual scenes do not have a Tumblr post to read' })
     const found = await findPost(scope, c.env, `https://www.tumblr.com/${starter.rootBlogId.replace(/\.tumblr\.com$/i, '')}/${starter.rootPostId}`, starter.characterId)
     if (!found.parsedCharacterNames.length) throw new HTTPException(400, { message:'Puffin could not find declared character names in this post yet' })
-    return c.json(await updateStarterTitle(scope, starter.id, found.suggestedTitle || starter.title, compactThreadSummary(found.preview) || starter.description))
+    return c.json(await updateStarterTitle(scope, starter.id, found.suggestedTitle || starter.title, starter.premise || compactThreadSummary(found.preview) || starter.description))
   })
   app.delete('/:starterId', async c => {
     const scope=await requireWorkspace(c),id=c.req.param('starterId')

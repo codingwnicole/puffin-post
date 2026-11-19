@@ -96,8 +96,8 @@ test.describe('T7c polish', () => {
     await page.goto('/#inbox')
     await expect(page.getByRole('link', { name: 'Puffin Post', exact: true })).toBeVisible()
 
-    // .count-pill on the inbox hero
-    const countPill = page.locator('.count-pill').first()
+    // The reply count now lives once, in the chart card's donut
+    const countPill = page.locator('.reply-donut strong').first()
     await expect(countPill).toBeVisible()
     const fv = await countPill.evaluate(el => getComputedStyle(el).fontVariantNumeric)
     expect(fv).toContain('tabular-nums')
@@ -130,12 +130,12 @@ test.describe('T7c polish', () => {
     // Skeleton should be visible while loading
     await expect(page.locator('.skeletons')).toBeVisible({ timeout: 500 })
     // Empty-state text should NOT be visible yet
-    await expect(page.getByText('Nothing gets lost in the reblog void')).toHaveCount(0, { timeout: 500 })
+    await expect(page.locator('.do-next')).toHaveCount(0, { timeout: 500 })
 
     // After resolution with no branches, skeleton should be gone
     await expect(page.locator('.skeletons')).toBeHidden({ timeout: 5000 })
     // The inbox renders with an empty branch list; empty-state summary should be visible
-    await expect(page.getByText('Nothing gets lost in the reblog void')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.do-next')).toBeVisible({ timeout: 5000 })
   })
 
   test('skeleton vs empty: resolved inbox with no branches shows empty state, no skeleton', async ({ page }) => {
@@ -148,7 +148,7 @@ test.describe('T7c polish', () => {
     const skeletonCount = await page.locator('.skeletons').count()
     expect(skeletonCount).toBe(0)
     // Empty-state text should be visible
-    await expect(page.getByText('Nothing gets lost in the reblog void')).toBeVisible()
+    await expect(page.locator('.do-next')).toBeVisible()
   })
 
   test('avatar 404: broken icon shows initials in the same box size', async ({ page }) => {

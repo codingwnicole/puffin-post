@@ -16,7 +16,7 @@ async function signIn(page: Page) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/')
-  await expect(page.getByText('Keep every thread moving.')).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('.primary-nav').first()).toBeVisible({ timeout: 15000 })
 }
 
 async function setMode(page: Page, mode: 'light' | 'dark') {

@@ -52,7 +52,7 @@ export async function signIn(page: Page, opts: { branch?: boolean; failSave?: bo
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/#settings')
-  await expect(page.getByText('Keep every thread moving.')).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('.primary-nav').first()).toBeVisible({ timeout: 15000 })
 }
 
 // In-page colour helpers as a function-source string, passed into page.evaluate

@@ -74,10 +74,10 @@ test('reduced motion: no transforms and short (<=100ms) fades on panel and branc
 
 test('pressing a button scales it to .97 while held', async ({ page }) => {
   await signedIn(page)
-  const button = page.getByRole('button', { name: 'Do next' })
+  const button = page.getByRole('button', { name: 'Oldest owed first' })
   await button.hover()
   const box = await button.boundingBox()
-  if (!box) throw new Error('Do next button not found')
+  if (!box) throw new Error('Oldest owed first button not found')
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()
   // Wait past the 150ms press transition so the held state reaches its end value.

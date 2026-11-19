@@ -38,7 +38,7 @@ test('three participants are actionable independently from inbox and starter det
     return route.fallback()
   })
   await page.goto('/')
-  await expect(page.getByRole('heading',{ name:/Your turn 3 replies/ })).toBeVisible()
+  await expect(page.getByRole('heading',{ name:/Your turn/ })).toBeVisible()
   await expect(page.locator('article.branch-card')).toHaveCount(3)
   // Archive only the first participant; the editor autosaves when focus leaves it.
   await expand(page,'One')
@@ -46,7 +46,7 @@ test('three participants are actionable independently from inbox and starter det
   await status.focus()
   await status.selectOption('archived')
   await status.blur()
-  await expect(page.getByRole('heading',{ name:/Your turn 2 replies/ })).toBeVisible()
+  await expect(page.locator('.reply-donut strong')).toHaveText('2')
   await expect(page.locator('article.branch-card')).toHaveCount(2)
   expect([...new Set(patched)]).toEqual(['b0'])
   // Starter detail still lists every participant with its own status.
@@ -85,12 +85,12 @@ test('creates a shared starter and adds a participant without duplicating it', a
   await quickAdd.getByRole('button',{ name:'Add thread',exact:true }).click()
   await expect(page.getByRole('heading',{ name:'Rooftop scene',exact:true })).toBeVisible()
   expect(saved).toMatchObject({ title:'Rooftop scene',characterId:'c',description:'Shared by every branch' })
-  const addForm = page.locator('form').filter({ hasText:'Add participant branch' })
+  const addForm = page.locator('form').filter({ hasText:'Add a writing partner' })
   await addForm.getByLabel('Partner').selectOption('p')
   await addForm.getByLabel('Branch notes').fill('Only for this participant')
   await addForm.getByRole('button',{ name:'Add branch',exact:true }).click()
   await expect(page.locator('article.branch-card')).toHaveCount(1)
-  await expect(page.locator('p.preserve-lines').filter({ hasText:'Shared by every branch' })).toBeVisible()
+  await expect(page.getByLabel('Scene summary')).toHaveValue(/Shared by every branch/)
   expect(added).toEqual({ partnerId:'p',notes:'Only for this participant' })
 })
 

@@ -322,3 +322,23 @@ p{text-wrap:pretty}
 .rp-deck-header .eyebrow{color:var(--text)}
 [data-theme="dark"] .rp-deck-header{background:color-mix(in srgb,var(--accent) 30%,var(--surface))}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .rp-deck-header{background:color-mix(in srgb,var(--accent) 30%,var(--surface))}}
+
+/* Critique pass: legend swatches match the chart slices (owed = highlight, waiting = accent). */
+.summary-legend span{display:inline-flex;align-items:center;gap:.35rem;margin-right:.8rem}
+.summary-legend span::before{content:"";width:.7rem;height:.7rem;border-radius:50%;flex:none}
+.legend-owed{color:var(--text)!important}
+.legend-owed::before{background:var(--highlight)}
+.legend-waiting::before{background:var(--accent)}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* Critique pass: character cards show initials when there is no icon, and keep one everyday action visible. */
+.character-initials{display:grid!important;place-items:center;background:var(--accent);color:var(--on-accent);font:600 1.6rem/1 Georgia,serif;border-color:transparent!important}
+.character-actions{display:flex;flex-wrap:wrap;align-items:flex-start;gap:.6rem}
+.character-more{position:relative}
+.character-more>summary{display:inline-flex;align-items:center;min-height:44px;padding:0 1rem;border:1px solid var(--border);border-radius:999px;font-weight:700;list-style:none}
+.character-more>summary::-webkit-details-marker{display:none}
+.character-more-menu{display:grid;gap:.5rem;margin-top:.5rem}
+.branch-premise{font-weight:400!important}
+.reply-donut strong,.plotting-donut strong,.summary-legend{font-variant-numeric:tabular-nums}
+.character-more:not([open]) .character-more-menu{display:none}
+.reply-donut strong,.plotting-donut strong{font-variant-numeric:tabular-nums!important}
