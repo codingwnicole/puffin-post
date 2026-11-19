@@ -17,6 +17,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   const [branches, setBranches] = useState<{ characterId: string; status: string }[]>([])
   const [items, setItems] = useState<MoodboardItem[]>([])
   const [card, setCard] = useState<CardProfile | null>(null)
+  const [moodUrls, setMoodUrls] = useState<string[]>([])
   const [portraitVersion, setPortraitVersion] = useState<number | undefined>()
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -36,7 +37,9 @@ export default function CharacterProfilePage({ id }: { id: string }) {
         api<MoodboardItem[]>(`/characters/${id}/moodboard`).catch(() => [] as MoodboardItem[]),
       ])
       setRows(characters); setGroups(groupRows); setBranches(inbox.branches ?? [])
-      setItems(Array.isArray(board) ? board : (board as { items?: MoodboardItem[] }).items ?? [])
+      const boardItems = Array.isArray(board) ? board : (board as { items?: MoodboardItem[] }).items ?? []
+      setItems(boardItems)
+      setMoodUrls(boardItems.filter(item => item.kind === 'image').map(item => `/api/characters/${id}/moodboard/${item.id}/image`))
       const match = characters.find(c => c.id === id)
       setCard(match?.card ?? emptyCard())
     } catch (problem) { setError(problem instanceof Error ? problem.message : 'Something went wrong') }
@@ -138,7 +141,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
 
       <div className="profile-columns">
         <div className="profile-card-col">
-          <TradingCard name={row.name} profile={profile} stats={stats} portrait={portrait} />
+          <TradingCard name={row.name} profile={profile} stats={stats} portrait={portrait} moodboard={moodUrls} />
         </div>
 
         <div className="profile-side">

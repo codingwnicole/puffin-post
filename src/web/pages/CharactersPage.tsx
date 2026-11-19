@@ -7,6 +7,9 @@ import { initialsFor } from '../components/InitialsAvatar'
 import TradingCard, { THEMES, downloadCard, emptyCard, type CardProfile, type CardStats, type ThemeId } from '../components/TradingCard'
 import CardEditor from '../components/CardEditor'
 
+// A single moodboard entry as GET /characters/:id/moodboard returns it (kind, not the stored file).
+type MoodboardItem = { id: string; kind: 'image' | 'pin' }
+
 type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; card?: CardProfile | null }
 type ArchivedCharacter = { id: string; name: string; color: string | null; notes: string | null; iconObjectKey: string | null; createdAt: string; rpGroupNames: string[]; threadCount: number }
 type Connection = { assignments: { characterId: string; blogIdentifier: string; characterTag: string | null }[] }
@@ -90,23 +93,27 @@ function CharacterCard({ row, index, assignments, groups, stat, iconVersion, bus
 const portraitFor = (row: Character, version?: number) => row.iconObjectKey ? '/api/characters/' + row.id + '/icon?v=' + (version ?? row.iconObjectKey) : null
 const VIEW_KEY = 'puffin.characters.view'
 
-function CardTile({ row, stats, portrait, edit, reportError }: { row: Character; stats: CardStats; portrait: string | null; edit: () => void; reportError: (error: string) => void }) {
+function CardTile({ row, stats, portrait, moodUrls, edit, reportError }: { row: Character; stats: CardStats; portrait: string | null; moodUrls?: string[]; edit: () => void; reportError: (error: string) => void }) {
   const tile = useRef<HTMLElement>(null), [saving, setSaving] = useState(false), [note, setNote] = useState('')
   const download = async () => { try { setSaving(true); setNote(''); const kind = await downloadCard(tile.current!, row.name); setNote(kind === 'gif' ? 'Saved as an animated GIF.' : kind === 'png-no-gif-support' ? 'This browser can’t make animated GIFs, so the card was saved as a PNG.' : 'Saved as a PNG.') } catch (problem) { reportError((problem as Error).message) } finally { setSaving(false) } }
   return <article className="tcard-tile" ref={tile} aria-label={row.name}>
-    <TradingCard name={row.name} profile={row.card ?? emptyCard()} stats={stats} portrait={portrait} />
+    <TradingCard name={row.name} profile={row.card ?? emptyCard()} stats={stats} portrait={portrait} moodboard={moodUrls} />
     <div className="tcard-actions"><a className="secondary-button" href={'#character/' + row.id}>Open profile</a><button type="button" className="secondary-button" onClick={edit}>{row.card ? 'Edit card' : 'Make this card'}</button><button type="button" className="secondary-button" disabled={saving} title="Animated GIF when the portrait is a GIF, otherwise PNG" onClick={() => void download()}>{saving ? 'Preparing…' : 'Download'}</button></div><p className="field-help tcard-note" role="status">{note}</p>
   </article>
 }
 
 export default function CharactersPage() {
   const [rows, setRows] = useState<Character[]>(() => peekCache<Character[]>('/characters') ?? []), [assignments, setAssignments] = useState<Connection['assignments']>(() => (peekCache<Connection[]>('/connections') ?? []).flatMap(connection => connection.assignments)), [groups, setGroups] = useState<Group[]>(() => peekCache<Group[]>('/rp-groups') ?? []), [branches, setBranches] = useState<InboxBranch[]>(() => peekCache<{ branches: InboxBranch[] }>('/inbox')?.branches ?? [])
+  const [moodboards, setMoodboards] = useState<Record<string, string[]>>({})
   const [error, setError] = useState(''), [adding, setAdding] = useState(false), [addingGroup, setAddingGroup] = useState(false), [busy, setBusy] = useState(false), [iconVersions, setIconVersions] = useState<Record<string, number>>({})
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; threads: number } | null>(null)
   const [deleteStep, setDeleteStep] = useState<'choose' | 'confirm'>('choose')
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [view, setViewState] = useState<'details' | 'cards'>(() => { try { return localStorage.getItem(VIEW_KEY) === 'cards' ? 'cards' : 'details' } catch { return 'details' } })
   const setView = (next: 'details' | 'cards') => { setViewState(next); try { localStorage.setItem(VIEW_KEY, next) } catch { /* per-viewer convenience only */ } }
+  // Moodboard image URLs per character — fetched only in the Cards view (the card's mood side
+  // needs them) so the Details view never pays for boards it will not draw.
+  useEffect(() => { if (view !== 'cards' || rows.length === 0) return; let cancelled = false; void Promise.all(rows.map(async character => { try { const board = await api<MoodboardItem[] | { items: MoodboardItem[] }>('/characters/' + character.id + '/moodboard'); const items = Array.isArray(board) ? board : board.items ?? []; return [character.id, items.filter(item => item.kind === 'image').map(item => '/api/characters/' + character.id + '/moodboard/' + item.id + '/image')] as const } catch { return [character.id, [] as string[]] as const } })).then(entries => { if (!cancelled) setMoodboards(Object.fromEntries(entries)) }); return () => { cancelled = true } }, [view, rows])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(() => ['/characters', '/connections', '/rp-groups', '/inbox'].every(path => peekCache(path) !== undefined))
   useEffect(() => { const t = window.setTimeout(() => { document.querySelector('.character-grid')?.setAttribute('data-entered', '') }, 700); return () => window.clearTimeout(t) }, [])
@@ -123,7 +130,7 @@ export default function CharactersPage() {
   async function returnToPlanner(id:string){const row=rows.find(r=>r.id===id);if(!row)return;try{setBusy(true);setError('');const moved=await api<{created?:boolean}>('/characters/'+id+'/return-to-planner','POST');toast('Moved '+row.name+' to the planner.',undoReturnToPlanner(id,row.state,moved.created!==false));await load();window.location.hash='planner'}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
   const cardStats = (row: Character): CardStats => ({ ...(counts[row.id] ?? { total: 0, mine: 0, theirs: 0 }), rps: groups.filter(group => group.characterIds.includes(row.id)).map(group => group.name) })
   const editing = rows.find(row => row.id === editingId)
-  const card = (row: Character, index?: number) => view === 'cards' ? <CardTile key={row.id} row={row} stats={cardStats(row)} portrait={portraitFor(row, iconVersions[row.id])} edit={() => setEditingId(row.id)} reportError={setError} /> : <CharacterCard editCard={() => setEditingId(row.id)} key={row.id} index={index} row={row} assignments={assignments} groups={groups} stat={counts[row.id] ?? { total: 0, mine: 0, theirs: 0 }} iconVersion={iconVersions[row.id]} busy={busy} addToGroup={addToGroup} upload={upload} remove={remove} returnToPlanner={returnToPlanner} showCreateGroup={() => setAddingGroup(true)} reportError={setError} />
+  const card = (row: Character, index?: number) => view === 'cards' ? <CardTile key={row.id} row={row} stats={cardStats(row)} portrait={portraitFor(row, iconVersions[row.id])} moodUrls={moodboards[row.id]} edit={() => setEditingId(row.id)} reportError={setError} /> : <CharacterCard editCard={() => setEditingId(row.id)} key={row.id} index={index} row={row} assignments={assignments} groups={groups} stat={counts[row.id] ?? { total: 0, mine: 0, theirs: 0 }} iconVersion={iconVersions[row.id]} busy={busy} addToGroup={addToGroup} upload={upload} remove={remove} returnToPlanner={returnToPlanner} showCreateGroup={() => setAddingGroup(true)} reportError={setError} />
   return <section aria-labelledby="page-title"><div className="character-page-heading"><div><h1 id="page-title" className="page-heading">Characters</h1><p className="page-description">Build your cast, connect their Tumblr, and place them in the RP spaces where they write.</p><p className="field-help upload-hint"><strong>Images:</strong> {IMAGE_HINT}</p></div><div className="actions"><div className="view-switch" role="group" aria-label="Show characters as"><button type="button" aria-pressed={view === 'details'} onClick={() => setView('details')}>Details</button><button type="button" aria-pressed={view === 'cards'} onClick={() => setView('cards')}>✦ Cards</button></div><button onClick={() => setAddingGroup(!addingGroup)}>{addingGroup ? 'Close' : 'Add an RP'}</button><button onClick={() => setAdding(!adding)}>{adding ? 'Close' : 'Add character'}</button></div></div>
     {error && <p role="alert">{error}</p>}
     {addingGroup && <form className="character-create tracking-card" onSubmit={async event => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement, name = form ? new FormData(form).get('name') : null; try { setError(''); await api('/rp-groups', 'POST', { name }); if (form) form.reset(); setAddingGroup(false); await load() } catch (problem) { setError((problem as Error).message) } }}><label>RP name<input name="name" required maxLength={120} autoFocus placeholder="e.g. your group RP or verse name" /></label><button>Add RP</button></form>}

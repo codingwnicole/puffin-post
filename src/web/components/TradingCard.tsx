@@ -1,8 +1,10 @@
 import { useId, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 import { CARD_SYMBOLS, SYMBOL_FONT, type CardSymbol } from '../../shared/card-symbols'
 
-// A two-sided collectible card for a character, drawn as plain SVG so the same markup is shown
-// on the page and rasterised for the PNG download (no foreignObject, no dependencies).
+// A collectible card for a character, drawn as plain SVG so the same markup is shown on the page
+// and rasterised for the download (no foreignObject, no dependencies). Three logical sides — front,
+// back, and the moodboard — ride on two physical faces: the hidden face is refilled with the next
+// side just before the card rotates.
 // Palettes adapted from the Character Card Studio brief; per-theme ornament art was left out.
 
 export type CardProfile = { theme: ThemeId; nickname: string; age: string; birthdate: string; quote: string; song: string; artist: string; favoriteColor: string; facts: string[]; likes: string; dislikes: string; notes: string; playlistUrl: string; boardUrl: string; tracklist: string[]; symbol?: CardSymbol }
@@ -39,7 +41,12 @@ export function wrap(text: string, width: number, lines: number) {
   return out
 }
 
-function Side({ side, name, profile, stats, portrait, uid }: { side: 'front' | 'back'; name: string; profile: CardProfile; stats: CardStats; portrait: string | null; uid: string }) {
+/** The Pinterest board slug in a "user/board" URL → "board" (dashes as spaces). */
+export function boardLabel(url: string): string {
+  try { return new URL(url).pathname.split('/').filter(Boolean).pop()?.replace(/-/g, ' ') ?? '' } catch { return '' }
+}
+
+function Side({ side, name, profile, stats, portrait, moodboard = [], uid }: { side: 'front' | 'back' | 'mood'; name: string; profile: CardProfile; stats: CardStats; portrait: string | null; moodboard?: string[]; uid: string }) {
   const t: Theme = THEMES[profile.theme] ?? THEMES.holo
   const id = (key: string) => `${uid}-${side}-${key}`
   const label = { fill: t.sub, fontFamily: t.sans, fontSize: 11, letterSpacing: 3 } as const
@@ -49,16 +56,20 @@ function Side({ side, name, profile, stats, portrait, uid }: { side: 'front' | '
   const glyph: string = CARD_SYMBOLS[profile.symbol ?? 'none']?.glyph ?? ''
   const symbolText = (x: number, y: number, size: number) => <text x={x} y={y} textAnchor="middle" fill={t.accent} fontFamily={SYMBOL_FONT} fontSize={size} data-symbol>{glyph}</text>
   const initials = name.split(/\s+/).map(part => part[0] ?? '').join('').slice(0, 2).toUpperCase() || '?'
+  const moodTiles = moodboard.slice(0, 12)
+  const board = profile.boardUrl ? boardLabel(profile.boardUrl) : ''
+  const tracks = profile.tracklist.slice(0, 3)
   return <svg viewBox="0 0 640 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-label={`${name}'s card, ${side}`} data-side={side}>
     <defs>
       <linearGradient id={id('bg')} x1="0" y1="0" x2="1" y2="1">{t.bg.map((c, i) => <stop key={i} offset={i / 2} stopColor={c} />)}</linearGradient>
       <linearGradient id={id('foil')} x1="0" y1="0" x2="1" y2="1">{t.foil.map((c, i) => <stop key={i} offset={i / (t.foil.length - 1)} stopColor={c} />)}</linearGradient>
       <linearGradient id={id('panel')} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.panel[0]} stopOpacity={.92} /><stop offset="1" stopColor={t.panel[1]} stopOpacity={.92} /></linearGradient>
-      <clipPath id={id('portrait')}><rect x={40} y={70} width={560} height={330} rx={Math.min(t.corner * 2, 40)} /></clipPath>
+      {side === 'front' && <clipPath id={id('portrait')}><rect x={40} y={70} width={560} height={330} rx={Math.min(t.corner * 2, 40)} /></clipPath>}
+      {side === 'mood' && Array.from({ length: 12 }, (_, i) => { const x = 40 + (i % 3) * 192, y = 70 + Math.floor(i / 3) * 155; return <clipPath key={i} id={id('tile' + i)}><rect x={x} y={y} width={186} height={149} rx={Math.min(t.corner, 12)} /></clipPath> })}
     </defs>
     <rect x={6} y={6} width={628} height={888} rx={t.corner + 14} fill={`url(#${id('bg')})`} stroke={`url(#${id('foil')})`} strokeWidth={10} />
     <rect x={20} y={20} width={600} height={860} rx={t.corner + 6} fill="none" stroke={t.stroke} strokeOpacity={.55} />
-    <text x={44} y={50} {...label}>{side === 'front' ? 'CHARACTER CARD ///' : 'CHARACTER DETAILS ///'}</text>
+    <text x={44} y={50} {...label}>{side === 'front' ? 'CHARACTER CARD ///' : side === 'back' ? 'CHARACTER DETAILS ///' : 'MOODBOARD ///'}</text>
     <text x={596} y={50} textAnchor="end" {...label}>PUFFIN POST</text>
     {glyph && symbolText(320, 868, 18)}
     {side === 'front' ? <>
@@ -78,7 +89,7 @@ function Side({ side, name, profile, stats, portrait, uid }: { side: 'front' | '
       <text x={98} y={752} {...label}>THEME SONG</text><text x={98} y={774} {...body} fontSize={16}>{(profile.song || 'Song title') + (profile.artist ? ' — ' + profile.artist : '')}</text>
       {Array.from({ length: 22 }, (_, i) => { const h = 6 + ((i * 7) % 11) * 2; return <rect key={i} x={460 + i * 6} y={758 - h / 2} width={3} height={h} fill={t.sub} opacity={.8} /> })}
       {box(798, 44)}<text x={60} y={825} {...label}>FAVORITE COLOR</text><rect x={430} y={808} width={150} height={24} rx={6} fill={profile.favoriteColor} stroke={t.ink} strokeOpacity={.5} />
-    </> : <>
+    </> : side === 'back' ? <>
       {box(70, 200)}<text x={60} y={100} {...label}>THREAD STATS</text>
       {([['THREADS', stats.total], ['YOUR TURN', stats.mine], ['THEIR TURN', stats.theirs]] as const).map(([what, value], i) => <g key={what}><text x={133 + i * 187} y={185} textAnchor="middle" fill={t.ink} fontFamily={t.font} fontSize={64}>{value}</text><text x={133 + i * 187} y={215} textAnchor="middle" {...label}>{what}</text></g>)}
       <text x={320} y={252} textAnchor="middle" {...body} fontSize={15}>{wrap(stats.rps.length ? 'Writes in ' + stats.rps.join(' / ') : 'Not in an RP section yet', 60, 1)[0]}</text>
@@ -90,13 +101,37 @@ function Side({ side, name, profile, stats, portrait, uid }: { side: 'front' | '
       {wrap(profile.dislikes || '—', 26, 3).map((line, i) => <text key={'d' + i} x={348} y={608 + i * 22} {...body} fontSize={16}>{line}</text>)}
       {box(688, 150)}<text x={60} y={718} {...label}>MISC. / NOTES</text>
       {wrap(profile.notes || '—', 54, 4).map((line, i) => <text key={i} x={60} y={748 + i * 24} {...body} fontSize={17}>{line}</text>)}
+    </> : <>
+      {/* Moodboard side: the first 12 uploaded images, 3 x 4, each cropped to its rounded tile; empty
+          slots stay soft panels. Pins are iframes and never drawn here. */}
+      {Array.from({ length: 12 }, (_, i) => {
+        const x = 40 + (i % 3) * 192, y = 70 + Math.floor(i / 3) * 155
+        return moodTiles[i]
+          ? <g key={i} clipPath={`url(#${id('tile' + i)})`}><rect x={x} y={y} width={186} height={149} fill={`url(#${id('panel')})`} /><image href={moodTiles[i]} x={x} y={y} width={186} height={149} preserveAspectRatio="xMidYMid slice" data-moodboard /></g>
+          : <rect key={i} x={x} y={y} width={186} height={149} rx={Math.min(t.corner, 12)} fill={`url(#${id('panel')})`} opacity={.35} />
+      })}
+      {board ? wrap('Full board: ' + board, 70, 1).map((line, i) => <text key={i} x={320} y={712} textAnchor="middle" {...body} fontSize={15}>{line}</text>) : null}
+      {tracks.length > 0 && <>
+        <text x={44} y={750} {...label}>PLAYLIST</text>
+        {tracks.map((track, i) => <text key={i} x={44} y={778 + i * 24} {...body} fontSize={16}>{wrap(track, 68, 1)[0]}</text>)}
+      </>}
     </>}
   </svg>
 }
 
-/** Flip on click / Enter / Space; tilt and foil shine follow the pointer (off under reduced motion via CSS). */
-export default function TradingCard({ name, profile, stats, portrait }: { name: string; profile: CardProfile; stats: CardStats; portrait: string | null }) {
-  const [flipped, setFlipped] = useState(false)
+/** Flip on click / Enter / Space; tilt and foil shine follow the pointer (off under reduced motion via CSS).
+ * With moodboard images the click cycles front -> back -> moodboard: the hidden face is refilled with
+ * the next side just before the rotation, so the two physical faces always hold the current and next
+ * side. The aria-label names the side that comes next. */
+export default function TradingCard({ name, profile, stats, portrait, moodboard }: { name: string; profile: CardProfile; stats: CardStats; portrait: string | null; moodboard?: string[] }) {
+  const hasMoodboard = (moodboard?.length ?? 0) > 0
+  // visible = the side on the face pointing at the viewer (what you read); hidden = the side on the
+  // other face, revealed by a flip. A click just swaps the two, so each click shows the next side in
+  // the cycle front -> back -> moodboard -> front. Without moodboard images the cycle is the old
+  // two-sides flip, byte-for-byte.
+  const [visible, setVisible] = useState<'front' | 'back' | 'mood'>('front')
+  const [hidden, setHidden] = useState<'front' | 'back' | 'mood'>('back')
+  const flipped = visible !== 'front'
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '')
   const move = (event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== 'mouse') return
@@ -105,26 +140,54 @@ export default function TradingCard({ name, profile, stats, portrait }: { name: 
     event.currentTarget.style.setProperty('--mx', `${x * 100}%`); event.currentTarget.style.setProperty('--my', `${y * 100}%`)
   }
   const leave = (event: PointerEvent<HTMLDivElement>) => { for (const key of ['--rx', '--ry', '--mx', '--my']) event.currentTarget.style.removeProperty(key) }
-  return <div className="tcard" data-theme-id={profile.theme} data-flipped={flipped || undefined} onPointerMove={move} onPointerLeave={leave} style={{ '--card-glow': THEMES[profile.theme]?.accent } as CSSProperties}>
-    <button type="button" className="tcard-inner" aria-pressed={flipped} aria-label={`Flip ${name}'s card to the ${flipped ? 'front' : 'back'}`} onClick={() => setFlipped(!flipped)}>
+  // One face renderer: a given side drawn on whichever physical face it currently rides.
+  const face = (side: 'front' | 'back' | 'mood') => <Side side={side} name={name} profile={profile} stats={stats} portrait={side === 'front' ? portrait : null} moodboard={side === 'mood' ? moodboard : undefined} uid={uid} />
+  return <div className="tcard" data-theme-id={profile.theme} data-flipped={flipped || undefined} data-visible={visible} onPointerMove={move} onPointerLeave={leave} style={{ '--card-glow': THEMES[profile.theme]?.accent } as CSSProperties}>
+    <button type="button" className="tcard-inner" aria-pressed={flipped} aria-label={`Flip ${name}'s card to the ${hidden === 'mood' ? 'moodboard' : hidden}`} onClick={() => {
+      if (!hasMoodboard) { setVisible(s => (s === 'front' ? 'back' : 'front')); return }
+      const nextVisible = visible === 'front' ? 'back' : visible === 'back' ? 'mood' : 'front'
+      const nextHidden = nextVisible === 'front' ? 'back' : nextVisible === 'back' ? 'mood' : 'front'
+      setVisible(nextVisible); setHidden(nextHidden)
+    }}>
       <span className="tcard-flip">
-      <span className="tcard-face tcard-front"><Side side="front" name={name} profile={profile} stats={stats} portrait={portrait} uid={uid} /></span>
-      <span className="tcard-face tcard-back"><Side side="back" name={name} profile={profile} stats={stats} portrait={portrait} uid={uid} /></span></span>
+      {/* The unflipped face (no rotation) shows the visible side; the rotated face shows the other. */}
+      <span className="tcard-face tcard-front">{face(visible)}</span>
+      <span className="tcard-face tcard-back">{face(hidden)}</span>
+      {/* A raster-only copy of the mood side, kept in the DOM (hidden) so the download can draw it. */}
+      {hasMoodboard && <span className="tcard-face tcard-mood" hidden>{face('mood')}</span>}
+      </span>
     </button>
   </div>
 }
 
 const blobToData = (blob: Blob) => new Promise<string>(resolve => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsDataURL(blob) })
 const loadImage = (url: string) => new Promise<HTMLImageElement>((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = () => reject(new Error('Could not draw the card')); img.src = url })
+// First frame of an animated GIF as a PNG data URL (the card shows only that frame).
+const firstGifFrame = async (gif: Blob) => {
+  const decoder = new ImageDecoder({ data: await gif.arrayBuffer(), type: 'image/gif' })
+  try {
+    const { image } = await decoder.decode({ frameIndex: 0 })
+    const canvas = document.createElement('canvas'); canvas.width = image.displayWidth; canvas.height = image.displayHeight
+    canvas.getContext('2d')!.drawImage(image, 0, 0); image.close()
+    return await new Promise<string>(resolve => canvas.toBlob(b => b ? blobToData(b).then(resolve) : resolve(''), 'image/png'))
+  } finally { decoder.close() }
+}
 
-/** Rasterises one card side with the given portrait (a data URL, or null for none) onto a canvas. */
-async function drawSide(context: CanvasRenderingContext2D, svg: SVGSVGElement, portrait: string | null, x: number, width: number, height: number) {
+/** Rasterises one card side with the given portrait (a data URL, or null for none) onto a canvas.
+ * Every image is swapped to a data URL: the portrait on the front, each moodboard image for its own
+ * tile (marked data-moodboard), so a card with mixed media never shows the wrong picture. */
+async function drawSide(context: CanvasRenderingContext2D, svg: SVGSVGElement, portrait: string | null, moodData: (string | null)[] | null, x: number, width: number, height: number) {
   const clone = svg.cloneNode(true) as SVGSVGElement
   clone.setAttribute('width', String(width)); clone.setAttribute('height', String(height))
-  for (const image of Array.from(clone.querySelectorAll('image'))) { if (portrait) image.setAttribute('href', portrait); else image.remove() }
+  const moodImages = Array.from(clone.querySelectorAll('image[data-moodboard]'))
+  if (moodData) moodImages.forEach((image, i) => { if (moodData[i]) image.setAttribute('href', moodData[i]!); else image.remove() })
+  for (const image of Array.from(clone.querySelectorAll('image')).filter(image => !image.hasAttribute('data-moodboard'))) { if (portrait) image.setAttribute('href', portrait); else image.remove() }
   const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml;charset=utf-8' }))
   try { context.drawImage(await loadImage(url), x, 0, width, height) } finally { URL.revokeObjectURL(url) }
 }
+
+/** Fetches moodboard URLs and returns a data URL for each (GIFs reduced to their first frame). */
+const moodDataFor = async (urls: string[]) => Promise.all(urls.map(async href => { const blob = await (await fetch(href)).blob(); return blob.type === 'image/gif' && 'ImageDecoder' in window ? await firstGifFrame(blob) : blobToData(blob) }))
 
 function save(blob: Blob, name: string, ext: string) {
   const url = URL.createObjectURL(blob), link = document.createElement('a')
@@ -132,21 +195,28 @@ function save(blob: Blob, name: string, ext: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 4000)
 }
 
-/** Downloads front and back side by side. A GIF portrait gives an animated 1320 × 900 GIF; anything else
- * (or a browser without ImageDecoder) gives a 2640 × 1800 PNG. Returns which one was saved. The portrait is
- * inlined as a data URL because an SVG drawn into a canvas may not load outside images. */
+/** Downloads the card sides side by side. Without moodboard images: two faces, a 2640 x 1800 PNG (or
+ * a 1320 x 900 animated GIF for a GIF portrait). With them: three panels - 3960 x 1800 PNG (gap 60)
+ * or 1980 x 900 GIF (gap 30, only the portrait animates, moodboard GIFs use their first frame).
+ * Images are inlined as data URLs because an SVG drawn into a canvas may not load outside images.
+ * Returns which format was saved. */
 export async function downloadCard(cardElement: Element, name: string): Promise<'gif' | 'png' | 'png-no-gif-support'> {
   const svgs = Array.from(cardElement.querySelectorAll<SVGSVGElement>('.tcard-face > svg'))
-  if (svgs.length !== 2) throw new Error('Could not prepare the card')
-  const href = svgs[0].querySelector('image')?.getAttribute('href')
-  const portrait = href ? await fetch(href).then(r => r.ok ? r.blob() : null) : null
+  if (svgs.length < 2) throw new Error('Could not prepare the card')
+  const moodSvg = svgs.find(svg => svg.dataset.side === 'mood')
+  const moodUrls = moodSvg ? Array.from(moodSvg.querySelectorAll('image[data-moodboard]')).map(image => image.getAttribute('href')).filter((href): href is string => !!href) : []
+  const portraitHref = svgs.find(svg => svg.dataset.side !== 'mood')?.querySelector('image:not([data-moodboard])')?.getAttribute('href')
+  const portrait = portraitHref ? await fetch(portraitHref).then(r => r.ok ? r.blob() : null) : null
   const isGif = portrait?.type === 'image/gif'
-  if (isGif && 'ImageDecoder' in window) { save(await animatedCard(svgs, portrait!), name, 'gif'); return 'gif' }
+  if (isGif && 'ImageDecoder' in window) { save(await animatedCard(moodSvg ? [svgs[0], svgs[1], moodSvg] : [svgs[0], svgs[1]], moodUrls, portrait!), name, 'gif'); return 'gif' }
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d')
   if (!context) throw new Error('Could not prepare the card')
-  canvas.width = 2640; canvas.height = 1800
   const data = portrait ? await blobToData(portrait) : null
-  for (const [index, svg] of svgs.entries()) await drawSide(context, svg, data, index * 1360, 1280, 1800)
+  const moodData = moodSvg ? await moodDataFor(moodUrls) : null
+  const panels = moodSvg ? [svgs[0], svgs[1], moodSvg] : [svgs[0], svgs[1]]
+  const SIDE = 1280, GAP = moodSvg ? 60 : 80
+  canvas.width = panels.length * SIDE + (panels.length - 1) * GAP; canvas.height = 1800
+  for (const [i, svg] of panels.entries()) await drawSide(context, svg, svg === moodSvg ? null : data, svg === moodSvg ? moodData : null, i * (SIDE + GAP), SIDE, 1800)
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
   if (!blob) throw new Error('Could not export the card')
   save(blob, name, 'png'); return isGif ? 'png-no-gif-support' : 'png'
@@ -155,14 +225,16 @@ export async function downloadCard(cardElement: Element, name: string): Promise<
 // ponytail: at most 60 frames (longer GIFs are sampled, delays summed) so the file stays a shareable size.
 const MAX_FRAMES = 60
 
-/** Frame 0 is the whole card. Later frames repaint only pixels that changed since the previous frame (the rest
- * is transparent and kept from before, dispose = 1), so only the portrait area costs bytes. */
-async function animatedCard(svgs: SVGSVGElement[], gif: Blob) {
+/** Frame 0 is the whole card (one panel per side, portrait at its first frame). Later frames repaint
+ * only pixels that changed since the previous frame (the rest is transparent and kept from before,
+ * dispose = 1), so only the portrait area costs bytes. */
+async function animatedCard(svgs: SVGSVGElement[], moodUrls: string[], gif: Blob) {
   const { GIFEncoder, quantize, applyPalette } = await import('gifenc')
+  const moodData = moodUrls.length ? await moodDataFor(moodUrls) : null
   const decoder = new ImageDecoder({ data: await gif.arrayBuffer(), type: 'image/gif' })
   await decoder.tracks.ready
   const count = decoder.tracks.selectedTrack?.frameCount ?? 1, step = Math.ceil(count / MAX_FRAMES)
-  const W = 1320, H = 900, SIDE = 640
+  const SIDE = 640, H = 900, GAP = svgs.length === 3 ? 30 : 40, W = svgs.length * SIDE + (svgs.length - 1) * GAP
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d', { willReadFrequently: true })
   const still = document.createElement('canvas'), stillContext = still.getContext('2d')
   if (!context || !stillContext) throw new Error('Could not prepare the card')
@@ -178,10 +250,11 @@ async function animatedCard(svgs: SVGSVGElement[], gif: Blob) {
         if (i === start) { still.width = image.displayWidth; still.height = image.displayHeight; stillContext.drawImage(image, 0, 0); frameData = still.toDataURL('image/png') }
         image.close()
       }
-      await drawSide(context, svgs[0], frameData, 0, SIDE, H)
-      if (!previous) await drawSide(context, svgs[1], null, SIDE + 40, SIDE, H)
+      // Frame 0 paints every panel; later frames only the portrait side (back and mood never change).
+      await drawSide(context, svgs[0], frameData, null, 0, SIDE, H)
+      if (!previous) for (const [i, svg] of svgs.entries()) { if (i === 0) continue; await drawSide(context, svg, null, svg.dataset.side === 'mood' ? moodData : null, i * (SIDE + GAP), SIDE, H) }
       const rgba = context.getImageData(0, 0, W, H).data
-      // Frame 0 paints every visible pixel; later frames only what changed. Everything else stays transparent.
+      // Everything not repainted this frame stays transparent (dispose = 1 keeps the pixels from before).
       const changed: number[] = []
       for (let p = 0; p < rgba.length; p += 4) if (previous ? rgba[p] !== previous[p] || rgba[p + 1] !== previous[p + 1] || rgba[p + 2] !== previous[p + 2] : rgba[p + 3] >= 128) changed.push(p)
       const only = new Uint8ClampedArray(Math.max(1, changed.length) * 4)
