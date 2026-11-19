@@ -8,7 +8,7 @@ type Block = { h?: string; p?: string; li?: string[] }
 function LegalDoc({ title, blocks }: { title: string; blocks: Block[] }): ReactElement {
   const headings = blocks.filter((b) => b.h).map((b, i) => ({ id: `sec-${i}`, text: b.h as string }))
   return (
-    <div className="legal-doc">
+    <main className="legal-doc">
       <p><a href="#">← Back to Puffin Post</a></p>
       <h1 className="page-heading">{title}</h1>
       <p className="legal-effective">Effective date: {EFFECTIVE_DATE}</p>
@@ -37,7 +37,7 @@ function LegalDoc({ title, blocks }: { title: string; blocks: Block[] }): ReactE
           )}
         </section>
       ))}
-    </div>
+    </main>
   )
 }
 

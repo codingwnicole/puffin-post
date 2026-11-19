@@ -50,7 +50,7 @@ export default function StarterPage({ id }: { id:string }) {
   }
   const latestReply = detail?.branches.reduce<InboxBranch | undefined>((latest, branch) => (!latest || (branch.lastActivityAt ?? '').localeCompare(latest.lastActivityAt ?? '') > 0) ? branch : latest, undefined)
   return <section aria-labelledby="starter-title"><a href="#inbox">Back to Inbox</a>
-    <h2 className="page-heading" id="starter-title" style={{ viewTransitionName: `starter-${id}` }}>{detail?.starter.title ?? 'Starter'}</h2>
+    <h1 className="page-heading" id="starter-title" style={{ viewTransitionName: `starter-${id}` }}>{detail?.starter.title ?? 'Starter'}</h1>
     {error && <p role="alert">{error}</p>}
     {detail && <><div className="actions starter-actions"><p>{options.characters.find(c => c.id === detail.starter.characterId)?.name}</p>
       <button onClick={toggleArchive} disabled={premiseBusy || archiveBusy}>{detail.starter.archived ? 'Restore thread' : 'Archive thread'}</button>

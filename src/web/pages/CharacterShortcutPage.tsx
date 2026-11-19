@@ -37,15 +37,15 @@ export default function CharacterShortcutPage({ id }: { id: string }) {
     }
   }
 
-  if (error) return <section aria-labelledby="shortcut-title"><h2 id="shortcut-title" className="page-heading">Character</h2><p role="alert">{error}</p></section>
-  if (!character) return <section aria-labelledby="shortcut-title"><h2 id="shortcut-title" className="page-heading">Character</h2><p>Loading…</p></section>
+  if (error) return <section aria-labelledby="shortcut-title"><h1 id="shortcut-title" className="page-heading">Character</h1><p role="alert">{error}</p></section>
+  if (!character) return <section aria-labelledby="shortcut-title"><h1 id="shortcut-title" className="page-heading">Character</h1><p>Loading…</p></section>
 
   return (
     <section aria-labelledby="shortcut-title">
       <div className="shortcut-header" style={{ viewTransitionName: `character-${id}` }}>
         <img className="shortcut-avatar" alt="" width={72} height={72} hidden={!character.iconObjectKey} src={character.iconObjectKey ? '/api/characters/' + character.id + '/icon?v=' + character.iconObjectKey : undefined} onError={event => event.currentTarget.classList.add('avatar-fallback')} data-initials={initialsFor(character.name)} />
         <div>
-          <h2 id="shortcut-title" className="page-heading">{character.name}</h2>
+          <h1 id="shortcut-title" className="page-heading">{character.name}</h1>
           <p className="page-description">
             {character.rpGroupNames.length > 0 ? character.rpGroupNames.join(' · ') : 'No RP group'}
             {' · '}{character.threadCount} thread{character.threadCount === 1 ? '' : 's'} preserved

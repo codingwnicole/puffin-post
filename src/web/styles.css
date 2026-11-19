@@ -316,3 +316,9 @@ p{text-wrap:pretty}
 @media (max-width:700px){.inbox-hero .summary-card.reply-run{margin:.25rem 0 .35rem!important}}
 @media (max-width:700px){.summary-card :is(.reply-donut,.plotting-donut){width:6rem!important;height:6rem!important;min-width:6rem!important;flex-basis:6rem!important}.summary-card.reply-run{padding:.45rem .75rem!important}}
 .spin-wheel p:empty{display:none}
+
+/* A11y audit: legal contents links meet the 24px target size; deck header eyebrow meets 4.5:1 in both themes. */
+.legal-doc li>a,.legal-doc nav a{display:inline-flex;align-items:center;min-height:24px}
+.rp-deck-header .eyebrow{color:var(--text)}
+[data-theme="dark"] .rp-deck-header{background:color-mix(in srgb,var(--accent) 30%,var(--surface))}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .rp-deck-header{background:color-mix(in srgb,var(--accent) 30%,var(--surface))}}

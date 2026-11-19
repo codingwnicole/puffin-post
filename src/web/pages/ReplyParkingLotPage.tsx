@@ -64,7 +64,7 @@ function PlottingPulse({ drafts }: { drafts: ReplyDraft[] }) {
   const open=plotting.length-due-later, total=Math.max(plotting.length,1)
   const dueEnd=Math.round(due/total*100), laterEnd=dueEnd+Math.round(later/total*100)
   const openItems=drafts.filter(draft=>draft.state==='open').map(draft=>({id:draft.id,label:draft.title}))
-  return <aside className="plotting-pulse tracking-card summary-card"><div className="plotting-donut" style={{'--due':`${dueEnd}%`,'--later':`${laterEnd}%`} as CSSProperties}><strong>{plotting.length}</strong><span>plots</span></div><div><p className="eyebrow">Plotting pulse</p><h3>{plotting.length ? `${due} follow-up${due===1?'':'s'} due` : 'No plotting DMs parked'}</h3><p>{later} later · {open} open-ended. Mark a conversation wrapped when it is settled to clear it from the pulse.</p><SpinWheel items={openItems} empty="Nothing parked right now."/></div></aside>
+  return <section className="plotting-pulse tracking-card summary-card" aria-label="Plotting pulse"><div className="plotting-donut" style={{'--due':`${dueEnd}%`,'--later':`${laterEnd}%`} as CSSProperties}><strong>{plotting.length}</strong><span>plots</span></div><div><p className="eyebrow">Plotting pulse</p><h3>{plotting.length ? `${due} follow-up${due===1?'':'s'} due` : 'No plotting DMs parked'}</h3><p>{later} later · {open} open-ended. Mark a conversation wrapped when it is settled to clear it from the pulse.</p><SpinWheel items={openItems} empty="Nothing parked right now."/></div></section>
 }
 
 export default function ReplyParkingLotPage() {
@@ -103,7 +103,7 @@ export default function ReplyParkingLotPage() {
   }
 
   return <section aria-labelledby="parking-title">
-    <h2 className="page-heading" id="parking-title">Parking Lot</h2>
+    <h1 className="page-heading" id="parking-title">Parking Lot</h1>
     <p className="page-description">A private place to hold anything that is not a live tracked thread yet: owed replies, plotting or DM follow-ups, starter ideas, and loose notes.</p>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     <label className="lane-filter">Show<select value={overdue ? 'overdue' : 'open'} onChange={event => setOverdue(event.target.value === 'overdue')}><option value="open">All open drafts</option><option value="overdue">Overdue drafts</option></select></label>

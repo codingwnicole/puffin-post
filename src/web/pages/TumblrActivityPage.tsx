@@ -129,7 +129,7 @@ export default function TumblrActivityPage() {
   const incomplete = failedBlogs.length > 0
 
   return <section aria-labelledby="activity-title">
-    <h2 className="page-heading" id="activity-title">Tumblr activity</h2>
+    <h1 className="page-heading" id="activity-title">Tumblr activity</h1>
     <p className="page-description">New asks and tagged starters from the blogs assigned to your characters, in one small review queue.</p>
     {error && <p role="alert">{error}</p>}{message && <p role="status" className="success-pulse">{message}</p>}
     {failedBlogs.length > 0 && <p role="alert" className="refresh-warning">Could not load: {failedBlogs.map(blog => blogLabel(blog.blogIdentifier)).join(', ')}. Items from those blogs are missing from this list.</p>}
