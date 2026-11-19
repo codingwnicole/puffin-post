@@ -2,7 +2,7 @@ const SPOTIFY_PATH = /^(?:\/intl-[a-z-]+)?\/(playlist|album|track|artist)\/([A-Z
 const YOUTUBE_HOSTS = new Set(['www.youtube.com','youtube.com','m.youtube.com','music.youtube.com'])
 const YOUTUBE_LIST = '[A-Za-z0-9_-]{10,64}'
 const APPLE_PATH = /^\/([a-z]{2})\/(playlist|album|song)\/[^/]+\/[^/]+\/?$/
-const PIN_RE = /\/pin\/(?:[A-Za-z0-9._-]+--)?(\d{5,25})\//
+const PIN_RE = /\/pin\/(?:[A-Za-z0-9._-]+--)?(\d{5,25})(?:\/|$)/
 const BOARD_RE = /^\/([A-Za-z0-9_.-]{1,60})\/([A-Za-z0-9_.-]{1,60})\/?$/
 const BOARD_RESERVED = new Set(['pin','search','ideas','today','explore','settings','business','_'])
 export const PINTEREST_HOST = /^([a-z]{2}\.|www\.)?pinterest\.(com|ca|co\.uk|com\.au|de|fr|es|it|jp|com\.mx|nz|ie|at|ch|pt|se|dk|nl|be|ph|cl|co|kr)$/
@@ -46,7 +46,7 @@ export function parsePlaylist(input: string): { provider: 'spotify' | 'youtube' 
     if (!match) return null
     const rest = url.pathname.slice(1).split('/').slice(2, 4).join('/')
     const idParam = url.searchParams.get('i')
-    const query = idParam ? `?i=${idParam}` : ''
+    const query = idParam && /^\d+$/.test(idParam) ? `?i=${idParam}` : ''
     const same = `${match[1]}/${match[2]}/${rest}`
     return { provider: 'apple', embedUrl: `https://embed.music.apple.com/${same}${query}`, openUrl: `https://music.apple.com/${same}${query}` }
   }

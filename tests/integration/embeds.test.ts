@@ -22,6 +22,10 @@ describe('parsePlaylist', () => {
     expect(parsePlaylist('https://music.apple.com/us/playlist/my-mix/pl.abcd1234')!.embedUrl).toBe('https://embed.music.apple.com/us/playlist/my-mix/pl.abcd1234')
     expect(parsePlaylist('https://music.apple.com/de/album/lofi/1440874029?i=1440874030')!.embedUrl).toBe('https://embed.music.apple.com/de/album/lofi/1440874029?i=1440874030')
   })
+  it('strips non-digit Apple i param', () => {
+    expect(parsePlaylist('https://music.apple.com/de/album/lofi/1440874029?i=evil')!.embedUrl).toBe('https://embed.music.apple.com/de/album/lofi/1440874029')
+    expect(parsePlaylist('https://music.apple.com/de/album/lofi/1440874029?i=123abc')!.embedUrl).toBe('https://embed.music.apple.com/de/album/lofi/1440874029')
+  })
   it('rejects bad input', () => {
     expect(parsePlaylist('https://open.spotify.com.evil.test/playlist/37i9dQZF1DXcBWIGoYBM5M')).toBeNull()
     expect(parsePlaylist('https://evilspotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M')).toBeNull()
@@ -39,6 +43,7 @@ describe('parsePin', () => {
     expect(parsePin('https://www.pinterest.com/pin/1234567890123456789/')).toBe('1234567890123456789')
     expect(parsePin('https://ca.pinterest.ca/pin/abcdef--123456789/')).toBe('123456789')
     expect(parsePin('https://pinterest.com/pin/9999999/')).toBe('9999999')
+    expect(parsePin('https://pinterest.com/pin/9999999')).toBe('9999999')
     expect(parsePin('https://de.pinterest.de/pin/1234567890123/')).toBe('1234567890123')
   })
   it('rejects bad input', () => {
