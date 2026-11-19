@@ -1,10 +1,21 @@
 // Trading cards on the Characters page: make one, flip it, download it (real Worker + local D1).
 import { expect, test } from '@playwright/test'
+import gifenc from 'gifenc' // CommonJS in Node
+const { GIFEncoder } = gifenc
+
+// A real 3-frame 64×64 animated GIF (red, green, blue).
+function animatedGif() {
+  const gif = GIFEncoder()
+  for (const [i, colour] of [[255, 0, 0], [0, 160, 0], [0, 0, 255]].entries()) gif.writeFrame(new Uint8Array(64 * 64), 64, 64, { palette: [colour, [0, 0, 0]], delay: 200, ...(i ? {} : { repeat: 0 }) })
+  gif.finish(); return Buffer.from(gif.bytes())
+}
+const frameCount = (bytes: Buffer) => { let n = 0; for (let i = 0; i < bytes.length - 2; i++) if (bytes[i] === 0x21 && bytes[i + 1] === 0xf9 && bytes[i + 2] === 0x04) n++; return n }
+const download = async (page: import('@playwright/test').Page, button: import('@playwright/test').Locator) => { const [file] = await Promise.all([page.waitForEvent('download'), button.click()]); return { name: file.suggestedFilename(), bytes: Buffer.concat(await (await file.createReadStream()).toArray()), file } }
 
 const APP = 'http://localhost:5173'
 test.use({ baseURL: APP })
 
-test('make a trading card, see it in the Cards view, flip it, and download a PNG', async ({ browser }) => {
+test('make a trading card, see it in the Cards view, flip it, and download it as an animated GIF or a PNG', async ({ browser }) => {
   const ctx = await browser.newContext({ baseURL: APP, viewport: { width: 1280, height: 900 }, extraHTTPHeaders: { 'cf-connecting-ip': '10.3.' + Math.floor(Math.random() * 250) + '.' + Math.floor(Math.random() * 250), origin: APP } })
   const page = await ctx.newPage()
   await page.goto('/#inbox')
@@ -21,7 +32,7 @@ test('make a trading card, see it in the Cards view, flip it, and download a PNG
   // A GIF portrait goes up untouched (animation kept) and shows on the card; the size hint is visible.
   await expect(editor.locator('#portrait-hint')).toContainText('600 × 600')
   const uploaded = page.waitForResponse(r => r.url().endsWith('/icon') && r.request().method() === 'POST')
-  await editor.locator('input[type=file]').setInputFiles({ name: 'wren.gif', mimeType: 'image/gif', buffer: Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64') })
+  await editor.locator('input[type=file]').setInputFiles({ name: 'wren.gif', mimeType: 'image/gif', buffer: animatedGif() })
   expect((await uploaded).status()).toBe(201)
   await expect(editor.locator('[data-side=front] image')).toHaveCount(1)
   expect((await page.request.get(`/api/characters/${id}/icon`)).headers()['content-type']).toBe('image/gif')
@@ -39,11 +50,30 @@ test('make a trading card, see it in the Cards view, flip it, and download a PNG
   await flip.click(); await expect(flip).toHaveAttribute('aria-pressed', 'true')
   await page.waitForTimeout(800); await page.screenshot({ path: 'test-results/cards-view-back-1280.png' })
   await flip.press('Enter'); await expect(flip).toHaveAttribute('aria-pressed', 'false')
-  const [download] = await Promise.all([page.waitForEvent('download'), tile.getByRole('button', { name: 'Download PNG' }).click()])
-  expect(download.suggestedFilename()).toBe('wren-marlowe-puffin-card.png')
-  const bytes = await (await download.createReadStream()).toArray().then(chunks => Buffer.concat(chunks))
-  expect(bytes.subarray(1, 4).toString()).toBe('PNG'); expect(bytes.readUInt32BE(16)).toBe(2640); expect(bytes.readUInt32BE(20)).toBe(1800)
-  await download.saveAs('test-results/cards-download.png')
+  // GIF portrait → animated GIF download (both sides, 1320 × 900, every frame kept).
+  const gifOut = await download(page, tile.getByRole('button', { name: 'Download' }))
+  expect(gifOut.name).toBe('wren-marlowe-puffin-card.gif')
+  expect(gifOut.bytes.subarray(0, 6).toString()).toBe('GIF89a')
+  expect(gifOut.bytes.readUInt16LE(6)).toBe(1320); expect(gifOut.bytes.readUInt16LE(8)).toBe(900)
+  expect(frameCount(gifOut.bytes)).toBe(3)
+  expect(gifOut.bytes.length).toBeLessThan(3_000_000)
+  await gifOut.file.saveAs('test-results/cards-download.gif')
+  // Decode the downloaded GIF in the browser: frame 3 shows the blue portrait and the card around it is intact.
+  const pixels = await page.evaluate(async b64 => {
+    const data = Uint8Array.from(atob(b64), c => c.charCodeAt(0)), decoder = new ImageDecoder({ data, type: 'image/gif' })
+    const { image } = await decoder.decode({ frameIndex: 2 }), canvas = new OffscreenCanvas(1320, 900), context = canvas.getContext('2d')!
+    context.drawImage(image, 0, 0); const at = (x: number, y: number) => Array.from(context.getImageData(x, y, 1, 1).data.slice(0, 3))
+    return { portrait: at(320, 235), name: at(300, 455), back: at(1000, 160) }
+  }, gifOut.bytes.toString('base64'))
+  expect(pixels.portrait[2]).toBeGreaterThan(200); expect(pixels.portrait[0]).toBeLessThan(40)
+  expect(pixels.back.some(v => v > 0)).toBe(true)
+  await expect(tile.getByRole('status')).toHaveText('Saved as an animated GIF.')
+  // No portrait (or a still one) → PNG at 2640 × 1800.
+  await page.request.delete(`/api/characters/${id}/icon`); await page.reload()
+  const pngOut = await download(page, page.locator('.tcard-tile').first().getByRole('button', { name: 'Download' }))
+  expect(pngOut.name).toBe('wren-marlowe-puffin-card.png')
+  expect(pngOut.bytes.subarray(1, 4).toString()).toBe('PNG'); expect(pngOut.bytes.readUInt32BE(16)).toBe(2640); expect(pngOut.bytes.readUInt32BE(20)).toBe(1800)
+  await pngOut.file.saveAs('test-results/cards-download.png')
   // The choice of view is remembered.
   await page.reload(); await expect(page.locator('.tcard-tile')).toHaveCount(1)
   await page.setViewportSize({ width: 375, height: 812 }); await page.screenshot({ path: 'test-results/cards-view-375.png', fullPage: true })

@@ -110,24 +110,85 @@ export default function TradingCard({ name, profile, stats, portrait }: { name: 
   </div>
 }
 
-/** Downloads front and back side by side as one 2640 × 1800 PNG. The portrait is inlined as a data URL first,
- * because an SVG drawn into a canvas may not load outside images. */
-export async function downloadCard(cardElement: Element, name: string) {
+const blobToData = (blob: Blob) => new Promise<string>(resolve => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsDataURL(blob) })
+const loadImage = (url: string) => new Promise<HTMLImageElement>((resolve, reject) => { const img = new Image(); img.onload = () => resolve(img); img.onerror = () => reject(new Error('Could not draw the card')); img.src = url })
+
+/** Rasterises one card side with the given portrait (a data URL, or null for none) onto a canvas. */
+async function drawSide(context: CanvasRenderingContext2D, svg: SVGSVGElement, portrait: string | null, x: number, width: number, height: number) {
+  const clone = svg.cloneNode(true) as SVGSVGElement
+  clone.setAttribute('width', String(width)); clone.setAttribute('height', String(height))
+  for (const image of Array.from(clone.querySelectorAll('image'))) { if (portrait) image.setAttribute('href', portrait); else image.remove() }
+  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml;charset=utf-8' }))
+  try { context.drawImage(await loadImage(url), x, 0, width, height) } finally { URL.revokeObjectURL(url) }
+}
+
+function save(blob: Blob, name: string, ext: string) {
+  const url = URL.createObjectURL(blob), link = document.createElement('a')
+  link.href = url; link.download = (name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'character') + '-puffin-card.' + ext; link.click()
+  window.setTimeout(() => URL.revokeObjectURL(url), 4000)
+}
+
+/** Downloads front and back side by side. A GIF portrait gives an animated 1320 × 900 GIF; anything else
+ * (or a browser without ImageDecoder) gives a 2640 × 1800 PNG. Returns which one was saved. The portrait is
+ * inlined as a data URL because an SVG drawn into a canvas may not load outside images. */
+export async function downloadCard(cardElement: Element, name: string): Promise<'gif' | 'png' | 'png-no-gif-support'> {
   const svgs = Array.from(cardElement.querySelectorAll<SVGSVGElement>('.tcard-face > svg'))
-  const toData = async (href: string) => { const blob = await fetch(href).then(r => r.ok ? r.blob() : null); return blob ? await new Promise<string>(resolve => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsDataURL(blob) }) : null }
+  if (svgs.length !== 2) throw new Error('Could not prepare the card')
+  const href = svgs[0].querySelector('image')?.getAttribute('href')
+  const portrait = href ? await fetch(href).then(r => r.ok ? r.blob() : null) : null
+  const isGif = portrait?.type === 'image/gif'
+  if (isGif && 'ImageDecoder' in window) { save(await animatedCard(svgs, portrait!), name, 'gif'); return 'gif' }
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d')
-  if (!context || svgs.length !== 2) throw new Error('Could not prepare the card')
+  if (!context) throw new Error('Could not prepare the card')
   canvas.width = 2640; canvas.height = 1800
-  for (const [index, svg] of svgs.entries()) {
-    const clone = svg.cloneNode(true) as SVGSVGElement
-    clone.setAttribute('width', '1280'); clone.setAttribute('height', '1800')
-    for (const image of Array.from(clone.querySelectorAll('image'))) { const data = await toData(image.getAttribute('href') ?? ''); if (data) image.setAttribute('href', data); else image.remove() }
-    const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml;charset=utf-8' }))
-    try { const img = new Image(); await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(new Error('Could not draw the card')); img.src = url }); context.drawImage(img, index * 1360, 0, 1280, 1800) } finally { URL.revokeObjectURL(url) }
-  }
+  const data = portrait ? await blobToData(portrait) : null
+  for (const [index, svg] of svgs.entries()) await drawSide(context, svg, data, index * 1360, 1280, 1800)
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
   if (!blob) throw new Error('Could not export the card')
-  const url = URL.createObjectURL(blob), link = document.createElement('a')
-  link.href = url; link.download = (name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'character') + '-puffin-card.png'; link.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 4000)
+  save(blob, name, 'png'); return isGif ? 'png-no-gif-support' : 'png'
+}
+
+// ponytail: at most 60 frames (longer GIFs are sampled, delays summed) so the file stays a shareable size.
+const MAX_FRAMES = 60
+
+/** Frame 0 is the whole card. Later frames repaint only pixels that changed since the previous frame (the rest
+ * is transparent and kept from before, dispose = 1), so only the portrait area costs bytes. */
+async function animatedCard(svgs: SVGSVGElement[], gif: Blob) {
+  const { GIFEncoder, quantize, applyPalette } = await import('gifenc')
+  const decoder = new ImageDecoder({ data: await gif.arrayBuffer(), type: 'image/gif' })
+  await decoder.tracks.ready
+  const count = decoder.tracks.selectedTrack?.frameCount ?? 1, step = Math.ceil(count / MAX_FRAMES)
+  const W = 1320, H = 900, SIDE = 640
+  const canvas = document.createElement('canvas'), context = canvas.getContext('2d', { willReadFrequently: true })
+  const still = document.createElement('canvas'), stillContext = still.getContext('2d')
+  if (!context || !stillContext) throw new Error('Could not prepare the card')
+  canvas.width = W; canvas.height = H
+  const encoder = GIFEncoder()
+  let previous: Uint8ClampedArray | null = null
+  try {
+    for (let start = 0; start < count; start += step) {
+      let delay = 0, frameData = ''
+      for (let i = start; i < Math.min(count, start + step); i++) {
+        const { image } = await decoder.decode({ frameIndex: i })
+        delay += (image.duration ?? 100_000) / 1000
+        if (i === start) { still.width = image.displayWidth; still.height = image.displayHeight; stillContext.drawImage(image, 0, 0); frameData = still.toDataURL('image/png') }
+        image.close()
+      }
+      await drawSide(context, svgs[0], frameData, 0, SIDE, H)
+      if (!previous) await drawSide(context, svgs[1], null, SIDE + 40, SIDE, H)
+      const rgba = context.getImageData(0, 0, W, H).data
+      // Frame 0 paints every visible pixel; later frames only what changed. Everything else stays transparent.
+      const changed: number[] = []
+      for (let p = 0; p < rgba.length; p += 4) if (previous ? rgba[p] !== previous[p] || rgba[p + 1] !== previous[p + 1] || rgba[p + 2] !== previous[p + 2] : rgba[p + 3] >= 128) changed.push(p)
+      const only = new Uint8ClampedArray(Math.max(1, changed.length) * 4)
+      changed.forEach((p, k) => only.set(rgba.subarray(p, p + 4), k * 4))
+      const palette = quantize(only, 255); palette.push([0, 0, 0])
+      const transparentIndex = palette.length - 1, index = new Uint8Array(W * H).fill(transparentIndex), mapped = applyPalette(only, palette)
+      changed.forEach((p, k) => { index[p / 4] = mapped[k] })
+      encoder.writeFrame(index, W, H, { palette, delay: Math.max(20, delay), dispose: 1, transparent: true, transparentIndex, ...(previous ? {} : { repeat: 0 }) })
+      previous = rgba
+    }
+  } finally { decoder.close() }
+  encoder.finish()
+  return new Blob([encoder.bytes()], { type: 'image/gif' })
 }

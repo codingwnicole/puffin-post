@@ -90,10 +90,11 @@ const portraitFor = (row: Character, version?: number) => row.iconObjectKey ? '/
 const VIEW_KEY = 'puffin.characters.view'
 
 function CardTile({ row, stats, portrait, edit, reportError }: { row: Character; stats: CardStats; portrait: string | null; edit: () => void; reportError: (error: string) => void }) {
-  const tile = useRef<HTMLElement>(null)
+  const tile = useRef<HTMLElement>(null), [saving, setSaving] = useState(false), [note, setNote] = useState('')
+  const download = async () => { try { setSaving(true); setNote(''); const kind = await downloadCard(tile.current!, row.name); setNote(kind === 'gif' ? 'Saved as an animated GIF.' : kind === 'png-no-gif-support' ? 'This browser can’t make animated GIFs, so the card was saved as a PNG.' : 'Saved as a PNG.') } catch (problem) { reportError((problem as Error).message) } finally { setSaving(false) } }
   return <article className="tcard-tile" ref={tile} aria-label={row.name}>
     <TradingCard name={row.name} profile={row.card ?? emptyCard()} stats={stats} portrait={portrait} />
-    <div className="tcard-actions"><button type="button" className="secondary-button" onClick={edit}>{row.card ? 'Edit card' : 'Make this card'}</button><button type="button" className="secondary-button" onClick={() => void downloadCard(tile.current!, row.name).catch(problem => reportError(problem.message))}>Download PNG</button></div>
+    <div className="tcard-actions"><button type="button" className="secondary-button" onClick={edit}>{row.card ? 'Edit card' : 'Make this card'}</button><button type="button" className="secondary-button" disabled={saving} title="Animated GIF when the portrait is a GIF, otherwise PNG" onClick={() => void download()}>{saving ? 'Preparing…' : 'Download'}</button></div><p className="field-help tcard-note" role="status">{note}</p>
   </article>
 }
 
