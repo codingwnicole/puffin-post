@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { api, peekCache, staleGet } from '../lib/api'
 import { toast, undoCharacterArchive, undoReturnToPlanner } from '../lib/toast'
 import { initialsFor } from '../components/InitialsAvatar'
+import TradingCard, { THEMES, downloadCard, emptyCard, type CardProfile, type CardStats, type ThemeId } from '../components/TradingCard'
 
-type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null }
+type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; card?: CardProfile | null }
 type ArchivedCharacter = { id: string; name: string; color: string | null; notes: string | null; iconObjectKey: string | null; createdAt: string; rpGroupNames: string[]; threadCount: number }
 type Connection = { assignments: { characterId: string; blogIdentifier: string; characterTag: string | null }[] }
 type Group = { id: string; name: string; characterIds: string[] }
@@ -15,9 +17,9 @@ async function squareIcon(file: File) {
   const image = await createImageBitmap(file)
   const size = Math.min(image.width, image.height)
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d')
-  canvas.width = 300; canvas.height = 300
+  canvas.width = 600; canvas.height = 600
   if (!context) throw new Error('Could not prepare image')
-  context.drawImage(image, (image.width - size) / 2, (image.height - size) / 2, size, size, 0, 0, 300, 300)
+  context.drawImage(image, (image.width - size) / 2, (image.height - size) / 2, size, size, 0, 0, 600, 600)
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', .9))
   if (!blob) throw new Error('Could not prepare image')
   return new File([blob], 'character-icon.webp', { type: 'image/webp' })
@@ -82,7 +84,7 @@ function ScrollableRow({ children }: { children: ReactNode }) {
   return <div className="character-scroll-shell"><div className="character-scroll-controls"><button type="button" className="secondary-button" aria-label="Show previous characters" onClick={() => move(-1)}>←</button><button type="button" className="secondary-button" aria-label="Show more characters" onClick={() => move(1)}>→</button></div><div className="character-scroll-row" ref={row}>{children}</div></div>
 }
 
-function CharacterCard({ row, index, assignments, groups, stat, iconVersion, busy, addToGroup, upload, remove, returnToPlanner, showCreateGroup, reportError }: { row: Character; index?: number; assignments: Connection['assignments']; groups: Group[]; stat: Counts; iconVersion?: number; busy: boolean; addToGroup: (groupId: string, characterId: string) => Promise<void>; upload: (id: string, file: File) => Promise<void>; remove: (id: string) => Promise<void>; returnToPlanner:(id:string)=>Promise<void>; showCreateGroup: () => void; reportError: (error: string) => void }) {
+function CharacterCard({ row, index, assignments, groups, stat, iconVersion, busy, addToGroup, upload, remove, returnToPlanner, showCreateGroup, reportError, editCard }: { row: Character; index?: number; assignments: Connection['assignments']; groups: Group[]; stat: Counts; iconVersion?: number; busy: boolean; addToGroup: (groupId: string, characterId: string) => Promise<void>; upload: (id: string, file: File) => Promise<void>; remove: (id: string) => Promise<void>; returnToPlanner:(id:string)=>Promise<void>; showCreateGroup: () => void; reportError: (error: string) => void; editCard: () => void }) {
   const characterAssignments = assignments.filter(assignment => assignment.characterId === row.id)
   const characterGroups = groups.filter(group => group.characterIds.includes(row.id))
   const availableGroups = groups.filter(group => !group.characterIds.includes(row.id))
@@ -91,8 +93,46 @@ function CharacterCard({ row, index, assignments, groups, stat, iconVersion, bus
     <div className="character-rps"><strong>RP sections</strong>{characterGroups.length ? <span>{characterGroups.map(group => group.name).join(' / ')}</span> : <span>Not sorted yet</span>}{!characterGroups.length && availableGroups.length > 0 ? <label>Add {row.name} to an RP section<select className="character-rp-picker" value="" disabled={busy} onChange={event => { if (event.target.value) void addToGroup(event.target.value, row.id) }}><option value="">Add to RP.</option>{availableGroups.map(group => <option value={group.id} key={group.id}>{group.name}</option>)}</select></label> : !characterGroups.length ? <button type="button" className="text-button" onClick={showCreateGroup}>Create an RP</button> : null}</div>
     <div className="character-stats"><a href={'#inbox?characterId=' + row.id}><strong>{stat.total}</strong> thread{stat.total === 1 ? '' : 's'}</a><span><strong>{stat.mine}</strong> your turn</span><span><strong>{stat.theirs}</strong> their turn</span></div>
     <Quicklinks characterId={row.id} />
-    <div className="character-actions"><label className="icon-picker">{row.iconObjectKey ? 'Replace icon' : 'Upload icon'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void upload(row.id, file) }} /></label><details className="character-more"><summary>More</summary><div className="character-more-menu"><button type="button" className="secondary-button" onClick={() => void exportCharacterCard(row, stat).catch(problem => reportError(problem.message))}>Export stats card</button><button type="button" className="secondary-button" onClick={() => void returnToPlanner(row.id)}>Return to planner</button><button className="danger-button" type="button" onClick={() => void remove(row.id)}>Remove character</button></div></details></div>
+    <div className="character-actions"><label className="icon-picker">{row.iconObjectKey ? 'Replace icon' : 'Upload icon'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void upload(row.id, file) }} /></label><details className="character-more"><summary>More</summary><div className="character-more-menu"><button type="button" className="secondary-button" onClick={editCard}>{row.card ? 'Edit trading card' : 'Make a trading card'}</button><button type="button" className="secondary-button" onClick={() => void exportCharacterCard(row, stat).catch(problem => reportError(problem.message))}>Export stats card</button><button type="button" className="secondary-button" onClick={() => void returnToPlanner(row.id)}>Return to planner</button><button className="danger-button" type="button" onClick={() => void remove(row.id)}>Remove character</button></div></details></div>
   </article>
+}
+
+const portraitFor = (row: Character, version?: number) => row.iconObjectKey ? '/api/characters/' + row.id + '/icon?v=' + (version ?? row.iconObjectKey) : null
+const VIEW_KEY = 'puffin.characters.view'
+
+function CardTile({ row, stats, portrait, edit, reportError }: { row: Character; stats: CardStats; portrait: string | null; edit: () => void; reportError: (error: string) => void }) {
+  const tile = useRef<HTMLElement>(null)
+  return <article className="tcard-tile" ref={tile} aria-label={row.name}>
+    <TradingCard name={row.name} profile={row.card ?? emptyCard()} stats={stats} portrait={portrait} />
+    <div className="tcard-actions"><button type="button" className="secondary-button" onClick={edit}>{row.card ? 'Edit card' : 'Make this card'}</button><button type="button" className="secondary-button" onClick={() => void downloadCard(tile.current!, row.name).catch(problem => reportError(problem.message))}>Download PNG</button></div>
+  </article>
+}
+
+function CardEditor({ row, stats, portrait, upload, close, saved }: { row: Character; stats: CardStats; portrait: string | null; upload: (file: File) => Promise<void>; close: () => void; saved: () => Promise<void> }) {
+  const [draft, setDraft] = useState<CardProfile>(() => { const start = { ...emptyCard(), ...row.card }; return { ...start, facts: [0, 1, 2, 3, 4].map(i => start.facts[i] ?? '') } })
+  const [saving, setSaving] = useState(false), [error, setError] = useState('')
+  const set = <K extends keyof CardProfile>(key: K, value: CardProfile[K]) => setDraft(current => ({ ...current, [key]: value }))
+  useEffect(() => { const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey) }, [close])
+  const field = (key: 'nickname' | 'age' | 'birthdate' | 'song' | 'artist', label: string, max: number) => <label>{label}<input value={draft[key]} maxLength={max} onChange={event => set(key, event.target.value)} /></label>
+  // Portal: the page section's entrance animation makes it the containing block for position:fixed.
+  return createPortal(<div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="card-editor-title">
+    <form className="modal-card card-editor" onSubmit={async event => { event.preventDefault(); try { setSaving(true); setError(''); await api('/characters/' + row.id + '/card', 'PUT', { ...draft, facts: draft.facts.map(fact => fact.trim()).filter(Boolean) }); await saved(); close() } catch (problem) { setError((problem as Error).message) } finally { setSaving(false) } }}>
+      <div className="card-editor-fields">
+        <h2 id="card-editor-title">{row.name}’s trading card</h2>
+        <fieldset className="card-theme-picker"><legend>Style</legend>{(Object.keys(THEMES) as ThemeId[]).map(id => <label key={id} style={{ '--swatch': `linear-gradient(135deg, ${THEMES[id].bg[0]}, ${THEMES[id].foil[1]})` } as CSSProperties}><input type="radio" name="theme" value={id} checked={draft.theme === id} onChange={() => set('theme', id)} /><span>{THEMES[id].label}<small>{THEMES[id].group}</small></span></label>)}</fieldset>
+        <label className="icon-picker">{portrait ? 'Replace portrait' : 'Upload portrait'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void upload(file).catch(problem => setError((problem as Error).message)) }} /></label>
+        <div className="card-editor-row">{field('nickname', 'Nickname / alias', 60)}{field('age', 'Age', 30)}{field('birthdate', 'Birthdate', 40)}</div>
+        <label>Quote<textarea value={draft.quote} maxLength={160} rows={2} onChange={event => set('quote', event.target.value)} /></label>
+        <div className="card-editor-row">{field('song', 'Theme song', 60)}{field('artist', 'Artist', 60)}<label>Favorite color<input type="color" value={draft.favoriteColor} onChange={event => set('favoriteColor', event.target.value)} /></label></div>
+        <fieldset><legend>Fun facts</legend>{draft.facts.map((fact, i) => <input key={i} aria-label={`Fun fact ${i + 1}`} value={fact} maxLength={70} onChange={event => set('facts', draft.facts.map((current, j) => j === i ? event.target.value : current))} />)}</fieldset>
+        <div className="card-editor-row"><label>Likes<input value={draft.likes} maxLength={90} onChange={event => set('likes', event.target.value)} /></label><label>Dislikes<input value={draft.dislikes} maxLength={90} onChange={event => set('dislikes', event.target.value)} /></label></div>
+        <label>Notes<textarea value={draft.notes} maxLength={140} rows={2} onChange={event => set('notes', event.target.value)} /></label>
+        {error && <p role="alert">{error}</p>}
+        <div className="modal-actions"><button disabled={saving}>{saving ? 'Saving…' : 'Save card'}</button><button type="button" className="text-button" onClick={close}>Cancel</button></div>
+      </div>
+      <div className="card-editor-preview"><TradingCard name={row.name} profile={draft} stats={stats} portrait={portrait} /><p className="field-help">Tap the card to flip it. Thread stats fill in on their own.</p></div>
+    </form>
+  </div>, document.body)
 }
 
 export default function CharactersPage() {
@@ -101,6 +141,9 @@ export default function CharactersPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; threads: number } | null>(null)
   const [deleteStep, setDeleteStep] = useState<'choose' | 'confirm'>('choose')
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [view, setViewState] = useState<'details' | 'cards'>(() => { try { return localStorage.getItem(VIEW_KEY) === 'cards' ? 'cards' : 'details' } catch { return 'details' } })
+  const setView = (next: 'details' | 'cards') => { setViewState(next); try { localStorage.setItem(VIEW_KEY, next) } catch { /* per-viewer convenience only */ } }
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(() => ['/characters', '/connections', '/rp-groups', '/inbox'].every(path => peekCache(path) !== undefined))
   useEffect(() => { const t = window.setTimeout(() => { document.querySelector('.character-grid')?.setAttribute('data-entered', '') }, 700); return () => window.clearTimeout(t) }, [])
   const load = () => Promise.all([staleGet<Character[]>('/characters'), staleGet<Connection[]>('/connections'), staleGet<Group[]>('/rp-groups'), staleGet<{ branches: InboxBranch[] }>('/inbox')]).then(([characters, connections, nextGroups, inbox]) => { setRows(characters); setAssignments(connections.flatMap(connection => connection.assignments)); setGroups(nextGroups); setBranches(inbox.branches); setLoaded(true) }).catch(problem => { setError(problem.message); setLoaded(true) })
@@ -114,8 +157,10 @@ export default function CharactersPage() {
   async function archiveCharacter(id: string) { const row = rows.find(r => r.id === id); if (!row) return; try { setError(''); setDeleteBusy(true); await api('/characters/' + id + '/archive', 'POST'); setDeleteTarget(null); setDeleteStep('choose'); await load(); toast(`Archived ${row.name}.`, undoCharacterArchive(id)) } catch (problem) { setError((problem as Error).message) } finally { setDeleteBusy(false) } }
   async function confirmDelete() { if (!deleteTarget) return; try { setError(''); setDeleteBusy(true); await api('/characters/' + deleteTarget.id, 'DELETE'); setDeleteTarget(null); setDeleteStep('choose'); await load() } catch (problem) { setError((problem as Error).message) } finally { setDeleteBusy(false) } }
   async function returnToPlanner(id:string){const row=rows.find(r=>r.id===id);if(!row)return;try{setBusy(true);setError('');const moved=await api<{created?:boolean}>('/characters/'+id+'/return-to-planner','POST');toast('Moved '+row.name+' to the planner.',undoReturnToPlanner(id,row.state,moved.created!==false));await load();window.location.hash='planner'}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
-  const card = (row: Character, index?: number) => <CharacterCard key={row.id} index={index} row={row} assignments={assignments} groups={groups} stat={counts[row.id] ?? { total: 0, mine: 0, theirs: 0 }} iconVersion={iconVersions[row.id]} busy={busy} addToGroup={addToGroup} upload={upload} remove={remove} returnToPlanner={returnToPlanner} showCreateGroup={() => setAddingGroup(true)} reportError={setError} />
-  return <section aria-labelledby="page-title"><div className="character-page-heading"><div><h1 id="page-title" className="page-heading">Characters</h1><p className="page-description">Build your cast, connect their Tumblr, and place them in the RP spaces where they write.</p></div><div className="actions"><button onClick={() => setAddingGroup(!addingGroup)}>{addingGroup ? 'Close' : 'Add an RP'}</button><button onClick={() => setAdding(!adding)}>{adding ? 'Close' : 'Add character'}</button></div></div>
+  const cardStats = (row: Character): CardStats => ({ ...(counts[row.id] ?? { total: 0, mine: 0, theirs: 0 }), rps: groups.filter(group => group.characterIds.includes(row.id)).map(group => group.name) })
+  const editing = rows.find(row => row.id === editingId)
+  const card = (row: Character, index?: number) => view === 'cards' ? <CardTile key={row.id} row={row} stats={cardStats(row)} portrait={portraitFor(row, iconVersions[row.id])} edit={() => setEditingId(row.id)} reportError={setError} /> : <CharacterCard editCard={() => setEditingId(row.id)} key={row.id} index={index} row={row} assignments={assignments} groups={groups} stat={counts[row.id] ?? { total: 0, mine: 0, theirs: 0 }} iconVersion={iconVersions[row.id]} busy={busy} addToGroup={addToGroup} upload={upload} remove={remove} returnToPlanner={returnToPlanner} showCreateGroup={() => setAddingGroup(true)} reportError={setError} />
+  return <section aria-labelledby="page-title"><div className="character-page-heading"><div><h1 id="page-title" className="page-heading">Characters</h1><p className="page-description">Build your cast, connect their Tumblr, and place them in the RP spaces where they write.</p></div><div className="actions"><div className="view-switch" role="group" aria-label="Show characters as"><button type="button" aria-pressed={view === 'details'} onClick={() => setView('details')}>Details</button><button type="button" aria-pressed={view === 'cards'} onClick={() => setView('cards')}>✦ Cards</button></div><button onClick={() => setAddingGroup(!addingGroup)}>{addingGroup ? 'Close' : 'Add an RP'}</button><button onClick={() => setAdding(!adding)}>{adding ? 'Close' : 'Add character'}</button></div></div>
     {error && <p role="alert">{error}</p>}
     {addingGroup && <form className="character-create tracking-card" onSubmit={async event => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement, name = form ? new FormData(form).get('name') : null; try { setError(''); await api('/rp-groups', 'POST', { name }); if (form) form.reset(); setAddingGroup(false); await load() } catch (problem) { setError((problem as Error).message) } }}><label>RP name<input name="name" required maxLength={120} autoFocus placeholder="e.g. avast" /></label><button>Add RP</button></form>}
     {adding && <form className="character-create tracking-card" onSubmit={async event => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement, name = form ? new FormData(form).get('name') : null; try { setError(''); await api('/characters', 'POST', { name, state: 'active' }); if (form) form.reset(); setAdding(false); await load() } catch (problem) { setError((problem as Error).message) } }}><label>Name<input name="name" required maxLength={200} autoFocus placeholder="Character name" /></label><button>Add to cast</button></form>}
@@ -132,6 +177,7 @@ export default function CharactersPage() {
     {!rows.length && <p>No characters yet. Add your first one above.</p>}
     </>
     )}
+    {editing && <CardEditor row={editing} stats={cardStats(editing)} portrait={portraitFor(editing, iconVersions[editing.id])} upload={file => upload(editing.id, file)} close={() => setEditingId(null)} saved={load} />}
     {deleteTarget && (
       <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
         <div className="modal-card">

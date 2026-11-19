@@ -1,0 +1,44 @@
+// Trading cards on the Characters page: make one, flip it, download it (real Worker + local D1).
+import { expect, test } from '@playwright/test'
+
+const APP = 'http://localhost:5173'
+test.use({ baseURL: APP })
+
+test('make a trading card, see it in the Cards view, flip it, and download a PNG', async ({ browser }) => {
+  const ctx = await browser.newContext({ baseURL: APP, viewport: { width: 1280, height: 900 }, extraHTTPHeaders: { 'cf-connecting-ip': '10.3.' + Math.floor(Math.random() * 250) + '.' + Math.floor(Math.random() * 250), origin: APP } })
+  const page = await ctx.newPage()
+  await page.goto('/#inbox')
+  expect((await page.request.post('/api/auth/password-sign-up', { data: { email: `cards-${Date.now()}@example.test`, password: 'correct horse battery' } })).status()).toBe(201)
+  const { id } = await (await page.request.post('/api/characters', { data: { name: 'Wren Marlowe' } })).json() as { id: string }
+  await page.request.post('/api/starters', { data: { characterId: id, title: 'Harbor at dusk', partnerName: 'Ash' } })
+  await page.goto('/#characters'); await page.reload()
+  await page.getByRole('button', { name: '✦ Cards' }).click()
+  const tile = page.locator('.tcard-tile').first()
+  await tile.getByRole('button', { name: 'Make this card' }).click()
+  const editor = page.getByRole('dialog')
+  await editor.getByText('Vamp Romantic').click()
+  await editor.getByLabel('Nickname / alias').fill('Little Fox')
+  await editor.getByLabel('Quote').fill('I keep my promises, even the bad ones.')
+  await editor.getByLabel('Fun fact 1').fill('Hates the rain')
+  await expect(editor.locator('.tcard')).toHaveAttribute('data-theme-id', 'vamp')
+  await page.screenshot({ path: 'test-results/cards-editor-1280.png' })
+  await editor.getByRole('button', { name: 'Save card' }).click()
+  await expect(editor).toBeHidden()
+  await expect(tile.locator('.tcard')).toHaveAttribute('data-theme-id', 'vamp')
+  await expect(tile.locator('[data-side=front]')).toContainText('Little Fox')
+  await expect(tile.locator('[data-side=back]')).toContainText('Hates the rain')
+  await expect(tile.locator('[data-side=back]')).toContainText('YOUR TURN')
+  const flip = tile.getByRole('button', { name: /Flip Wren Marlowe/ })
+  await flip.click(); await expect(flip).toHaveAttribute('aria-pressed', 'true')
+  await page.waitForTimeout(800); await page.screenshot({ path: 'test-results/cards-view-back-1280.png' })
+  await flip.press('Enter'); await expect(flip).toHaveAttribute('aria-pressed', 'false')
+  const [download] = await Promise.all([page.waitForEvent('download'), tile.getByRole('button', { name: 'Download PNG' }).click()])
+  expect(download.suggestedFilename()).toBe('wren-marlowe-puffin-card.png')
+  const bytes = await (await download.createReadStream()).toArray().then(chunks => Buffer.concat(chunks))
+  expect(bytes.subarray(1, 4).toString()).toBe('PNG'); expect(bytes.readUInt32BE(16)).toBe(2640); expect(bytes.readUInt32BE(20)).toBe(1800)
+  await download.saveAs('test-results/cards-download.png')
+  // The choice of view is remembered.
+  await page.reload(); await expect(page.locator('.tcard-tile')).toHaveCount(1)
+  await page.setViewportSize({ width: 375, height: 812 }); await page.screenshot({ path: 'test-results/cards-view-375.png', fullPage: true })
+  await ctx.close()
+})

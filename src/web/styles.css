@@ -342,3 +342,37 @@ p{text-wrap:pretty}
 .reply-donut strong,.plotting-donut strong,.summary-legend{font-variant-numeric:tabular-nums}
 .character-more:not([open]) .character-more-menu{display:none}
 .reply-donut strong,.plotting-donut strong{font-variant-numeric:tabular-nums!important}
+/* Trading cards (Characters ▸ Cards view and the card editor) */
+.view-switch{display:inline-flex;border:1px solid var(--border);border-radius:.7rem;overflow:hidden}.view-switch button{border:0;border-radius:0;background:transparent;color:var(--text);min-height:2.5rem}.view-switch button[aria-pressed=true]{background:var(--accent);color:var(--on-accent)}
+.tcard-tile{display:grid;gap:.75rem;justify-items:center;min-width:0;max-width:22rem;width:100%;margin-inline:auto}
+.tcard{--rx:0deg;--ry:0deg;width:100%;aspect-ratio:640/900;perspective:1400px;transform:rotateX(var(--rx)) rotateY(var(--ry));transition:transform .25s var(--ease-out)}
+/* The 3D flip lives on a span inside the button: Chrome flattens 3D inside a button's own box. */
+.tcard-inner{all:unset;display:block;width:100%;height:100%;cursor:pointer}
+.tcard-flip{position:relative;display:block;width:100%;height:100%;transform-style:preserve-3d;transition:transform .7s cubic-bezier(.3,1.4,.5,1)}
+.tcard[data-flipped] .tcard-flip{transform:rotateY(180deg)}
+.tcard-inner:focus-visible{outline:3px solid var(--accent);outline-offset:4px;border-radius:1.5rem}
+.tcard-face{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:4.5%/3.2%;overflow:hidden;box-shadow:0 .9rem 1.6rem rgba(0,0,0,.28)}
+.tcard-face svg{display:block;width:100%;height:100%}
+.tcard-back{transform:rotateY(180deg)}
+.tcard-face::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;mix-blend-mode:overlay;transition:opacity .3s;background:radial-gradient(circle at var(--mx,50%) var(--my,30%),rgba(255,255,255,.55),transparent 42%),linear-gradient(115deg,transparent 25%,color-mix(in srgb,var(--card-glow) 45%,transparent) 45%,transparent 62%)}
+.tcard:hover .tcard-face::after{opacity:1}
+.tcard-actions{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center}
+.modal-card.card-editor{display:grid;grid-template-columns:minmax(0,1fr) 18rem;gap:1.5rem;width:min(64rem,calc(100vw - 2rem));max-width:none;max-height:calc(100dvh - 2rem)}
+.card-editor-fields{display:grid;gap:.8rem;min-width:0}.card-editor-fields h2{margin:0;font:600 1.6rem Georgia,serif}
+.card-editor label,.card-editor legend{display:grid;gap:.3rem;font-weight:700;color:var(--muted)}
+.card-editor input:not([type=radio]):not([type=file]),.card-editor textarea{min-height:2.5rem;padding:.5rem .6rem;border:1px solid var(--border);border-radius:.6rem;background:var(--surface);color:var(--text);font:inherit}
+.card-editor input[type=color]{padding:.2rem;width:100%}
+.card-editor fieldset{display:grid;gap:.45rem;margin:0;padding:0;border:0}
+.card-editor-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.6rem}
+.card-theme-picker{grid-template-columns:repeat(auto-fill,minmax(8.5rem,1fr))!important}
+.card-theme-picker label{position:relative;display:block;cursor:pointer}
+.card-theme-picker input{position:absolute;opacity:0}
+.card-theme-picker span{display:grid;gap:.1rem;min-height:2.75rem;padding:.45rem .6rem .45rem 2.4rem;border:1px solid var(--border);border-radius:.6rem;color:var(--text);font-size:.85rem;background:var(--surface)}
+.card-theme-picker span::before{content:"";position:absolute;left:.55rem;top:50%;width:1.4rem;height:1.4rem;margin-top:-.7rem;border-radius:.35rem;background:var(--swatch);box-shadow:inset 0 0 0 1px rgba(255,255,255,.4)}
+.card-theme-picker small{color:var(--muted);font-size:.7rem}
+.card-theme-picker input:checked+span{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent)}
+.card-theme-picker input:focus-visible+span{outline:3px solid var(--accent);outline-offset:2px}
+.card-editor-preview{position:sticky;top:0;align-self:start;display:grid;gap:.5rem}
+@media (max-width:760px){.modal-card.card-editor{grid-template-columns:1fr}.card-editor-preview{position:static;order:-1;width:min(15rem,100%);margin-inline:auto}}
+@media (prefers-reduced-motion:reduce){.tcard,.tcard-flip{transition:none}.tcard{transform:none}}
+.card-editor input:not([type=radio]):not([type=file]),.card-editor textarea{width:100%;box-sizing:border-box}.card-editor-row>label{min-width:0}
