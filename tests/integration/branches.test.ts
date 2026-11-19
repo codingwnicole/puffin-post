@@ -93,7 +93,7 @@ it('hydrates the latest direct exchange as soon as a thread is added', async () 
 })
 
 it('allows a character to use multiple blogs from the same Tumblr account', async () => {
-  await fixture.env.DB.prepare("UPDATE tumblr_connections SET account_metadata_json=? WHERE id='connection-a'").bind(JSON.stringify({ blogs:['a.tumblr.com','a-sideblog.tumblr.com'] })).run()
+  await fixture.env.DB.prepare("UPDATE tumblr_connections SET account_metadata_json=? WHERE id='connection-a'").bind(JSON.stringify({ blogs:['a.tumblr.com','a-sideblog.tumblr.com'], refreshedAt:new Date().toISOString() })).run()
   const assigned = await fixture.request('/api/connections/connection-a/blogs','POST',{ characterId:'character-a', blogIdentifier:'a-sideblog.tumblr.com', displayLabel:'A sideblog' })
   expect(assigned.status).toBe(201)
   const duplicate = await fixture.request('/api/connections/connection-a/blogs','POST',{ characterId:'character-a', blogIdentifier:'a-sideblog.tumblr.com', displayLabel:'A sideblog' })

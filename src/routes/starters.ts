@@ -86,9 +86,10 @@ export function starterRoutes() {
   async function findPost(scope:Awaited<ReturnType<typeof requireWorkspace>>, env:Env, postUrl:string, characterId?:string) {
     const reference = parseTumblrPostReference(postUrl)
     const access = await scope.db.prepare(`SELECT tc.token_encrypted AS tokenEncrypted, tc.token_secret_encrypted AS tokenSecretEncrypted
-      FROM tumblr_connections tc ${characterId ? 'JOIN character_blogs access_blog ON access_blog.workspace_id=tc.workspace_id AND access_blog.tumblr_connection_id=tc.id' : ''}
-      WHERE tc.workspace_id=? AND tc.status='active' ${characterId ? 'AND access_blog.character_id=?' : ''} LIMIT 1`)
-      .bind(...[scope.workspaceId, ...(characterId ? [characterId] : [])]).first<{tokenEncrypted:string;tokenSecretEncrypted:string}>()
+      FROM tumblr_connections tc ${characterId ? 'LEFT JOIN character_blogs access_blog ON access_blog.workspace_id=tc.workspace_id AND access_blog.tumblr_connection_id=tc.id' : ''}
+      WHERE tc.workspace_id=? AND tc.status='active'
+      ORDER BY instr(tc.account_metadata_json, ?) > 0 DESC ${characterId ? ', access_blog.character_id=? DESC' : ''} LIMIT 1`)
+      .bind(...[scope.workspaceId, JSON.stringify(reference.blogIdentifier), ...(characterId ? [characterId] : [])]).first<{tokenEncrypted:string;tokenSecretEncrypted:string}>()
     // Without an active connection we can't read the post from Tumblr. A
     // link-less (manual) scene never calls findPost, so reaching here with no
     // connection is a programming error — fail loudly rather than casting null.
@@ -115,6 +116,11 @@ export function starterRoutes() {
     const activities = await client.getThreadActivity(clickedPost.rootBlogIdentifier, clickedPost.rootPostId)
     const participants = new Set(activities.map(activity => activity.blogIdentifier).filter(blog => !ownBlogIdentifiers.has(blog)))
     if (!ownBlogIdentifiers.has(clickedPost.rootBlogIdentifier)) participants.add(clickedPost.rootBlogIdentifier)
+    // The user's other blogs (sideblogs, other muses) stay choosable — own characters can RP together —
+    // but are never picked automatically as the writing partner.
+    const workspaceBlogs = new Set((await scope.db.prepare('SELECT blog_identifier AS b FROM character_blogs WHERE workspace_id=?').bind(scope.workspaceId).all<{b:string}>()).results.map(row => canonicalBlogIdentifier(row.b)))
+    const outside = [...participants].filter(blog => !workspaceBlogs.has(blog))
+    const suggestedPartner = outside.length === 1 ? outside[0] : null
     const selectedCharacter = characterId ? await scope.db.prepare('SELECT name FROM characters WHERE workspace_id=? AND id=?').bind(scope.workspaceId, characterId).first<{name:string}>() : null
     // Some groups put the RP header on the tagged reblog; others put it on the
     // original starter. Read both, in that order, so neither convention loses.
@@ -130,7 +136,7 @@ export function starterRoutes() {
     const parsedCharacterNames = parseDeclaredCharacterNames(parserSource)
     const partnerNames = parsedCharacterNames.filter(name => name.localeCompare(selectedCharacter?.name ?? '', undefined, { sensitivity:'accent' }) !== 0)
     const parsedTitle = selectedCharacter?.name && partnerNames.length ? capTitle(`${selectedCharacter.name} × ${partnerNames.join(' × ')}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : undefined
-    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:selectedCharacter?.name, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [clickedPost.rootPostId, clickedPost.id, reference.postId]) }
+    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:selectedCharacter?.name, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [clickedPost.rootPostId, clickedPost.id, reference.postId]) }
   }
 
   async function findOrCreatePartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, blogIdentifier:string) {
@@ -183,8 +189,8 @@ export function starterRoutes() {
     // character-blog rules help discover posts, but must never block that choice here.
     // Puffin can infer a sole participant. With several, it must ask which exchange
     // matters instead of silently tracking the wrong reblog chain.
-    const partnerBlog = found && (input.partnerBlogIdentifier ? canonicalBlogIdentifier(input.partnerBlogIdentifier) : found.participants.length === 1 ? found.participants[0] : null)
-    if (found && found.participants.length > 1 && !partnerBlog) throw new HTTPException(400, { message:'Choose the writing partner for this thread' })
+    const partnerBlog = found && (input.partnerBlogIdentifier ? canonicalBlogIdentifier(input.partnerBlogIdentifier) : found.suggestedPartner)
+    if (found && found.participants.length > 0 && !partnerBlog) throw new HTTPException(400, { message:'Choose the writing partner for this thread' })
     if (found && partnerBlog && !found.participants.includes(partnerBlog)) throw new HTTPException(400, { message:'Choose a writing partner detected on this thread' })
     const latest = found && partnerBlog ? latestDirectExchange(found.ownBlogIdentifiers,found.threadRootBlogId,partnerBlog,found.activities) : undefined
     const latestPost = latest && found ? await found.client.getPost(latest.activity.blogIdentifier, latest.activity.postId).catch(() => null) : null

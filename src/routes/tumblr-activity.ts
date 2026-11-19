@@ -5,6 +5,7 @@ import { requireWorkspace } from '../auth/sessions'
 import { createTumblrClient, type TumblrNotification, type TumblrPost } from '../tumblr/client'
 import { decryptToken } from '../tumblr/oauth'
 
+const MENTION_TYPES = new Set(['mention', 'mention_in_post', 'mention_in_reply', 'user_mention', 'note_mention'])
 type ConnectedBlog = { tokenEncrypted: string; tokenSecretEncrypted: string; blogIdentifier: string }
 
 export function tumblrActivityRoutes() {
@@ -62,7 +63,9 @@ export function tumblrActivityRoutes() {
     const responses = await Promise.all(rows.results.map(async row => {
       const client = createTumblrClient({ consumerKey: c.env.TUMBLR_CONSUMER_KEY, consumerSecret: c.env.TUMBLR_CONSUMER_SECRET, token: await decryptToken(row.tokenEncrypted, c.env.TOKEN_ENCRYPTION_KEY), tokenSecret: await decryptToken(row.tokenSecretEncrypted, c.env.TOKEN_ENCRYPTION_KEY) })
       try {
-        const notifications = await client.getNotifications(row.blogIdentifier, before)
+        // Only asks and mentions are shown here; reblog signals are for the background sync, and
+        // looking each one up would spend Tumblr calls on nothing.
+        const notifications = (await client.getNotifications(row.blogIdentifier, before)).filter(item => item.type === 'ask' || MENTION_TYPES.has(item.type))
         const enriched = await Promise.all(notifications.map(async notification => {
           if (!notification.postId || notification.actor === 'anonymous') return notification
           try {
@@ -83,7 +86,7 @@ export function tumblrActivityRoutes() {
       .filter((notification, index, all) => all.findIndex(other => other.type === notification.type && other.actor === notification.actor && other.postId === notification.postId) === index)
       .map(notification => ({ ...notification, threadKey: 'rootPostId' in notification && notification.rootPostId && 'rootBlogIdentifier' in notification && notification.rootBlogIdentifier ? threadKey(String(notification.rootBlogIdentifier), String(notification.rootPostId)) : notification.postId ? threadKey(notification.actor, String(notification.postId)) : null }))
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-    const mentionTypes = new Set(['mention', 'mention_in_post', 'mention_in_reply', 'user_mention', 'note_mention'])
+    const mentionTypes = MENTION_TYPES
     const threadCandidates = [...new Map(responses.flatMap(response => response.recentPosts)
       .filter(post => !isTracked(post) && !dismissedPosts.has(`${post.blogIdentifier.toLowerCase()}:${post.id}`))
       // Recent posts arrive newest-first. Keep the current reblog, not an earlier copy of the same scene.

@@ -59,8 +59,8 @@ function post(id: string, blog: string, rootId: string, rootBlog: string) {
   return { id, blog_name: blog, reblog_key: 'k', state: 'published', format: 'html', timestamp: '2026-11-14T12:00:00Z', date: '2026-11-14 12:00:00 UTC', type: 'text', tags: [], reblogged_from_blog: blog, reblogged_from_root_blog: rootBlog, root_blog: rootBlog, root_id: rootId, reblogged: 0, notes_count: 1, photo_url: 'http://r.tumblr.com/' + id, url: 'http://r.tumblr.com/' + id }
 }
 
-function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot?: Record<string, any[]>; postPreviews?: Record<string, string | null>; blogRateLimited?: string; notesError?: Record<string, string> } = {}) {
-  const { mentionsPerBlog = 0, notesByRoot = {}, postPreviews = {}, blogRateLimited, notesError } = opts
+function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot?: Record<string, any[]>; postPreviews?: Record<string, string | null>; blogRateLimited?: string; notesError?: Record<string, string>; reblogSignals?: string[] } = {}) {
+  const { mentionsPerBlog = 0, notesByRoot = {}, postPreviews = {}, blogRateLimited, notesError, reblogSignals = [] } = opts
   let notesCalls = 0
   let mentionCalls = 0
   let postCalls = 0
@@ -84,7 +84,8 @@ function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot
       if (path.includes('/notifications')) {
         mentionCalls++
         const mentions = Array.from({ length: mentionsPerBlog }, (_, i) => ({ id: i + 1, type: 'mention', from_tumblelog_name: 'anon', timestamp: Math.floor(Date.now() / 1000) }))
-        return new Response(JSON.stringify({ response: { notifications: mentions } }), { status: 200, headers: { 'content-type': 'application/json' } })
+        const signals = reblogSignals.map((target, i) => ({ id: 1000 + i, type: 'reblog_with_content', from_tumblelog_name: 'partner', target_post_id: target, post_id: 'new-' + target, timestamp: Math.floor(Date.now() / 1000) }))
+        return new Response(JSON.stringify({ response: { notifications: [...mentions, ...signals] } }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       if (path.includes('/notes')) {
         notesCalls++
@@ -518,6 +519,47 @@ describe('tracking refresh runner', () => {
     const late = await runRefreshBatch(env, new Date('2026-11-15T12:15:00Z'), 100, { runId: 'test-429-late' })
     expect(late.rateLimited).toBe(false)
     expect(late.refreshed).toBeGreaterThanOrEqual(1)
+    fetchSpy.mockRestore()
+    await dispose()
+  })
+})
+
+describe('multi-blog sync cost and reply signals', () => {
+  it('main blog + 2 sideblogs and a 3-muse shared blog: each thread and each feed is read once per run', async () => {
+    const { env, dispose } = await makeEnv()
+    const db = env.DB
+    await seedBase(db, 'wm', 'connM', 'main.tumblr.com', 'cm')
+    await db.prepare("UPDATE tumblr_connections SET account_metadata_json=? WHERE id='connM'").bind(JSON.stringify({ blogs: ['main.tumblr.com', 'side1.tumblr.com', 'side2.tumblr.com', 'shared.tumblr.com'] })).run()
+    for (const side of ['side1', 'side2']) await db.prepare("INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label) VALUES (?,?,?,?,?,?)").bind('cb-cm-' + side, 'wm', 'cm', 'connM', side + '.tumblr.com', side).run()
+    for (let i = 1; i <= 5; i++) { await addStarter(db, 'wm', 'cm', 'sm' + i, 'rm' + i, i % 2 ? 'main.tumblr.com' : 'side1.tumblr.com'); await addPartner(db, 'wm', 'pm' + i, 'pal' + i + '.tumblr.com'); await addBranch(db, 'wm', 'sm' + i, 'pm' + i, 'pal' + i + '.tumblr.com') }
+    for (const muse of ['m1', 'm2', 'm3']) {
+      await db.prepare('INSERT INTO characters (id, workspace_id, name) VALUES (?,?,?)').bind(muse, 'wm', muse).run()
+      await db.prepare("INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label,character_tag) VALUES (?,?,?,?,?,?,?)").bind('cb-' + muse, 'wm', muse, 'connM', 'shared.tumblr.com', 'shared', muse).run()
+      await addStarter(db, 'wm', muse, 'st' + muse, 'rt' + muse, 'shared.tumblr.com'); await addPartner(db, 'wm', 'pt' + muse, 'friend' + muse + '.tumblr.com'); await addBranch(db, 'wm', 'st' + muse, 'pt' + muse, 'friend' + muse + '.tumblr.com')
+    }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const mock = mockTumblr(fetchSpy, {})
+    const result = await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100, { fetchBudget: 200 })
+    expect(result.failed).toBe(0)
+    expect(mock.notesCalls()).toBe(8) // 5 threads of the 3-blog character + 1 per muse
+    expect(mock.mentionCalls()).toBe(4) // main, side1, side2, shared (read once for 3 muses)
+    fetchSpy.mockRestore()
+    await dispose()
+  })
+
+  it('threads with a fresh reply on Tumblr are checked first, even when the budget covers only a few', async () => {
+    const { env, dispose } = await makeEnv()
+    const db = env.DB
+    await seedBase(db, 'ws', 'connS', 'main.tumblr.com', 'cs')
+    for (let i = 1; i <= 40; i++) { await addStarter(db, 'ws', 'cs', 'ss' + i, 'rs' + i, 'main.tumblr.com'); await addPartner(db, 'ws', 'ps' + i, 'pal' + i + '.tumblr.com'); await addBranch(db, 'ws', 'ss' + i, 'ps' + i, 'pal' + i + '.tumblr.com') }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    mockTumblr(fetchSpy, {
+      reblogSignals: ['rs17', 'rs33'],
+      notesByRoot: { rs17: [{ blog: 'pal17', id: 'x17', parentBlog: 'main' }], rs33: [{ blog: 'pal33', id: 'x33', parentBlog: 'main' }] },
+    })
+    await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100, { fetchBudget: 8 })
+    const rows = await db.prepare("SELECT id, status FROM reply_branches WHERE id IN ('b-ss17','b-ss33')").all<{ id: string; status: string }>()
+    expect(rows.results.map(row => row.status)).toEqual(['your_turn', 'your_turn'])
     fetchSpy.mockRestore()
     await dispose()
   })

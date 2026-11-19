@@ -4,7 +4,11 @@ import { validateStarterPost } from '../../src/routes/tracking-validation'
 
 it('parses canonical Tumblr post URLs only', () => {
   expect(parseTumblrPostReference('https://Mine.Tumblr.com/post/123/a-title')).toEqual({ blogIdentifier:'mine.tumblr.com', postId:'123' })
-  expect(() => parseTumblrPostReference('http://mine.tumblr.com/post/123')).toThrow('Invalid Tumblr post URL')
+  expect(parseTumblrPostReference('http://mine.tumblr.com/post/123')).toEqual({ blogIdentifier:'mine.tumblr.com', postId:'123' })
+  expect(parseTumblrPostReference('https://tumblr.com/mine/123')).toEqual({ blogIdentifier:'mine.tumblr.com', postId:'123' })
+  expect(parseTumblrPostReference('https://www.tumblr.com/@mine/123/slug')).toEqual({ blogIdentifier:'mine.tumblr.com', postId:'123' })
+  for (const bad of ['javascript:alert(1)', 'ftp://mine.tumblr.com/post/1', 'https://www.tumblr.com/mine', 'https://evil.tumblr.com.example/post/1'])
+    expect(() => parseTumblrPostReference(bad)).toThrow('Invalid Tumblr post URL')
   expect(() => parseTumblrPostReference('https://evil.example/post/123')).toThrow('Invalid Tumblr post URL')
   expect(parseTumblrPostReference('https://www.tumblr.com/emerald0ceans/831045515449909248/a-post?source=share')).toEqual({ blogIdentifier:'emerald0ceans.tumblr.com', postId:'831045515449909248' })
 })

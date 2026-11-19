@@ -33,10 +33,16 @@ export function resolvePostThreadRoot(post: PostRootInput): { blogIdentifier: st
 }
 export interface TumblrClient { getPost(blogIdentifier: string, postId: string): Promise<TumblrPost> }
 export interface TumblrClient { getRecentPosts(blogIdentifier: string): Promise<TumblrPost[]> }
-export interface TumblrClient { getBlogs(): Promise<string[]> }
-export interface TumblrActivity { postId: string; blogIdentifier: string; parentBlogIdentifier: string | null; timestamp: string }
+export interface TumblrBlog { identifier: string; uuid: string | null }
+export interface TumblrClient { getBlogs(): Promise<TumblrBlog[]> }
+/** Stored as tumblr_connections.account_metadata_json. `uuids` maps Tumblr's permanent blog id to
+ * the current name, so a rename can be followed (names change; uuids don't). */
+export function blogMetadata(blogs: TumblrBlog[], now = new Date()) {
+  return { blogs: blogs.map(blog => blog.identifier), uuids: Object.fromEntries(blogs.filter(blog => blog.uuid).map(blog => [blog.uuid, blog.identifier])), refreshedAt: now.toISOString() }
+}
+export interface TumblrActivity { postId: string; blogIdentifier: string; parentBlogIdentifier: string | null; timestamp: string; tags?: string[] }
 export interface TumblrClient { getThreadActivity(blogIdentifier: string, postId: string): Promise<TumblrActivity[]> }
-export interface TumblrNotification { id:string; type:string; blogIdentifier:string; actor:string; timestamp:string; postId:string|null; preview:string|null; sourceUrl:string|null }
+export interface TumblrNotification { id:string; type:string; blogIdentifier:string; actor:string; timestamp:string; postId:string|null; targetPostId?:string|null; preview:string|null; sourceUrl:string|null }
 export interface TumblrClient { getNotifications(blogIdentifier:string,before?:number|null):Promise<TumblrNotification[]> }
 const FETCH_TIMEOUT_MS = 15_000
 /** Tumblr answered 429 (app-wide limit). Carries Retry-After in seconds (60 when absent). */
@@ -96,14 +102,15 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
       return [{ blogIdentifier: postIdentifier, id: String(post.id_string ?? post.id), rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, tags: post.tags ?? [], title, preview, parserText, postUrl: post.post_url }]
     })
   }, async getThreadActivity(blogIdentifier, postId) {
-    const url = `https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/notes?id=${encodeURIComponent(postId)}&mode=all`
+    // reblogs_with_tags: reblogs only (newest first), so a burst of likes can't push the latest reply
+    // off the page. ponytail: one page; page 2 via before_timestamp if busy group threads ever need it.
+    const url = `https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/notes?id=${encodeURIComponent(postId)}&mode=reblogs_with_tags`
     const response = await safeRun(url, { headers: { Authorization: await oauthAuthorizationHeader('GET', url, config.consumerKey, config.consumerSecret, config.token, config.tokenSecret) } })
     if (!response.ok) throw new Error(`Tumblr refresh failed (${response.status})`)
-    const body = await response.json() as { response?: { notes?: Array<{ type?:string; blog_name?: string; post_id?: string|number; reblog_parent_blog_name?:string; timestamp?: number }> } }
+    const body = await response.json() as { response?: { notes?: Array<{ type?:string; blog_name?: string; post_id?: string|number; reblog_parent_blog_name?:string; timestamp?: number; tags?: string[] }> } }
     return (body.response?.notes ?? []).flatMap(note => {
-      if (note.type !== 'reblog') return []
-      if (!note.blog_name || note.post_id == null) return []
-      return [{ postId:String(note.post_id), blogIdentifier:`${note.blog_name}.tumblr.com`.toLowerCase(), parentBlogIdentifier:note.reblog_parent_blog_name ? `${note.reblog_parent_blog_name}.tumblr.com`.toLowerCase() : null, timestamp:new Date((note.timestamp ?? 0) * 1000).toISOString() }]
+      if (note.type !== 'reblog' || !note.blog_name || note.post_id == null) return []
+      return [{ postId:String(note.post_id), blogIdentifier:`${note.blog_name}.tumblr.com`.toLowerCase(), parentBlogIdentifier:note.reblog_parent_blog_name ? `${note.reblog_parent_blog_name}.tumblr.com`.toLowerCase() : null, timestamp:new Date((note.timestamp ?? 0) * 1000).toISOString(), tags: note.tags ?? [] }]
     })
   }, async getNotifications(blogIdentifier,before) {
     // Tumblr has renamed mention notification types over time. Request the
@@ -114,21 +121,28 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
     const response=await safeRun(url,{headers:{Authorization:await oauthAuthorizationHeader('GET',url,config.consumerKey,config.consumerSecret,config.token,config.tokenSecret)}})
     if(!response.ok) throw new Error(`Tumblr activity failed (${response.status})`)
     const body=await response.json() as {response?:{notifications?:Array<{type?:string;timestamp?:number;blog_name?:string;from_tumblelog_name?:string;from_blog_name?:string;post_id?:string|number;target_post_id?:string|number;id?:string|number;summary?:string;added_text?:string;reply_text?:string;post_url?:string;from_tumblelog?:{name?:string};from_blog?:{name?:string};blog?:{name?:string};post?:{blog_name?:string;summary?:string;title?:string;post_url?:string}}>} }
-    const supported=new Set(['ask','mention','mention_in_post','mention_in_reply','user_mention','note_mention'])
+    // Reblog/reply types are kept too: the sync uses them to check threads with new replies first.
+    const supported=new Set(['ask','mention','mention_in_post','mention_in_reply','user_mention','note_mention','reblog_with_content','reblog_naked','reply','conversational_note'])
     return (body.response?.notifications??[]).flatMap((item,index)=>{
       if(!item.type||!supported.has(item.type))return []
       const actor=item.from_tumblelog_name??item.from_blog_name??item.from_tumblelog?.name??item.from_blog?.name??item.blog_name??item.blog?.name??item.post?.blog_name
       const preview=(item.added_text??item.reply_text??item.summary??item.post?.summary??item.post?.title??'').trim().replace(/\s+/g,' ').slice(0,300)||null
       const actorIdentifier=actor?`${actor}.tumblr.com`.toLowerCase():'anonymous', postId=(item.post_id??item.target_post_id)==null?null:String(item.post_id??item.target_post_id)
-      return [{id:String(item.id??`${item.timestamp??0}-${index}`),type:item.type,blogIdentifier,actor:actorIdentifier,timestamp:new Date((item.timestamp??0)*1000).toISOString(),postId,preview,sourceUrl:item.post_url??item.post?.post_url??(postId&&actorIdentifier!=='anonymous'?`https://www.tumblr.com/${actorIdentifier.replace(/\.tumblr\.com$/i,'')}/${postId}`:null)}]
+      return [{id:String(item.id??`${item.timestamp??0}-${index}`),type:item.type,blogIdentifier,actor:actorIdentifier,timestamp:new Date((item.timestamp??0)*1000).toISOString(),postId,targetPostId:item.target_post_id==null?null:String(item.target_post_id),preview,sourceUrl:item.post_url??item.post?.post_url??(postId&&actorIdentifier!=='anonymous'?`https://www.tumblr.com/${actorIdentifier.replace(/\.tumblr\.com$/i,'')}/${postId}`:null)}]
     })
   }, async getBlogs() {
     const url = 'https://api.tumblr.com/v2/user/info'
     const response = await safeRun(url, { headers: { Authorization: await oauthAuthorizationHeader('GET', url, config.consumerKey, config.consumerSecret, config.token, config.tokenSecret) } })
     if (!response.ok) throw new Error('Tumblr account unavailable')
-    const body = await response.json() as { response?: { user?: { blogs?: Array<{ name?:string }> } } }
-    const blogs = body.response?.user?.blogs?.map(blog => blog.name && `${blog.name}.tumblr.com`.toLowerCase()).filter((blog): blog is string => Boolean(blog)) ?? []
+    const body = await response.json() as { response?: { user?: { blogs?: Array<{ name?:string; uuid?:string }> } } }
+    const seen = new Set<string>(), blogs: TumblrBlog[] = []
+    for (const blog of body.response?.user?.blogs ?? []) {
+      if (!blog.name) continue
+      const identifier = `${blog.name}.tumblr.com`.toLowerCase()
+      if (seen.has(identifier)) continue
+      seen.add(identifier); blogs.push({ identifier, uuid: blog.uuid ?? null })
+    }
     if (!blogs.length) throw new Error('Tumblr account unavailable')
-    return [...new Set(blogs)]
+    return blogs
   } }
 }

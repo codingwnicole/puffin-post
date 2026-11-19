@@ -18,7 +18,7 @@ export function replyExcerpt(preview: string | null | undefined): string | null 
   const lastSpace = cut.lastIndexOf(' ')
   return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()
 }
-interface RefreshTarget { id: string; workspaceId: string; characterId: string; blogIdentifier: string; connectionId: string; tokenEncrypted: string; tokenSecretEncrypted: string }
+interface RefreshTarget { leadsCharacter: number; id: string; workspaceId: string; characterId: string; blogIdentifier: string; connectionId: string; tokenEncrypted: string; tokenSecretEncrypted: string }
 interface StarterRow { id: string; rootPostId: string; rootBlogId: string }
 interface BranchRow extends RefreshBranch { starterId: string; lastRefreshAt: string | null }
 
@@ -110,10 +110,11 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   // Within a round the stalest blog leads, so a workspace with 200 blogs cannot starve a
   // 1-blog user, and every blog inside a big workspace still comes up in turn.
   // ponytail: up to 60 targets per run, bounded by the fetch budget; see the ceiling note above.
-  const candidates = await db.prepare(`SELECT id, workspaceId, characterId, blogIdentifier, connectionId, tokenEncrypted, tokenSecretEncrypted, totalDue FROM (
+  const candidates = await db.prepare(`SELECT id, leadsCharacter, workspaceId, characterId, blogIdentifier, connectionId, tokenEncrypted, tokenSecretEncrypted, totalDue FROM (
     SELECT cb.id, cb.workspace_id AS workspaceId, cb.character_id AS characterId, cb.blog_identifier AS blogIdentifier, tc.id AS connectionId,
       tc.token_encrypted AS tokenEncrypted, tc.token_secret_encrypted AS tokenSecretEncrypted,
       COALESCE(rc.last_attempt_at, '') AS lastAttempt,
+      cb.id = (SELECT MIN(x.id) FROM character_blogs x WHERE x.workspace_id=cb.workspace_id AND x.character_id=cb.character_id) AS leadsCharacter,
       ROW_NUMBER() OVER (PARTITION BY cb.workspace_id ORDER BY COALESCE(rc.last_attempt_at, ''), cb.id) AS rn,
       COUNT(*) OVER () AS totalDue
     FROM character_blogs cb
@@ -131,6 +132,8 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   // notes are fetched once per run. Mentions are NOT deduped: each blog has
   // its own notification feed.
   const doneStarterIds = new Set<string>()
+  // A blog shared by several muses has one notification feed: read it once per run.
+  const feedsRead = new Set<string>()
   // One summary push per workspace per run: collect counts here, send once
   // after the target loop, and count its cost against the budget.
   const summary = new Map<string, { tagCount: number; replyCount: number }>()
@@ -145,8 +148,17 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
         budget })
       const ownBlogs = await db.prepare('SELECT blog_identifier AS blogIdentifier FROM character_blogs WHERE workspace_id=? AND character_id=?').bind(target.workspaceId, target.characterId).all<{ blogIdentifier: string }>()
       const ownBlogSet = ownBlogs.results.map(blog => canonicalBlogIdentifier(blog.blogIdentifier))
-      try {
-        const mentions = (await client.getNotifications(target.blogIdentifier)).filter(item => ['mention', 'mention_in_post', 'mention_in_reply', 'user_mention', 'note_mention'].includes(item.type))
+      // Posts Tumblr says were just reblogged or replied to: those threads are checked first.
+      const signals = new Set<string>()
+      const feedKey = `${target.connectionId}:${canonicalBlogIdentifier(target.blogIdentifier)}`
+      if (!feedsRead.has(feedKey)) try {
+        feedsRead.add(feedKey)
+        const feed = await client.getNotifications(target.blogIdentifier)
+        for (const item of feed) if (item.type.startsWith('reblog') || item.type === 'reply' || item.type === 'conversational_note') {
+          if (item.postId) signals.add(item.postId)
+          if (item.targetPostId) signals.add(item.targetPostId)
+        }
+        const mentions = feed.filter(item => ['mention', 'mention_in_post', 'mention_in_reply', 'user_mention', 'note_mention'].includes(item.type))
         // All mention dedupe inserts go out in ONE batch (one subrequest); the
         // summary push (sent once per workspace after the loop) covers them.
         if (mentions.length) {
@@ -159,7 +171,10 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
             summary.set(target.workspaceId, { tagCount: counts.tagCount + created, replyCount: counts.replyCount })
           }
         }
-      } catch { /* Activity notifications are optional; thread refresh must still succeed. */ }
+      } catch (feedError) {
+        if (feedError instanceof TumblrRateLimitedError) throw feedError
+        /* Activity notifications are optional; thread refresh must still succeed. */
+      }
       // Every active starter's branches in ONE query, stalest branch first so
       // each run reaches different threads.
       const branches = await db.prepare(`SELECT b.id, b.starter_id AS starterId, b.latest_post_id AS latestPostId, b.status, b.status_manual_override_at AS statusManualOverrideAt,
@@ -176,15 +191,20 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
         list.push(branch)
         branchesByStarter.set(branch.starterId, list)
       }
-      // Order starters by their stalest branch first (NULLs first), so each
-      // run refreshes different threads.
-      const starters = starterRows.results
+      // Threads with a fresh reblog/reply signal first, then stalest branch first (NULLs first), so
+      // each run reaches different threads. A character's threads are refreshed only through its
+      // first blog (main blog + sideblogs share them), so a 3-blog character costs the same as a
+      // 1-blog one; its other blogs still read their own notification feeds.
+      // ponytail: signals only steer the blog whose feed was read in this target; sideblog signals
+      // wait for the stalest-first sweep. Store signals per character if that delay ever matters.
+      const signalled = (row: StarterRow & { branches: BranchRow[] }) => signals.has(row.rootPostId) || row.branches.some(branch => branch.latestPostId !== null && signals.has(branch.latestPostId)) ? 0 : 1
+      const starters = (target.leadsCharacter ? starterRows.results : [])
         .filter(row => branchesByStarter.has(row.id))
         .map(row => ({ ...row, branches: branchesByStarter.get(row.id)! }))
         .sort((a, b) => {
           const aStale = a.branches[0].lastRefreshAt ? Date.parse(a.branches[0].lastRefreshAt) : 0
           const bStale = b.branches[0].lastRefreshAt ? Date.parse(b.branches[0].lastRefreshAt) : 0
-          return aStale - bStale
+          return signalled(a) - signalled(b) || aStale - bStale
         })
       // All writes for this target go out in ONE batch (one subrequest).
       const writes: D1PreparedStatement[] = []

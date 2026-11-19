@@ -2,17 +2,48 @@ import { Hono } from 'hono'
 import type { Env } from '../worker'
 import { requireWorkspace } from '../auth/sessions'
 import { canonicalBlogIdentifier, normalizeTumblrTag } from '../tumblr/normalize'
+import { blogMetadata, createTumblrClient } from '../tumblr/client'
+import { decryptToken } from '../tumblr/oauth'
+import type { WorkspaceScope } from '../db/client'
+
+const BLOG_LIST_MAX_AGE_MS = 10 * 60_000
+/** Re-read the account's blog list (one Tumblr call, at most every 10 minutes per connection) so new
+ * sideblogs become assignable without reconnecting, and follow renames by Tumblr's permanent blog id:
+ * the old name is replaced in this workspace's assignments and threads. */
+async function refreshBlogList(scope: WorkspaceScope, env: Env, row: { id: string; status: string; account_metadata_json: string; token: string; secret: string }, now = new Date()) {
+  let meta: { blogs?: string[]; uuids?: Record<string, string>; refreshedAt?: string } = {}
+  try { meta = JSON.parse(row.account_metadata_json) } catch { /* treat as never refreshed */ }
+  if (row.status !== 'active' || !row.token || (meta.refreshedAt && now.getTime() - Date.parse(meta.refreshedAt) < BLOG_LIST_MAX_AGE_MS)) return row.account_metadata_json
+  let next: ReturnType<typeof blogMetadata>
+  try {
+    const client = createTumblrClient({ consumerKey: env.TUMBLR_CONSUMER_KEY, consumerSecret: env.TUMBLR_CONSUMER_SECRET, token: await decryptToken(row.token, env.TOKEN_ENCRYPTION_KEY), tokenSecret: await decryptToken(row.secret, env.TOKEN_ENCRYPTION_KEY) })
+    next = blogMetadata(await client.getBlogs(), now)
+  } catch { return row.account_metadata_json } // Tumblr down or rate limited: keep the last known list.
+  const writes = [scope.db.prepare('UPDATE tumblr_connections SET account_metadata_json=? WHERE workspace_id=? AND id=?').bind(JSON.stringify(next), scope.workspaceId, row.id)]
+  for (const [uuid, oldName] of Object.entries(meta.uuids ?? {})) {
+    const newName = next.uuids[uuid]
+    if (!newName || newName === oldName) continue
+    writes.push(
+      scope.db.prepare('UPDATE character_blogs SET blog_identifier=?, display_label=CASE WHEN display_label=? THEN ? ELSE display_label END WHERE workspace_id=? AND tumblr_connection_id=? AND blog_identifier=?').bind(newName, oldName, newName, scope.workspaceId, row.id, oldName),
+      scope.db.prepare('UPDATE starters SET root_blog_id=? WHERE workspace_id=? AND root_blog_id=?').bind(newName, scope.workspaceId, oldName),
+      scope.db.prepare('UPDATE starters SET thread_root_blog_id=? WHERE workspace_id=? AND thread_root_blog_id=?').bind(newName, scope.workspaceId, oldName),
+    )
+  }
+  await scope.db.batch(writes)
+  return JSON.stringify(next)
+}
 
 export function connectionRoutes() {
   const app = new Hono<{ Bindings: Env }>()
   app.get('/', async c => {
     const scope = await requireWorkspace(c)
-    const rows = await scope.db.prepare('SELECT id,status,created_at AS createdAt,account_metadata_json FROM tumblr_connections WHERE workspace_id=? ORDER BY created_at DESC').bind(scope.workspaceId).all<{id:string;status:string;createdAt:string;account_metadata_json:string}>()
+    const rows = await scope.db.prepare('SELECT id,status,created_at AS createdAt,account_metadata_json,token_encrypted AS token,token_secret_encrypted AS secret FROM tumblr_connections WHERE workspace_id=? ORDER BY created_at DESC').bind(scope.workspaceId).all<{id:string;status:string;createdAt:string;account_metadata_json:string;token:string;secret:string}>()
+    for (const row of rows.results) row.account_metadata_json = await refreshBlogList(scope, c.env, row)
     const assignments = await scope.db.prepare(`SELECT character_blogs.id, character_blogs.tumblr_connection_id AS connectionId, character_blogs.character_id AS characterId,
       character_blogs.blog_identifier AS blogIdentifier, character_blogs.display_label AS displayLabel, character_blogs.character_tag AS characterTag, characters.name AS characterName
       FROM character_blogs JOIN characters ON characters.id=character_blogs.character_id AND characters.workspace_id=character_blogs.workspace_id
       WHERE character_blogs.workspace_id=? ORDER BY characters.name COLLATE NOCASE, character_blogs.display_label COLLATE NOCASE`).bind(scope.workspaceId).all<{id:string;connectionId:string;characterId:string;blogIdentifier:string;displayLabel:string;characterName:string}>()
-    return c.json(rows.results.map(({ account_metadata_json, ...connection }) => {
+    return c.json(rows.results.map(({ account_metadata_json, token: _token, secret: _secret, ...connection }) => {
       let blogs: string[] = []; try { blogs = JSON.parse(account_metadata_json).blogs ?? [] } catch { /* no assignable blogs */ }
       return { ...connection, blogs: blogs.map(canonicalBlogIdentifier), assignments: assignments.results.filter(assignment => assignment.connectionId === connection.id) }
     }))
