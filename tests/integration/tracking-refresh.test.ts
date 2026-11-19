@@ -59,11 +59,12 @@ function post(id: string, blog: string, rootId: string, rootBlog: string) {
   return { id, blog_name: blog, reblog_key: 'k', state: 'published', format: 'html', timestamp: '2026-11-14T12:00:00Z', date: '2026-11-14 12:00:00 UTC', type: 'text', tags: [], reblogged_from_blog: blog, reblogged_from_root_blog: rootBlog, root_blog: rootBlog, root_id: rootId, reblogged: 0, notes_count: 1, photo_url: 'http://r.tumblr.com/' + id, url: 'http://r.tumblr.com/' + id }
 }
 
-function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot?: Record<string, any[]>; postPreviews?: Record<string, string | null> } = {}) {
-  const { mentionsPerBlog = 0, notesByRoot = {}, postPreviews = {} } = opts
+function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot?: Record<string, any[]>; postPreviews?: Record<string, string | null>; blogRateLimited?: string; notesError?: Record<string, string> } = {}) {
+  const { mentionsPerBlog = 0, notesByRoot = {}, postPreviews = {}, blogRateLimited, notesError } = opts
   let notesCalls = 0
   let mentionCalls = 0
   let postCalls = 0
+  let infoCalls = 0
   const pushBodies: string[] = []
   fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -73,6 +74,13 @@ function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot
     }
     if (url.startsWith('https://api.tumblr.com/v2/')) {
       const path = url.replace('https://api.tumblr.com/v2', '')
+      // Extract blog from path: /blog/{blogIdentifier}/...
+      const blogMatch = path.match(/^\/blog\/([^/]+)/)
+      const blog = blogMatch ? decodeURIComponent(blogMatch[1]) : (new URL(url).searchParams.get('blog') ?? '')
+      // 429 is app-wide: any Tumblr call for a rate-limited blog answers 429.
+      if (blogRateLimited && (blog === blogRateLimited || blog.startsWith(blogRateLimited + '.') || blog.startsWith(blogRateLimited + '.tumblr.com'))) {
+        return new Response('rate limited', { status: 429, headers: { 'Retry-After': '600', 'content-type': 'application/json' } })
+      }
       if (path.includes('/notifications')) {
         mentionCalls++
         const mentions = Array.from({ length: mentionsPerBlog }, (_, i) => ({ id: i + 1, type: 'mention', from_tumblelog_name: 'anon', timestamp: Math.floor(Date.now() / 1000) }))
@@ -81,6 +89,7 @@ function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot
       if (path.includes('/notes')) {
         notesCalls++
         const idParam = new URL(url).searchParams.get('id') || ''
+        if (notesError && notesError[idParam]) throw new Error(notesError[idParam])
         const notes = (notesByRoot[idParam] || []).map((n: any) => ({ type: 'reblog', blog_name: n.blog, post_id: n.id, reblog_parent_blog_name: n.parentBlog, timestamp: Math.floor(Date.now() / 1000) }))
         return new Response(JSON.stringify({ response: { notes } }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
@@ -95,13 +104,14 @@ function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot
         return new Response(JSON.stringify({ response: raw }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       if (path.includes('/info')) {
+        infoCalls++
         return new Response(JSON.stringify({ response: { user: { blogs: [{ name: 'main' }] } } }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       return new Response(JSON.stringify({ response: { posts: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
     }
     return new Response('{}', { status: 200 })
   })
-  return { notesCalls: () => notesCalls, mentionCalls: () => mentionCalls, postCalls: () => postCalls, pushBodies }
+  return { notesCalls: () => notesCalls, mentionCalls: () => mentionCalls, postCalls: () => postCalls, infoCalls: () => infoCalls, pushBodies }
 }
 
 describe('tracking refresh runner', () => {
@@ -293,14 +303,14 @@ describe('tracking refresh runner', () => {
     }
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     const mock = mockTumblr(fetchSpy, {})
-    const first = await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100, { fetchBudget: 7 })
+    const first = await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100, { fetchBudget: 6 })
     const firstNotes = mock.notesCalls()
     expect(firstNotes).toBeGreaterThan(0)
     expect(firstNotes).toBeLessThan(6)
     expect(first.failed).toBe(0)
     const err1 = (await db.prepare('SELECT COUNT(*) AS count FROM reply_branches WHERE refresh_error IS NOT NULL').first()) as any
     expect(err1?.count).toBe(0)
-    const second = await runRefreshBatch(env, new Date('2026-11-15T12:30:00Z'), 100, { fetchBudget: 7 })
+    const second = await runRefreshBatch(env, new Date('2026-11-15T12:30:00Z'), 100, { fetchBudget: 6 })
     const totalNotes = mock.notesCalls()
     expect(totalNotes).toBe(6)
     const err2 = (await db.prepare('SELECT COUNT(*) AS count FROM reply_branches WHERE refresh_error IS NOT NULL').first()) as any
@@ -356,6 +366,158 @@ describe('tracking refresh runner', () => {
     expect(excerpt.length).toBeLessThanOrEqual(500)
     expect(excerpt).not.toMatch(/\s$/)
     expect(longReply.startsWith(excerpt)).toBe(true)
+    fetchSpy.mockRestore()
+    await dispose()
+  })
+
+  it('T9a capacity: 40 one-thread blogs, fetchBudget 30 — refreshes more than the old cap and stays under 30 fetches / 800 D1', async () => {
+    const { env, dispose } = await makeEnv()
+    const db = env.DB
+    const ws = 'w8'
+    // 40 separate blogs (one connection, one character per blog) each with a single
+    // starter + branch. With D1 off the fetch budget, the fetch budget (30) is
+    // what bounds the run, not the old shared 30 cap that D1 also ate.
+    const cipher = await encryptToken('tok', ENC_KEY)
+    await db.batch([
+      db.prepare('INSERT INTO users (id, email, display_name, auth_identity) VALUES (?,?,?,?)').bind('u-w8', 'w8@e.com', 'U', 'sha256:w8'),
+    ])
+    await db.batch([
+      db.prepare('INSERT INTO workspaces (id, name, owner_user_id) VALUES (?,?,?)').bind('w8', 'W', 'u-w8'),
+      db.prepare("INSERT INTO memberships (workspace_id, user_id, role) VALUES (?,?, 'owner')").bind('w8', 'u-w8'),
+    ])
+    for (let i = 1; i <= 40; i++) await db.prepare('INSERT INTO characters (id, workspace_id, name) VALUES (?,?,?)').bind('c8-' + i, 'w8', 'C' + i).run()
+    await db.batch([
+      db.prepare('INSERT INTO tumblr_connections (id, workspace_id, token_encrypted, token_secret_encrypted, account_metadata_json) VALUES (?,?,?,?,?)').bind('conn8', 'w8', cipher, cipher, JSON.stringify({ blogs: ['main8.tumblr.com'] })),
+    ])
+    for (let i = 1; i <= 40; i++) {
+      const blog = 'blog' + i + '.tumblr.com'
+      await db.prepare('INSERT INTO character_blogs (id, workspace_id, character_id, tumblr_connection_id, blog_identifier, display_label) VALUES (?,?,?,?,?,?)').bind('cb-c8-' + i, 'w8', 'c8-' + i, 'conn8', blog, blog).run()
+    }
+    const starters: D1PreparedStatement[] = [], partners: D1PreparedStatement[] = [], branches: D1PreparedStatement[] = []
+    for (let i = 1; i <= 40; i++) {
+      starters.push(db.prepare('INSERT INTO starters (id, workspace_id, character_id, title, source, root_post_id, root_blog_id) VALUES (?,?,?,?,?,?,?)').bind('s8-' + i, 'w8', 'c8-' + i, 'S' + i, 'tumblr', 'root8-' + i, 'blog' + i + '.tumblr.com'))
+      partners.push(db.prepare('INSERT INTO partners (id, workspace_id, blog_identifier, display_label) VALUES (?,?,?,?)').bind('p8-' + i, 'w8', 'partner' + i + '.tumblr.com', 'partner' + i + '.tumblr.com'))
+      branches.push(db.prepare('INSERT INTO reply_branches (id, workspace_id, starter_id, partner_id, latest_post_id, last_poster, last_activity_at, status) VALUES (?,?,?,?,?,?,?,?)').bind('b8-' + i, 'w8', 's8-' + i, 'p8-' + i, 'post-' + i, 'partner' + i, new Date(0).toISOString(), 'their_turn'))
+    }
+    await db.batch(starters)
+    await db.batch(partners)
+    await db.batch(branches)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    mockTumblr(fetchSpy, {})
+    const result = await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100, { fetchBudget: 30 })
+    // Each target = 1 mentions + 1 notes = 2 fetches. 30-fetch budget / 2 = 15
+    // targets max, but the run stops a bit early for headroom. It must refresh
+    // MORE than the old accounting (D1 eating the shared 30 cap) allowed.
+    expect(result.refreshed).toBeGreaterThan(10)
+    // No run exceeds 30 fetches or 800 D1 calls.
+    expect(result.fetchesUsed!).toBeLessThanOrEqual(30)
+    expect(result.d1Used!).toBeLessThanOrEqual(800)
+    expect(result.failed).toBe(0)
+    fetchSpy.mockRestore()
+    await dispose()
+  })
+
+  it('T9a backoff: a failing blog waits 30 then 60 minutes before retrying, other workspaces are unaffected, one success clears it', async () => {
+    const { env, dispose } = await makeEnv()
+    const db = env.DB
+    // Two workspaces: wfa (the failing blog) and wfb (an unaffected blog).
+    await seedBase(db, 'wfa', 'connFa', 'blogFa.tumblr.com', 'cfa')
+    await seedBase(db, 'wfb', 'connFb', 'blogFb.tumblr.com', 'cfb')
+    addStarter(db, 'wfa', 'cfa', 'sfa', 'rootfa', 'blogFa.tumblr.com')
+    addPartner(db, 'wfa', 'pfa', 'partnerFa.tumblr.com')
+    addBranch(db, 'wfa', 'sfa', 'pfa', 'partnerFa.tumblr.com')
+    addStarter(db, 'wfb', 'cfb', 'sfb', 'rootfb', 'blogFb.tumblr.com')
+    addPartner(db, 'wfb', 'pfb', 'partnerFb.tumblr.com')
+    addBranch(db, 'wfb', 'sfb', 'pfb', 'partnerFb.tumblr.com')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    // blogFa's token is rejected (401 on notes): a blog-level failure. blogFb is fine.
+    const mock = mockTumblr(fetchSpy, { notesError: { rootfa: 'Tumblr refresh failed (401)' } })
+    // Run 1: blogFa fails (failure_count 1, backoff 30 min), blogFb succeeds.
+    const r1 = await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100)
+    expect(r1.failed).toBe(1)
+    expect(r1.refreshed).toBe(1)
+    // Run 2 at 12:10: blogFa still in backoff (next_retry_at 12:30) -> skipped,
+    // blogFb refreshes again.
+    const r2 = await runRefreshBatch(env, new Date('2026-11-15T12:10:00Z'), 100)
+    expect(r2.refreshed).toBe(1) // blogFb
+    const faCursor = (await db.prepare("SELECT failure_count, next_retry_at FROM refresh_cursors WHERE workspace_id='wfa'").first()) as any
+    // blogFa was attempted once (run 1); run 2 skipped it, so failure_count is still 1.
+    expect(faCursor?.failure_count).toBe(1)
+    // next_retry_at is in the future relative to 12:10.
+    expect(Date.parse(faCursor?.next_retry_at as string) > Date.parse('2026-11-15T12:10:00Z')).toBe(true)
+    // Run 3 at 12:40 (past the 30-min backoff): blogFa fails again (failure_count 2).
+    const r3 = await runRefreshBatch(env, new Date('2026-11-15T12:40:00Z'), 100)
+    expect(r3.failed).toBe(1)
+    // Second failure doubles the wait to 60 min (next try 13:40): a run at 13:00 skips blogFa.
+    const r3b = await runRefreshBatch(env, new Date('2026-11-15T13:00:00Z'), 100)
+    expect(r3b.failed).toBe(0)
+    expect(((await db.prepare("SELECT failure_count FROM refresh_cursors WHERE workspace_id='wfa'").first()) as any)?.failure_count).toBe(2)
+    // Now stop failing: run at 13:45 (past the retry time) — blogFa succeeds and clears.
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('push.example')) return new Response('ok', { status: 201 })
+      if (url.startsWith('https://api.tumblr.com/v2/')) {
+        const path = url.replace('https://api.tumblr.com/v2', '')
+        if (path.includes('/notifications')) return new Response(JSON.stringify({ response: { notifications: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+        if (path.includes('/notes')) return new Response(JSON.stringify({ response: { notes: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+        return new Response(JSON.stringify({ response: { posts: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response('{}', { status: 200 })
+    })
+    const r4 = await runRefreshBatch(env, new Date('2026-11-15T13:45:00Z'), 100)
+    expect(r4.failed).toBe(0)
+    const cleared = (await db.prepare("SELECT failure_count, next_retry_at FROM refresh_cursors WHERE workspace_id='wfa'").first()) as any
+    expect(cleared?.failure_count).toBe(0)
+    expect(cleared?.next_retry_at).toBeNull()
+    fetchSpy.mockRestore()
+    await dispose()
+  })
+
+  it('T9a 429: a rate-limited blog stops the run, records rate_limited, and the next run returns early until Retry-After', async () => {
+    const { env, dispose } = await makeEnv()
+    const db = env.DB
+    const ws = 'w9'
+    await seedBase(db, ws, 'conn9', 'main9.tumblr.com', 'c9')
+    for (let i = 1; i <= 4; i++) {
+      addStarter(db, ws, 'c9', 's9' + i, 'root9' + i, 'main9.tumblr.com')
+      addPartner(db, ws, 'p9' + i, 'partner9' + i + '.tumblr.com')
+      addBranch(db, ws, 's9' + i, 'p9' + i, 'partner9' + i + '.tumblr.com')
+    }
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    // main9 is rate-limited: 429 with Retry-After: 600 (10 min).
+    const mock = mockTumblr(fetchSpy, { blogRateLimited: 'main9' })
+    const runId = 'test-429-run'
+    const result = await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100, { runId })
+    // The 429 is not a failure: failed=0, rateLimited=true.
+    expect(result.rateLimited).toBe(true)
+    expect(result.failed).toBe(0)
+    // rate_limited is recorded on the refresh_runs row.
+    const runRow = (await db.prepare('SELECT rate_limited FROM refresh_runs WHERE id=?').bind(runId).first()) as any
+    expect(runRow?.rate_limited).toBe(1)
+    // rate_limited_until is set on the scheduler row (~10 min out).
+    const sched = (await db.prepare('SELECT rate_limited_until FROM refresh_scheduler_state WHERE id=1').first()) as any
+    expect(sched?.rate_limited_until).toBeTruthy()
+    expect(Date.parse(sched!.rate_limited_until as string) > Date.parse('2026-11-15T12:00:00Z')).toBe(true)
+    // A run before the Retry-After window returns early.
+    const early = await runRefreshBatch(env, new Date('2026-11-15T12:05:00Z'), 100, { runId: 'test-429-early' })
+    expect(early.selected).toBe(0)
+    expect(early.refreshed).toBe(0)
+    expect(early.rateLimited).toBe(true)
+    // A run after the window proceeds normally (no more 429 — swap the mock).
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.includes('push.example')) return new Response('ok', { status: 201 })
+      if (url.startsWith('https://api.tumblr.com/v2/')) {
+        const path = url.replace('https://api.tumblr.com/v2', '')
+        if (path.includes('/notifications')) return new Response(JSON.stringify({ response: { notifications: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+        if (path.includes('/notes')) return new Response(JSON.stringify({ response: { notes: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+        return new Response(JSON.stringify({ response: { posts: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response('{}', { status: 200 })
+    })
+    const late = await runRefreshBatch(env, new Date('2026-11-15T12:15:00Z'), 100, { runId: 'test-429-late' })
+    expect(late.rateLimited).toBe(false)
+    expect(late.refreshed).toBeGreaterThanOrEqual(1)
     fetchSpy.mockRestore()
     await dispose()
   })

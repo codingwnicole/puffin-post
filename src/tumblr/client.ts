@@ -39,12 +39,16 @@ export interface TumblrClient { getThreadActivity(blogIdentifier: string, postId
 export interface TumblrNotification { id:string; type:string; blogIdentifier:string; actor:string; timestamp:string; postId:string|null; preview:string|null; sourceUrl:string|null }
 export interface TumblrClient { getNotifications(blogIdentifier:string,before?:number|null):Promise<TumblrNotification[]> }
 const FETCH_TIMEOUT_MS = 15_000
+/** Tumblr answered 429 (app-wide limit). Carries Retry-After in seconds (60 when absent). */
+export class TumblrRateLimitedError extends Error {
+  constructor(readonly retryAfterSecs: number) { super('Tumblr rate limited (429)') }
+}
 export interface FetchBudget { remaining(): number; consume(): void }
 export function createTumblrClient(config: { consumerKey: string; consumerSecret: string; token: string; tokenSecret: string; fetch?: typeof fetch; budget?: FetchBudget }): TumblrClient {
   const run = config.fetch ?? fetch
   const budget = config.budget
   // S14: never let a hung Tumblr response hold a worker slot.
-  const safeRun = (url: string, init?: RequestInit) => {
+  const safeRun = async (url: string, init?: RequestInit) => {
     const host = new URL(url).hostname
     if (!isAllowedTumblrHost(host)) throw new Error(`Blocked Tumblr request to disallowed host: ${host}`)
     // Consume BEFORE the request goes out: parallel fetches can no longer all
@@ -53,7 +57,16 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
       if (budget.remaining() <= 0) throw new Error('Subrequest budget exhausted')
       budget.consume()
     }
-    return run(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+    const response = await run(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+    // A 429 is Tumblr's app-wide limit, not this blog's fault. Throw a single
+    // sentinel so the runner stops the whole run (not just this blog) and record
+    // Retry-After on the error so the runner can hold off the next run.
+    if (response.status === 429) {
+      const retryAfterRaw = response.headers.get('Retry-After')
+      const retryAfter = retryAfterRaw ? Math.max(1, Math.min(86_400, Number(retryAfterRaw) || 60)) : 60
+      throw new TumblrRateLimitedError(retryAfter)
+    }
+    return response
   }
   return { async getPost(blogIdentifier, postId) {
     const url = `https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/posts/${encodeURIComponent(postId)}`

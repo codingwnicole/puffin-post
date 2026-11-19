@@ -1,12 +1,12 @@
 import type { Env } from '../worker'
-import { createTumblrClient, type FetchBudget } from '../tumblr/client'
+import { createTumblrClient, TumblrRateLimitedError, type FetchBudget } from '../tumblr/client'
 import { decryptToken } from '../tumblr/oauth'
 import { canonicalBlogIdentifier } from '../tumblr/normalize'
 import { refreshStarterBranches, type RefreshBranch } from '../tumblr/refresh'
 import { sendWorkspacePush } from '../routes/push'
 import { redact } from '../shared/redact'
 
-export interface RefreshBatchResult { selected: number; refreshed: number; failed: number; skipped?: number; fetchesUsed?: number }
+export interface RefreshBatchResult { selected: number; refreshed: number; failed: number; skipped?: number; fetchesUsed?: number; d1Used?: number; rateLimited?: boolean }
 
 // Trim a reply's preview to at most 500 chars, breaking on a word boundary so
 // a stored excerpt never ends mid-word. Returns null for empty input.
@@ -22,16 +22,21 @@ interface RefreshTarget { id: string; workspaceId: string; characterId: string; 
 interface StarterRow { id: string; rootPostId: string; rootBlogId: string }
 interface BranchRow extends RefreshBranch { starterId: string; lastRefreshAt: string | null }
 
-// Cloudflare free plan: 50 subrequests per invocation, counting fetches AND
-// D1 calls combined. sendDuePushes shares the invocation, so hold back: 30
-// leaves 20 for sendDuePushes' worst case (1 D1 query + 1 fetch per due
-// subscription + updates). Override via env REFRESH_FETCH_BUDGET (paid plans);
-// the owner can raise the ceiling without a code change.
+// Cloudflare free plan: 50 fetch subrequests per invocation AND a SEPARATE
+// 1,000 for Cloudflare services (D1). Sized independently: fetches default to
+// 30 (sendDuePushes shares the invocation with its own fetches, so hold back)
+// and D1 gets its own internal cap of 800 (headroom under 1,000). Override the
+// fetch budget via env REFRESH_FETCH_BUDGET (paid plans); the owner can raise
+// the ceiling without a code change.
 const SUBREQUEST_BUDGET = 30
-// ponytail: ceiling is ~2 targets per workspace per 30-minute cron (20 targets
-// x 12 runs/hour) at the default budget. Upgrade path when it becomes a
-// bottleneck: Cloudflare Queues fan-out per connection, so each workspace's
-// due blogs run as independent jobs instead of one global batch.
+const D1_BUDGET_LIMIT = 800
+// ponytail: ceiling is up to 60 blogs per run x 2 runs/hour (cron every 30 min), bounded
+// by the fetch budget, not D1. The hard outside limit is Tumblr's documented 1,000 calls/hour
+// and 5,000/day per consumer key, shared by every user and interactive use: 48 runs/day x
+// budget must stay well under that (REFRESH_FETCH_BUDGET=60 is ~2,880/day). Higher needs
+// Tumblr to raise the app's limit on request. Upgrade path if a single invocation must do more:
+// Cloudflare Queues fan-out per connection, so each workspace's due blogs run
+// as independent jobs.
 function readFetchBudget(env: Env, explicit?: number): number {
   if (explicit !== undefined) return Math.max(1, Math.min(900, explicit))
   const raw = env.REFRESH_FETCH_BUDGET
@@ -43,35 +48,33 @@ function readFetchBudget(env: Env, explicit?: number): number {
 // the per-target write batch (1) and the scheduler-state batch (1) always fit.
 const FINAL_WRITE_HEADROOM = 2
 
-// Counts every outbound fetch and every D1 call (prepare or batch) in the run.
-// `d1` and `fetches` are tracked separately so the runner can gate starter notes
-// calls on the combined remaining budget without starving D1 reads.
+// Counts every outbound fetch and every D1 statement in the run. The two pools
+// are independent (see above); remaining() is the smaller pool left, so a run
+// can't overdraw either.
 class SubrequestBudget {
   private d1 = 0
   private fetches = 0
   constructor(private readonly cap: number) {}
-  remaining(): number { return Math.max(0, this.cap - this.d1 - this.fetches) }
+  remaining(): number { return Math.max(0, Math.min(this.cap - this.fetches, D1_BUDGET_LIMIT - this.d1)) }
   consumeD1(): void { this.d1 += 1 }
-  consumeFetch(): void { this.fetches += 1 }
   consume(): void { this.fetches += 1 }
-  usedCount(): number { return this.d1 + this.fetches }
+  used(): { fetches: number; d1: number } { return { fetches: this.fetches, d1: this.d1 } }
 }
 
-// Wraps a D1Database so every D1 operation (run/all/first/batch) consumes one
-// subrequest. prepare() is free in D1 — only executing a statement counts.
-// NOTE: bound queries (.bind().all()) escape the counter because bind() returns
-// the raw D1 statement; such reads are accounted for explicitly at the call site.
+// Wraps a D1Database so every D1 statement (run/all/first/batch) consumes one
+// D1 subrequest. prepare() is free in D1 — only executing a statement counts.
+// bind() returns a wrapped statement too, so a bound query (.bind().all()) is
+// counted when it runs; batch() unwraps to the raw statements and counts once.
 function countingDB(db: D1Database, budget: SubrequestBudget): D1Database {
-  const prepare = (sql: string): D1PreparedStatement => {
-    const stmt = db.prepare(sql) as any
-    return {
-      bind: stmt.bind.bind(stmt),
-      run: async (...args: unknown[]) => { budget.consumeD1(); return stmt.run(...args) },
-      all: async (...args: unknown[]) => { budget.consumeD1(); return stmt.all(...args) },
-      first: async (...args: unknown[]) => { budget.consumeD1(); return stmt.first(...args) },
-    } as any
-  }
-  return { ...db, prepare, batch: (stmts: D1PreparedStatement[]) => { budget.consumeD1(); return db.batch(stmts) } } as unknown as D1Database
+  const wrap = (stmt: any): any => ({
+    raw: stmt,
+    bind: (...args: unknown[]) => wrap(stmt.bind(...args)),
+    run: async (...args: unknown[]) => { budget.consumeD1(); return stmt.run(...args) },
+    all: async (...args: unknown[]) => { budget.consumeD1(); return stmt.all(...args) },
+    first: async (...args: unknown[]) => { budget.consumeD1(); return stmt.first(...args) },
+  })
+  const prepare = (sql: string): D1PreparedStatement => wrap(db.prepare(sql))
+  return { ...db, prepare, batch: (stmts: D1PreparedStatement[]) => { budget.consumeD1(); return db.batch(stmts.map(s => (s as any).raw ?? s)) } } as unknown as D1Database
 }
 
 export async function runRefreshBatch(env: Env, now: Date, limit: number, options: { fetchBudget?: number; targetLimit?: number; runId?: string } = {}): Promise<RefreshBatchResult> {
@@ -90,16 +93,23 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   // the run throws mid-batch.
   let dueTargets = 0
   let refreshed = 0
+  let rateLimited = false
+  let retryAfterSecs: number | null = null
   try {
     const budget = new SubrequestBudget(readFetchBudget(env, options.fetchBudget))
   const db = countingDB(env.DB, budget)
+  // Honor a Retry-After from a previous run: Tumblr told us not to start another
+  // run before this timestamp, so bail before doing any work.
+  const rateLimitedUntil = (await db.prepare('SELECT rate_limited_until AS until FROM refresh_scheduler_state WHERE id=1').first<{ until: string | null }>())?.until ?? null
+  if (rateLimitedUntil && Date.parse(rateLimitedUntil) > now.getTime()) {
+    return { selected: 0, refreshed: 0, failed: 0, skipped: 0, fetchesUsed: 0, d1Used: budget.used().d1, rateLimited: true }
+  }
   const effectiveLimit = Math.max(1, Math.min(limit, options.targetLimit ?? limit))
   // Fairness across strangers: rank each workspace's targets by staleness (never-tried first,
   // then oldest last attempt), then take rank 1 of every workspace before anyone's rank 2.
   // Within a round the stalest blog leads, so a workspace with 200 blogs cannot starve a
   // 1-blog user, and every blog inside a big workspace still comes up in turn.
-  // ponytail: ceiling is budget-limited targets per 30-minute cron (default ~20/run) shared
-  // by everyone; upgrade path is a Cloudflare Queues job per connection.
+  // ponytail: up to 60 targets per run, bounded by the fetch budget; see the ceiling note above.
   const candidates = await db.prepare(`SELECT id, workspaceId, characterId, blogIdentifier, connectionId, tokenEncrypted, tokenSecretEncrypted, totalDue FROM (
     SELECT cb.id, cb.workspace_id AS workspaceId, cb.character_id AS characterId, cb.blog_identifier AS blogIdentifier, tc.id AS connectionId,
       tc.token_encrypted AS tokenEncrypted, tc.token_secret_encrypted AS tokenSecretEncrypted,
@@ -111,9 +121,8 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
     JOIN tumblr_connections tc ON tc.workspace_id=cb.workspace_id AND tc.id=cb.tumblr_connection_id
     LEFT JOIN refresh_cursors rc ON rc.workspace_id=cb.workspace_id AND rc.character_blog_id=cb.id
     WHERE c.state='active' AND tc.status='active'
-  ) ORDER BY rn, lastAttempt, id LIMIT ?`).bind(effectiveLimit).all<RefreshTarget & { totalDue: number }>()
-  // bind() returns the raw statement, so count this read by hand.
-  budget.consumeD1()
+      AND (rc.next_retry_at IS NULL OR rc.next_retry_at <= ?)
+  ) ORDER BY rn, lastAttempt, id LIMIT ?`).bind(now.toISOString(), effectiveLimit).all<RefreshTarget & { totalDue: number }>()
   const selected = candidates.results
   dueTargets = selected[0]?.totalDue ?? 0
   let failed = 0, skipped = 0
@@ -190,6 +199,18 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
         try {
           activities = await client.getThreadActivity(root, starter.rootPostId)
         } catch (starterErr) {
+          if (starterErr instanceof TumblrRateLimitedError) {
+            // Tumblr answered 429: an app-wide limit, not this blog's fault.
+            // Stop the whole run, keep the work already done, and do not count
+            // it as a failure for the blog.
+            rateLimited = true
+            retryAfterSecs = starterErr.retryAfterSecs
+            starterAborted = true
+            break
+          }
+          // A rejected token is the blog's problem, not one thread's: hand it to the
+          // blog-level catch so the blog backs off instead of retrying every run.
+          if (starterErr instanceof Error && /\((401|403)\)/.test(starterErr.message)) throw starterErr
           // Budget exhaustion inside the starter loop is a clean partial stop:
           // no refresh_error, and the next run resumes at this starter.
           if (starterErr instanceof Error && starterErr.message === 'Subrequest budget exhausted') { starterAborted = true; break }
@@ -221,7 +242,7 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
           // branch still records the new reply, just without an excerpt.
           let excerpt = excerptCache.get(activity.postId)
           if (excerpt === undefined && budget.remaining() > FINAL_WRITE_HEADROOM + 1) { // ponytail: never spend the final-write headroom on an excerpt
-            try { excerpt = replyExcerpt((await client.getPost(activity.blogIdentifier, activity.postId)).preview) } catch { excerpt = null }
+            try { excerpt = replyExcerpt((await client.getPost(activity.blogIdentifier, activity.postId)).preview) } catch (e) { if (e instanceof TumblrRateLimitedError) throw e; excerpt = null }
             excerptCache.set(activity.postId, excerpt)
           }
           writes.push(
@@ -245,8 +266,8 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
         }
         doneStarterIds.add(starter.id)
       }
-      const cursor = db.prepare(`INSERT INTO refresh_cursors (workspace_id,character_blog_id,last_attempt_at,last_successful_refresh_at,last_error,failure_count)
-        VALUES (?,?,?,?,NULL,0) ON CONFLICT(workspace_id,character_blog_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,last_successful_refresh_at=excluded.last_successful_refresh_at,last_error=NULL,failure_count=0`)
+      const cursor = db.prepare(`INSERT INTO refresh_cursors (workspace_id,character_blog_id,last_attempt_at,last_successful_refresh_at,last_error,failure_count,next_retry_at)
+        VALUES (?,?,?,?,NULL,0,NULL) ON CONFLICT(workspace_id,character_blog_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,last_successful_refresh_at=excluded.last_successful_refresh_at,last_error=NULL,failure_count=0,next_retry_at=NULL`)
         .bind(target.workspaceId, target.id, now.toISOString(), now.toISOString())
       // Stamp the blog even when it has no threads, so it rotates behind its siblings. A blog cut
       // short by the budget stays unstamped and goes first next run.
@@ -255,6 +276,11 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
       refreshed++
       if (starterAborted) break
     } catch (error) {
+      if (error instanceof TumblrRateLimitedError) {
+        rateLimited = true
+        retryAfterSecs = error.retryAfterSecs
+        break
+      }
       // Budget exhaustion is a clean partial stop: keep the work already done,
       // write no refresh_error, and leave the rest for the next run.
       if (error instanceof Error && error.message === 'Subrequest budget exhausted') {
@@ -265,8 +291,14 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
       // Item 3c: one structured log line per failing connection — id + status only,
       // never post text, drafts, or tokens.
       console.warn('refresh failure', { connectionId: target.connectionId, status: redact(message).slice(0, 300) })
-      const cursor = db.prepare(`INSERT INTO refresh_cursors (workspace_id,character_blog_id,last_attempt_at,last_error,failure_count) VALUES (?,?,?,?,1)
-        ON CONFLICT(workspace_id,character_blog_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,last_error=excluded.last_error,failure_count=refresh_cursors.failure_count+1`).bind(target.workspaceId, target.id, now.toISOString(), message)
+      // Exponential backoff: 30 min x 2^(failure_count-1), capped at 24 h. The
+      // failing blog is skipped until then; it is not a budget skip and does
+      // not affect other blogs or workspaces.
+      const previous = (await db.prepare('SELECT failure_count AS count FROM refresh_cursors WHERE workspace_id=? AND character_blog_id=?').bind(target.workspaceId, target.id).first<{ count: number | null }>())?.count ?? 0
+      const backoffMs = Math.min(30 * 60_000 * 2 ** previous, 24 * 3_600_000)
+      const nextRetryAt = new Date(now.getTime() + backoffMs).toISOString()
+      const cursor = db.prepare(`INSERT INTO refresh_cursors (workspace_id,character_blog_id,last_attempt_at,last_error,failure_count,next_retry_at) VALUES (?,?,?,?,1,?)
+        ON CONFLICT(workspace_id,character_blog_id) DO UPDATE SET last_attempt_at=excluded.last_attempt_at,last_error=excluded.last_error,failure_count=refresh_cursors.failure_count+1,next_retry_at=excluded.next_retry_at`).bind(target.workspaceId, target.id, now.toISOString(), message, nextRetryAt)
       const branches = db.prepare(`UPDATE reply_branches SET refresh_error=?,last_refresh_at=? WHERE workspace_id=? AND starter_id IN (SELECT id FROM starters WHERE workspace_id=? AND archived=0 AND character_id=(SELECT character_id FROM character_blogs WHERE workspace_id=? AND id=?))`)
         .bind(message, now.toISOString(), target.workspaceId, target.workspaceId, target.workspaceId, target.id)
       await db.batch([cursor, branches])
@@ -279,16 +311,29 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   // env.DB directly (not the counting wrapper) so the D1 read is accounted
   // for here, not double-counted.
   for (const [workspaceId, counts] of summary) {
+    if (rateLimited) break
     if (budget.remaining() <= FINAL_WRITE_HEADROOM) break
     const subCount = (await env.DB.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE workspace_id=?').bind(workspaceId).first<{ n: number }>())?.n ?? 0
     budget.consumeD1()
     if (budget.remaining() - 1 < subCount) break // keep 1 for the scheduler batch
-    for (let i = 0; i < subCount; i++) budget.consumeFetch()
+    for (let i = 0; i < subCount; i++) budget.consume()
     const body = [counts.replyCount ? `${counts.replyCount} replies waiting` : null, counts.tagCount ? `${counts.tagCount} new tags` : null].filter(Boolean).join(', ')
     await sendWorkspacePush(env, workspaceId, { title: 'Puffin Post', body, url: '/#inbox' })
   }
-    return { selected: selected.length, refreshed, failed, skipped, fetchesUsed: budget.usedCount() }
+  const used = budget.used()
+  return { selected: selected.length, refreshed, failed, skipped, fetchesUsed: used.fetches, d1Used: used.d1, rateLimited }
   } finally {
-    try { await env.DB.prepare('UPDATE refresh_runs SET finished_at=?,due=?,refreshed=? WHERE id=?').bind(now.toISOString(), dueTargets, refreshed, runId).run() } catch { /* best effort */ }
+    try {
+      // Record the run's rate_limited flag, and — when a 429 was hit — hold the
+      // next run off until the Retry-After window (if Tumblr sent one).
+      if (rateLimited && retryAfterSecs !== null) {
+        {
+          const until = new Date(now.getTime() + retryAfterSecs * 1000).toISOString()
+          await env.DB.prepare('INSERT INTO refresh_scheduler_state (id,rate_limited_until,updated_at) VALUES (1,?,?) ON CONFLICT(id) DO UPDATE SET rate_limited_until=excluded.rate_limited_until,updated_at=excluded.updated_at').bind(until, now.toISOString()).run()
+        }
+      }
+      await env.DB.prepare('UPDATE refresh_runs SET finished_at=?,due=?,refreshed=?,rate_limited=? WHERE id=?')
+        .bind(now.toISOString(), dueTargets, refreshed, rateLimited ? 1 : 0, runId).run()
+    } catch { /* best effort */ }
   }
 }

@@ -108,6 +108,6 @@ export default {
   },
   scheduled(_event, env, ctx) {
     const runId = `sched-${Date.now()}-${Math.floor(Math.random()*1e6)}`
-    ctx.waitUntil(Promise.all([runRefreshBatch(env, new Date(), 20, { runId }),sendDuePushes(env)]))
+    ctx.waitUntil(Promise.all([runRefreshBatch(env, new Date(), 60, { runId }),sendDuePushes(env)]))
   },
 } satisfies ExportedHandler<Env>
