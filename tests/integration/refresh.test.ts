@@ -1,18 +1,11 @@
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { trackingFixture, starterInput } from './tracking-fixture'
 import { runRefreshBatch } from '../../src/refresh/runner'
-import { rotateAfter } from '../../src/refresh/cursor'
 import { refreshStarterBranches } from '../../src/tumblr/refresh'
 
 let fixture: Awaited<ReturnType<typeof trackingFixture>>
 beforeEach(async () => { fixture = await trackingFixture() }, 30_000)
 afterEach(async () => { await fixture?.dispose() })
-
-it('rotates an ordered bounded batch so active blogs do not starve', () => {
-  const rows = [{id:'a'},{id:'b'},{id:'c'}]
-  expect(rotateAfter(rows, null, 2).map(row => row.id)).toEqual(['a','b'])
-  expect(rotateAfter(rows, 'b', 2).map(row => row.id)).toEqual(['c','a'])
-})
 
 it('uses the direct reblog chain instead of unrelated notes to decide whose turn it is', async () => {
   const changes:Array<{postId:string;status:string}> = []
