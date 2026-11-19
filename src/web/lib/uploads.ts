@@ -18,3 +18,19 @@ export async function squareIcon(file: File) {
   if (!blob) throw new Error('Could not prepare image')
   return new File([blob], 'character-icon.webp', { type: 'image/webp' })
 }
+
+/** Fits any non-GIF image so its long edge is at most `max` px, re-encoded as WebP q.88.
+ * GIFs are returned untouched so their animation survives the upload. */
+export async function fitImage(file: File, max: number) {
+  if (file.type === 'image/gif') return file
+  const image = await createImageBitmap(file)
+  const scale = Math.min(1, max / Math.max(image.width, image.height))
+  const width = Math.max(1, Math.round(image.width * scale)), height = Math.max(1, Math.round(image.height * scale))
+  const canvas = document.createElement('canvas'), context = canvas.getContext('2d')
+  canvas.width = width; canvas.height = height
+  if (!context) throw new Error('Could not prepare image')
+  context.drawImage(image, 0, 0, width, height)
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', .88))
+  if (!blob) throw new Error('Could not prepare image')
+  return new File([blob], 'moodboard.webp', { type: 'image/webp' })
+}

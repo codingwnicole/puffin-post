@@ -4,7 +4,7 @@ import { useId, useRef, useState, type CSSProperties, type PointerEvent } from '
 // on the page and rasterised for the PNG download (no foreignObject, no dependencies).
 // Palettes adapted from the Character Card Studio brief; per-theme ornament art was left out.
 
-export type CardProfile = { theme: ThemeId; nickname: string; age: string; birthdate: string; quote: string; song: string; artist: string; favoriteColor: string; facts: string[]; likes: string; dislikes: string; notes: string }
+export type CardProfile = { theme: ThemeId; nickname: string; age: string; birthdate: string; quote: string; song: string; artist: string; favoriteColor: string; facts: string[]; likes: string; dislikes: string; notes: string; playlistUrl: string; boardUrl: string; tracklist: string[] }
 export type CardStats = { total: number; mine: number; theirs: number; rps: string[] }
 type Theme = { label: string; group: string; font: string; sans: string; corner: number; ink: string; sub: string; accent: string; stroke: string; panel: [string, string]; bg: [string, string, string]; foil: string[] }
 
@@ -22,7 +22,7 @@ export const THEMES = {
 } satisfies Record<string, Theme>
 export type ThemeId = keyof typeof THEMES
 
-export const emptyCard = (): CardProfile => ({ theme: 'holo', nickname: '', age: '', birthdate: '', quote: '', song: '', artist: '', favoriteColor: '#b07a9e', facts: ['', '', '', '', ''], likes: '', dislikes: '', notes: '' })
+export const emptyCard = (): CardProfile => ({ theme: 'holo', nickname: '', age: '', birthdate: '', quote: '', song: '', artist: '', favoriteColor: '#b07a9e', facts: ['', '', '', '', ''], likes: '', dislikes: '', notes: '', playlistUrl: '', boardUrl: '', tracklist: [] })
 
 /** Greedy word wrap by character count; the last line gets an ellipsis when text is cut. */
 export function wrap(text: string, width: number, lines: number) {

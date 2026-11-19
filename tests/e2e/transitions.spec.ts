@@ -99,9 +99,9 @@ test.describe('T7d view transitions', () => {
     // List page: exactly one element carries the character identity.
     expect(await vtNames(page, 'character-')).toEqual(['character-char-1'])
 
-    // Navigate by clicking the card; the shortcut header carries the SAME single name.
+    // Navigate by clicking the card; the profile page carries the SAME single name.
     await page.locator('.character-card-top-link').first().click()
-    await expect(page.locator('.shortcut-header')).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
     expect(await vtNames(page, 'character-')).toEqual(['character-char-1'])
   })
 })

@@ -5,6 +5,7 @@ import { IMAGE_ACCEPT, IMAGE_HINT, PORTRAIT_HINT, squareIcon } from '../lib/uplo
 import { toast, undoCharacterArchive, undoReturnToPlanner } from '../lib/toast'
 import { initialsFor } from '../components/InitialsAvatar'
 import TradingCard, { THEMES, downloadCard, emptyCard, type CardProfile, type CardStats, type ThemeId } from '../components/TradingCard'
+import CardEditor from '../components/CardEditor'
 
 type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; card?: CardProfile | null }
 type ArchivedCharacter = { id: string; name: string; color: string | null; notes: string | null; iconObjectKey: string | null; createdAt: string; rpGroupNames: string[]; threadCount: number }
@@ -78,7 +79,7 @@ function CharacterCard({ row, index, assignments, groups, stat, iconVersion, bus
   const characterGroups = groups.filter(group => group.characterIds.includes(row.id))
   const availableGroups = groups.filter(group => !group.characterIds.includes(row.id))
   return <article className="character-card tracking-card" style={{'--i':index ?? 0} as CSSProperties}>
-    <div className="character-card-top">{row.iconObjectKey ? <img className="character-avatar" alt="" width={44} height={44} src={'/api/characters/' + row.id + '/icon?v=' + (iconVersion ?? row.iconObjectKey)} onError={event => event.currentTarget.classList.add('avatar-fallback')} data-initials={initialsFor(row.name)} /> : <span className="character-avatar character-initials" aria-hidden="true">{initialsFor(row.name)}</span>}<div><p className="eyebrow">{row.state}</p><h3><a className="character-card-top-link" href={'#character-shortcut/' + row.id} style={{ viewTransitionName: `character-${row.id}` }}>{row.name}</a></h3>{characterAssignments.length ? <p className="field-help"><strong>Tumblr assigned:</strong> {characterAssignments.map(assignment => blogLabel(assignment.blogIdentifier)).join(', ')}</p> : <p className="field-help">Next: <a href="#connections">assign Tumblr</a></p>}</div></div>
+    <div className="character-card-top">{row.iconObjectKey ? <img className="character-avatar" alt="" width={44} height={44} src={'/api/characters/' + row.id + '/icon?v=' + (iconVersion ?? row.iconObjectKey)} onError={event => event.currentTarget.classList.add('avatar-fallback')} data-initials={initialsFor(row.name)} /> : <span className="character-avatar character-initials" aria-hidden="true">{initialsFor(row.name)}</span>}<div><p className="eyebrow">{row.state}</p><h3><a className="character-card-top-link" href={'#character/' + row.id} style={{ viewTransitionName: `character-${row.id}` }}>{row.name}</a></h3>{characterAssignments.length ? <p className="field-help"><strong>Tumblr assigned:</strong> {characterAssignments.map(assignment => blogLabel(assignment.blogIdentifier)).join(', ')}</p> : <p className="field-help">Next: <a href="#connections">assign Tumblr</a></p>}</div></div>
     <div className="character-rps"><strong>RP sections</strong>{characterGroups.length ? <span>{characterGroups.map(group => group.name).join(' / ')}</span> : <span>Not sorted yet</span>}{!characterGroups.length && availableGroups.length > 0 ? <label>Add {row.name} to an RP section<select className="character-rp-picker" value="" disabled={busy} onChange={event => { if (event.target.value) void addToGroup(event.target.value, row.id) }}><option value="">Add to RP.</option>{availableGroups.map(group => <option value={group.id} key={group.id}>{group.name}</option>)}</select></label> : !characterGroups.length ? <button type="button" className="text-button" onClick={showCreateGroup}>Create an RP</button> : null}</div>
     <div className="character-stats"><a href={'#inbox?characterId=' + row.id}><strong>{stat.total}</strong> thread{stat.total === 1 ? '' : 's'}</a><span><strong>{stat.mine}</strong> your turn</span><span><strong>{stat.theirs}</strong> their turn</span></div>
     <Quicklinks characterId={row.id} />
@@ -94,35 +95,8 @@ function CardTile({ row, stats, portrait, edit, reportError }: { row: Character;
   const download = async () => { try { setSaving(true); setNote(''); const kind = await downloadCard(tile.current!, row.name); setNote(kind === 'gif' ? 'Saved as an animated GIF.' : kind === 'png-no-gif-support' ? 'This browser can’t make animated GIFs, so the card was saved as a PNG.' : 'Saved as a PNG.') } catch (problem) { reportError((problem as Error).message) } finally { setSaving(false) } }
   return <article className="tcard-tile" ref={tile} aria-label={row.name}>
     <TradingCard name={row.name} profile={row.card ?? emptyCard()} stats={stats} portrait={portrait} />
-    <div className="tcard-actions"><button type="button" className="secondary-button" onClick={edit}>{row.card ? 'Edit card' : 'Make this card'}</button><button type="button" className="secondary-button" disabled={saving} title="Animated GIF when the portrait is a GIF, otherwise PNG" onClick={() => void download()}>{saving ? 'Preparing…' : 'Download'}</button></div><p className="field-help tcard-note" role="status">{note}</p>
+    <div className="tcard-actions"><a className="secondary-button" href={'#character/' + row.id}>Open profile</a><button type="button" className="secondary-button" onClick={edit}>{row.card ? 'Edit card' : 'Make this card'}</button><button type="button" className="secondary-button" disabled={saving} title="Animated GIF when the portrait is a GIF, otherwise PNG" onClick={() => void download()}>{saving ? 'Preparing…' : 'Download'}</button></div><p className="field-help tcard-note" role="status">{note}</p>
   </article>
-}
-
-function CardEditor({ row, stats, portrait, upload, close, saved }: { row: Character; stats: CardStats; portrait: string | null; upload: (file: File) => Promise<void>; close: () => void; saved: () => Promise<void> }) {
-  const [draft, setDraft] = useState<CardProfile>(() => { const start = { ...emptyCard(), ...row.card }; return { ...start, facts: [0, 1, 2, 3, 4].map(i => start.facts[i] ?? '') } })
-  const [saving, setSaving] = useState(false), [error, setError] = useState('')
-  const set = <K extends keyof CardProfile>(key: K, value: CardProfile[K]) => setDraft(current => ({ ...current, [key]: value }))
-  useEffect(() => { const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey) }, [close])
-  const field = (key: 'nickname' | 'age' | 'birthdate' | 'song' | 'artist', label: string, max: number) => <label>{label}<input value={draft[key]} maxLength={max} onChange={event => set(key, event.target.value)} /></label>
-  // Portal: the page section's entrance animation makes it the containing block for position:fixed.
-  return createPortal(<div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="card-editor-title">
-    <form className="modal-card card-editor" onSubmit={async event => { event.preventDefault(); try { setSaving(true); setError(''); await api('/characters/' + row.id + '/card', 'PUT', { ...draft, facts: draft.facts.map(fact => fact.trim()).filter(Boolean) }); await saved(); close() } catch (problem) { setError((problem as Error).message) } finally { setSaving(false) } }}>
-      <div className="card-editor-fields">
-        <h2 id="card-editor-title">{row.name}’s trading card</h2>
-        <fieldset className="card-theme-picker"><legend>Style</legend>{(Object.keys(THEMES) as ThemeId[]).map(id => <label key={id} style={{ '--swatch': `linear-gradient(135deg, ${THEMES[id].bg[0]}, ${THEMES[id].foil[1]})` } as CSSProperties}><input type="radio" name="theme" value={id} checked={draft.theme === id} onChange={() => set('theme', id)} /><span>{THEMES[id].label}<small>{THEMES[id].group}</small></span></label>)}</fieldset>
-        <label className="icon-picker">{portrait ? 'Replace portrait' : 'Upload portrait'}<input type="file" accept={IMAGE_ACCEPT} aria-describedby="portrait-hint" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void upload(file).catch(problem => setError((problem as Error).message)) }} /></label><p className="field-help" id="portrait-hint">{PORTRAIT_HINT}</p>
-        <div className="card-editor-row">{field('nickname', 'Nickname / alias', 60)}{field('age', 'Age', 30)}{field('birthdate', 'Birthdate', 40)}</div>
-        <label>Quote<textarea value={draft.quote} maxLength={160} rows={2} onChange={event => set('quote', event.target.value)} /></label>
-        <div className="card-editor-row">{field('song', 'Theme song', 60)}{field('artist', 'Artist', 60)}<label>Favorite color<input type="color" value={draft.favoriteColor} onChange={event => set('favoriteColor', event.target.value)} /></label></div>
-        <fieldset><legend>Fun facts</legend>{draft.facts.map((fact, i) => <input key={i} aria-label={`Fun fact ${i + 1}`} value={fact} maxLength={70} onChange={event => set('facts', draft.facts.map((current, j) => j === i ? event.target.value : current))} />)}</fieldset>
-        <div className="card-editor-row"><label>Likes<input value={draft.likes} maxLength={90} onChange={event => set('likes', event.target.value)} /></label><label>Dislikes<input value={draft.dislikes} maxLength={90} onChange={event => set('dislikes', event.target.value)} /></label></div>
-        <label>Notes<textarea value={draft.notes} maxLength={140} rows={2} onChange={event => set('notes', event.target.value)} /></label>
-        {error && <p role="alert">{error}</p>}
-        <div className="modal-actions"><button disabled={saving}>{saving ? 'Saving…' : 'Save card'}</button><button type="button" className="text-button" onClick={close}>Cancel</button></div>
-      </div>
-      <div className="card-editor-preview"><TradingCard name={row.name} profile={draft} stats={stats} portrait={portrait} /><p className="field-help">Tap the card to flip it. Thread stats fill in on their own.</p></div>
-    </form>
-  </div>, document.body)
 }
 
 export default function CharactersPage() {

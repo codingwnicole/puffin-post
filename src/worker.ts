@@ -49,7 +49,7 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
     c.header('Referrer-Policy', 'no-referrer')
     c.header('X-Build-Revision', BUILD_REVISION)
     c.header('X-Frame-Options', 'DENY')
-    c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tumblr.com; connect-src 'self' https://*.tumblr.com; frame-ancestors 'none'")
+    c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tumblr.com; connect-src 'self' https://*.tumblr.com; frame-src https://open.spotify.com https://www.youtube-nocookie.com https://embed.music.apple.com https://assets.pinterest.com; frame-ancestors 'none'")
     const isMagicLinkConfirmation = c.req.method === 'POST' && c.req.path === '/api/auth/verify'
     // Magic-link confirmation is protected by the unguessable, single-use token
     // in its form. Do not depend on Origin here: mail clients and browser privacy
