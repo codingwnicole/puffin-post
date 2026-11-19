@@ -67,9 +67,9 @@ it('tracks another writer’s starter for an assigned character', async () => {
   const response = await fixture.request('/api/starters','POST',{ ...starterInput, postUrl:'https://partner.tumblr.com/post/45678', title:'' })
   expect(response.status).toBe(201)
   const starter = await response.json() as any
-  // No declared "who:" header in this stub, so Puffin auto-titles from the
-  // assigned character rather than falling back to a bare placeholder.
-  expect(starter).toMatchObject({ characterId:'character-a', rootBlogId:'partner.tumblr.com', rootPostId:'45678', title:'Character a' })
+  // No declared "who:" header in this stub, so Puffin titles it with both sides: the assigned
+  // character and the partner's blog name, never the raw post text. The premise is filled in too.
+  expect(starter).toMatchObject({ characterId:'character-a', rootBlogId:'partner.tumblr.com', rootPostId:'45678', title:'Character a × partner' })
 })
 
 it('hydrates the latest direct exchange as soon as a thread is added', async () => {

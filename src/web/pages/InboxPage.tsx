@@ -3,6 +3,7 @@ import type { InboxBranch } from '../../db/repositories/branches'
 import { api, peekCache, staleGet, type TrackingOptions } from '../lib/api'
 // ponytail: instant seed only for the unfiltered inbox; filtered views wait for fresh data.
 const seedInbox=()=>window.location.hash.includes('?')?undefined:peekCache<{branches:InboxBranch[];yourTurnCount:number;overdueDraftCount:number;dueSoonCount:number}>('/inbox')
+import SpinWheel from '../components/SpinWheel'
 import BranchRow from '../components/BranchRow'
 import InitialsAvatar from '../components/InitialsAvatar'
 import StarterFields from '../components/StarterFields'
@@ -16,9 +17,11 @@ function ReplyRun({ branches }: { branches: InboxBranch[] }) {
   const owed = active.filter(branch => branch.status === 'your_turn').length
   const waiting = active.length - owed
   const owedPercent = active.length ? Math.round((owed / active.length) * 100) : 0
-  return <aside className="reply-run" aria-label={`${owed} replies owed and ${waiting} waiting on someone else`}>
+  const yours = active.filter(branch => branch.status === 'your_turn').map(branch => ({ id: branch.id, label: branch.title, href: `#starter/${branch.starterId}` }))
+  return <aside className="reply-run summary-card" aria-label={`${owed} replies owed and ${waiting} waiting on someone else`}>
     <div className="reply-donut" style={{ '--owed': `${owedPercent}%` } as CSSProperties}><strong>{owed}</strong><span>owed</span></div>
-    <div><p className="eyebrow">Reply run</p><strong>{owed ? `${owed} scene${owed === 1 ? '' : 's'} on your desk` : 'Your desk is clear'}</strong><p>{waiting ? `${waiting} waiting on a partner` : 'Nothing else is in motion right now.'}</p></div>
+    <div><p className="eyebrow">Reply run</p><strong>{owed ? `${owed} scene${owed === 1 ? '' : 's'} on your desk` : 'Your desk is clear'}</strong><p className="summary-legend"><span className="legend-owed">{owed} your turn</span> · <span className="legend-waiting">{waiting} waiting on a partner</span></p>
+      <SpinWheel items={yours} empty="Nothing is your turn here right now. Enjoy the quiet."/></div>
   </aside>
 }
 

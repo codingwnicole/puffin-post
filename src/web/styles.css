@@ -278,3 +278,41 @@ p{text-wrap:pretty}
    themes, independent of the soft 12% surface borders (T8d item 14). */
 :root:not([data-theme="dark"]) input:not([type=checkbox]):not([type=radio]),:root:not([data-theme="dark"]) select,:root:not([data-theme="dark"]) textarea{border-color:oklch(38% 0.022 72)!important}
 :root[data-theme="dark"] input:not([type=checkbox]):not([type=radio]),:root[data-theme="dark"] select,:root[data-theme="dark"] textarea{border-color:oklch(78% 0.023 231)!important}
+
+/* T9d: turn markers with personality. Your turn = filled accent pill with a quill; Their turn = quiet outlined pill with an hourglass. */
+.turn-badge{display:inline-flex;align-items:center;gap:.3rem;border:1.5px solid transparent;letter-spacing:.01em}
+.turn-badge svg{flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.turn-your_turn{background:var(--accent);color:var(--on-accent);box-shadow:0 1px 6px color-mix(in oklab,var(--accent) 35%,transparent)}
+.turn-your_turn svg{fill:currentColor;stroke-width:1}
+.turn-their_turn{background:transparent;color:var(--muted);border-color:var(--border);font-weight:700}
+.turn-button.is-current[aria-pressed="true"]:first-child{background:var(--accent);color:var(--on-accent)}
+.turn-pop{animation:turn-pop .42s cubic-bezier(.34,1.56,.64,1)}
+@keyframes turn-pop{0%{transform:scale(.7)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.turn-pop{animation:none}}
+
+/* T9d: summary cards with a bigger chart (about 2.5x) and spin the wheel, sized so the first thread
+   still shows on the first screen. Specific selectors so they win over landing-fixes.css. */
+.summary-card.reply-run,.summary-card.plotting-pulse{display:flex;align-items:center;gap:1.1rem;padding:1rem 1.2rem;border-radius:var(--radius)}
+.summary-card.plotting-pulse{max-width:none}
+@media (min-width:761px){.inbox-hero .inbox-hero-copy{flex:1 1 14rem;min-width:min-content}.inbox-hero .summary-card.reply-run{flex:1 1 26rem;max-width:32rem;min-width:0}}
+.summary-card :is(.reply-donut,.plotting-donut){position:relative;width:8.5rem;height:8.5rem;min-width:8.5rem;flex:0 0 8.5rem}
+.summary-card :is(.reply-donut,.plotting-donut) :is(strong,span){position:absolute!important;left:0!important;right:0!important;bottom:auto!important;transform:none!important;width:auto!important;height:auto!important;clip:auto!important;overflow:visible!important;margin:0!important;text-align:center!important;line-height:1!important}
+.summary-card :is(.reply-donut,.plotting-donut) strong{top:32%!important;font-size:2.2rem!important}
+.summary-card :is(.reply-donut,.plotting-donut) span{top:62%!important}
+.summary-legend{font-variant-numeric:tabular-nums}
+.legend-owed{color:var(--accent);font-weight:800}
+.spin-wheel{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem .8rem;margin-top:.6rem}
+.spin-wheel p{margin:0;color:var(--muted);font-size:.85rem}
+.spin-wheel button{min-height:2.5rem;padding:.4rem .9rem}
+.summary-card:has(.spin-wheel[data-spinning]) :is(.reply-donut,.plotting-donut){animation:summary-spin .75s cubic-bezier(.2,.8,.3,1)}
+@keyframes summary-spin{to{transform:rotate(720deg)}}
+.is-picked{outline:3px solid var(--accent);outline-offset:3px;transition:outline-color .3s}
+@media (prefers-reduced-motion:reduce){.summary-card :is(.reply-donut,.plotting-donut){animation:none!important}}
+@media (max-width:700px){.summary-card :is(.reply-donut,.plotting-donut){width:6.5rem;height:6.5rem;min-width:6.5rem;flex-basis:6.5rem}.summary-card :is(.reply-donut,.plotting-donut) strong{font-size:1.7rem!important}.summary-card.reply-run{gap:.8rem;padding:.75rem .9rem}.spin-wheel p{font-size:.8rem}}
+@media (max-width:700px){.summary-card.reply-run{flex-direction:row!important;align-items:center!important;width:100%}.summary-card.reply-run>div:last-child{min-width:0}.summary-card .summary-legend{display:none}.spin-wheel{margin-top:.4rem}}
+@media (min-width:701px){.summary-card :is(.reply-donut,.plotting-donut){width:7rem;height:7rem;min-width:7rem;flex-basis:7rem}.summary-card.reply-run{padding:.85rem 1.1rem}}
+.summary-card .summary-legend{margin:.15rem 0 0}.summary-card .spin-wheel{margin-top:.35rem}
+@media (max-width:700px){.summary-card.reply-run .eyebrow{display:none}.summary-card.reply-run{padding:.6rem .8rem}}
+@media (max-width:700px){.inbox-hero .summary-card.reply-run{margin:.25rem 0 .35rem!important}}
+@media (max-width:700px){.summary-card :is(.reply-donut,.plotting-donut){width:6rem!important;height:6rem!important;min-width:6rem!important;flex-basis:6rem!important}.summary-card.reply-run{padding:.45rem .75rem!important}}
+.spin-wheel p:empty{display:none}

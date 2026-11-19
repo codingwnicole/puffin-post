@@ -1,3 +1,4 @@
+import SpinWheel from '../components/SpinWheel'
 import { useEffect, useState, type FormEvent, type CSSProperties } from 'react'
 import type { ReplyDraft } from '../../db/repositories/reply-drafts'
 import { api, clearDraftLocal, restoreDraftLocal, saveDraftLocal, type TrackingOptions } from '../lib/api'
@@ -33,7 +34,7 @@ function DraftCard({ draft, options, reload, converted }: { draft: ReplyDraft; o
     finally { setBusy(false) }
   }
 
-  return <article className="tracking-card">
+  return <article className="tracking-card" data-pick-id={draft.id}>
     <p className="eyebrow">{{ reply: 'Owed reply', plotting: 'Plotting or DM', starter_idea: 'Starter idea', note: 'General note' }[draft.purpose]}</p>
     <h3>{draft.title}</h3>
     {draft.characterIds.length > 0 && <p className="field-help">For: {draft.characterIds.map(id => options.characters.find(character => character.id === id)?.name).filter(Boolean).join(', ')}</p>}
@@ -62,7 +63,8 @@ function PlottingPulse({ drafts }: { drafts: ReplyDraft[] }) {
   const later=plotting.filter(draft=>draft.reminderAt && new Date(draft.reminderAt).getTime()>now).length
   const open=plotting.length-due-later, total=Math.max(plotting.length,1)
   const dueEnd=Math.round(due/total*100), laterEnd=dueEnd+Math.round(later/total*100)
-  return <aside className="plotting-pulse tracking-card"><div className="plotting-donut" style={{'--due':`${dueEnd}%`,'--later':`${laterEnd}%`} as CSSProperties}><strong>{plotting.length}</strong><span>plots</span></div><div><p className="eyebrow">Plotting pulse</p><h3>{plotting.length ? `${due} follow-up${due===1?'':'s'} due` : 'No plotting DMs parked'}</h3><p>{later} later · {open} open-ended. Mark a conversation wrapped when it is settled to clear it from the pulse.</p></div></aside>
+  const openItems=drafts.filter(draft=>draft.state==='open').map(draft=>({id:draft.id,label:draft.title}))
+  return <aside className="plotting-pulse tracking-card summary-card"><div className="plotting-donut" style={{'--due':`${dueEnd}%`,'--later':`${laterEnd}%`} as CSSProperties}><strong>{plotting.length}</strong><span>plots</span></div><div><p className="eyebrow">Plotting pulse</p><h3>{plotting.length ? `${due} follow-up${due===1?'':'s'} due` : 'No plotting DMs parked'}</h3><p>{later} later · {open} open-ended. Mark a conversation wrapped when it is settled to clear it from the pulse.</p><SpinWheel items={openItems} empty="Nothing parked right now."/></div></aside>
 }
 
 export default function ReplyParkingLotPage() {

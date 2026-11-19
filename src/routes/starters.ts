@@ -132,11 +132,13 @@ export function starterRoutes() {
     const whoDisplay = whoCaptured ? capAtWordBoundary(whoCaptured.replace(/@[^\s,]+/g, '').replace(/\bft\.?\b/i, '').replace(/\s+/g, ' ').replace(/^\W+|\W+$/g, ''), 60) || 'writing partner' : undefined
     const whereDisplay = whereCaptured ? capAtWordBoundary(whereCaptured, 60) : undefined
     const capTitle = (title: string) => capAtWordBoundary(title, 120)
-    const suggestedTitle = selectedCharacter?.name ? capTitle(`${selectedCharacter.name}${whoDisplay ? ` × ${whoDisplay}` : ''}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : post.title
+    // No RP header: the partner's blog name stands in for their character, never the raw post text.
+    const partnerLabel = whoDisplay ?? (suggestedPartner ? suggestedPartner.replace(/\.tumblr\.com$/, '') : null)
+    const suggestedTitle = selectedCharacter?.name ? capTitle(`${selectedCharacter.name}${partnerLabel ? ` × ${partnerLabel}` : ''}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : post.title
     const parsedCharacterNames = parseDeclaredCharacterNames(parserSource)
     const partnerNames = parsedCharacterNames.filter(name => name.localeCompare(selectedCharacter?.name ?? '', undefined, { sensitivity:'accent' }) !== 0)
     const parsedTitle = selectedCharacter?.name && partnerNames.length ? capTitle(`${selectedCharacter.name} × ${partnerNames.join(' × ')}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : undefined
-    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:selectedCharacter?.name, suggestedTitle:parsedTitle ?? suggestedTitle, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [clickedPost.rootPostId, clickedPost.id, reference.postId]) }
+    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:selectedCharacter?.name, suggestedTitle:parsedTitle ?? suggestedTitle, titleNeedsPartner: !parsedTitle && !whoDisplay, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [clickedPost.rootPostId, clickedPost.id, reference.postId]) }
   }
 
   async function findOrCreatePartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, blogIdentifier:string) {
@@ -197,7 +199,7 @@ export function starterRoutes() {
     const manualId=crypto.randomUUID()
     // Already tracked (any blog, any character): reuse that thread, never a second copy.
     const existing = found?.existingStarterId ? await getStarter(scope, found.existingStarterId) : null
-    const starter = existing ?? await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || found?.suggestedTitle || characterTitle(found?.characterName, found?.parsedCharacterNames) || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(latestPost?.preview ?? found?.preview) })
+    const starter = existing ?? await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || (found?.titleNeedsPartner && found.characterName && partnerBlog ? capAtWordBoundary(`${found.characterName} × ${partnerBlog.replace(/\.tumblr\.com$/, '')}`, 120) : null) || found?.suggestedTitle || characterTitle(found?.characterName, found?.parsedCharacterNames) || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(latestPost?.preview ?? found?.preview) })
     const partnerId=partnerBlog ? await findOrCreatePartner(scope,partnerBlog) : input.partnerName?.trim() ? await findOrCreateManualPartner(scope,input.partnerName) : null
     if (found?.tags?.length) await applyPostTags(scope, starter.id, found.tags)
     const branch = (partnerId || !found)
