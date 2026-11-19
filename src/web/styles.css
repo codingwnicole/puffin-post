@@ -376,3 +376,4 @@ p{text-wrap:pretty}
 @media (max-width:760px){.modal-card.card-editor{grid-template-columns:1fr}.card-editor-preview{position:static;order:-1;width:min(15rem,100%);margin-inline:auto}}
 @media (prefers-reduced-motion:reduce){.tcard,.tcard-flip{transition:none}.tcard{transform:none}}
 .card-editor input:not([type=radio]):not([type=file]),.card-editor textarea{width:100%;box-sizing:border-box}.card-editor-row>label{min-width:0}
+.upload-hint{max-width:46rem;margin:.4rem 0 0}

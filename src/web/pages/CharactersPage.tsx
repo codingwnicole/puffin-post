@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { api, peekCache, staleGet } from '../lib/api'
+import { IMAGE_ACCEPT, IMAGE_HINT, PORTRAIT_HINT, squareIcon } from '../lib/uploads'
 import { toast, undoCharacterArchive, undoReturnToPlanner } from '../lib/toast'
 import { initialsFor } from '../components/InitialsAvatar'
 import TradingCard, { THEMES, downloadCard, emptyCard, type CardProfile, type CardStats, type ThemeId } from '../components/TradingCard'
@@ -12,18 +13,6 @@ type Group = { id: string; name: string; characterIds: string[] }
 type InboxBranch = { characterId: string; status: string }
 type Counts = { total: number; mine: number; theirs: number }
 const blogLabel = (value: string) => value.replace(/\.tumblr\.com$/i, '')
-
-async function squareIcon(file: File) {
-  const image = await createImageBitmap(file)
-  const size = Math.min(image.width, image.height)
-  const canvas = document.createElement('canvas'), context = canvas.getContext('2d')
-  canvas.width = 600; canvas.height = 600
-  if (!context) throw new Error('Could not prepare image')
-  context.drawImage(image, (image.width - size) / 2, (image.height - size) / 2, size, size, 0, 0, 600, 600)
-  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', .9))
-  if (!blob) throw new Error('Could not prepare image')
-  return new File([blob], 'character-icon.webp', { type: 'image/webp' })
-}
 
 async function exportCharacterCard(character: Character, counts: Counts) {
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d')
@@ -93,7 +82,7 @@ function CharacterCard({ row, index, assignments, groups, stat, iconVersion, bus
     <div className="character-rps"><strong>RP sections</strong>{characterGroups.length ? <span>{characterGroups.map(group => group.name).join(' / ')}</span> : <span>Not sorted yet</span>}{!characterGroups.length && availableGroups.length > 0 ? <label>Add {row.name} to an RP section<select className="character-rp-picker" value="" disabled={busy} onChange={event => { if (event.target.value) void addToGroup(event.target.value, row.id) }}><option value="">Add to RP.</option>{availableGroups.map(group => <option value={group.id} key={group.id}>{group.name}</option>)}</select></label> : !characterGroups.length ? <button type="button" className="text-button" onClick={showCreateGroup}>Create an RP</button> : null}</div>
     <div className="character-stats"><a href={'#inbox?characterId=' + row.id}><strong>{stat.total}</strong> thread{stat.total === 1 ? '' : 's'}</a><span><strong>{stat.mine}</strong> your turn</span><span><strong>{stat.theirs}</strong> their turn</span></div>
     <Quicklinks characterId={row.id} />
-    <div className="character-actions"><label className="icon-picker">{row.iconObjectKey ? 'Replace icon' : 'Upload icon'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void upload(row.id, file) }} /></label><details className="character-more"><summary>More</summary><div className="character-more-menu"><button type="button" className="secondary-button" onClick={editCard}>{row.card ? 'Edit trading card' : 'Make a trading card'}</button><button type="button" className="secondary-button" onClick={() => void exportCharacterCard(row, stat).catch(problem => reportError(problem.message))}>Export stats card</button><button type="button" className="secondary-button" onClick={() => void returnToPlanner(row.id)}>Return to planner</button><button className="danger-button" type="button" onClick={() => void remove(row.id)}>Remove character</button></div></details></div>
+    <div className="character-actions"><label className="icon-picker" title={IMAGE_HINT}>{row.iconObjectKey ? 'Replace icon' : 'Upload icon'}<input type="file" accept={IMAGE_ACCEPT} onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void upload(row.id, file) }} /></label><details className="character-more"><summary>More</summary><div className="character-more-menu"><button type="button" className="secondary-button" onClick={editCard}>{row.card ? 'Edit trading card' : 'Make a trading card'}</button><button type="button" className="secondary-button" onClick={() => void exportCharacterCard(row, stat).catch(problem => reportError(problem.message))}>Export stats card</button><button type="button" className="secondary-button" onClick={() => void returnToPlanner(row.id)}>Return to planner</button><button className="danger-button" type="button" onClick={() => void remove(row.id)}>Remove character</button></div></details></div>
   </article>
 }
 
@@ -120,7 +109,7 @@ function CardEditor({ row, stats, portrait, upload, close, saved }: { row: Chara
       <div className="card-editor-fields">
         <h2 id="card-editor-title">{row.name}’s trading card</h2>
         <fieldset className="card-theme-picker"><legend>Style</legend>{(Object.keys(THEMES) as ThemeId[]).map(id => <label key={id} style={{ '--swatch': `linear-gradient(135deg, ${THEMES[id].bg[0]}, ${THEMES[id].foil[1]})` } as CSSProperties}><input type="radio" name="theme" value={id} checked={draft.theme === id} onChange={() => set('theme', id)} /><span>{THEMES[id].label}<small>{THEMES[id].group}</small></span></label>)}</fieldset>
-        <label className="icon-picker">{portrait ? 'Replace portrait' : 'Upload portrait'}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void upload(file).catch(problem => setError((problem as Error).message)) }} /></label>
+        <label className="icon-picker">{portrait ? 'Replace portrait' : 'Upload portrait'}<input type="file" accept={IMAGE_ACCEPT} aria-describedby="portrait-hint" onChange={event => { const file = event.currentTarget.files?.[0]; if (file) void upload(file).catch(problem => setError((problem as Error).message)) }} /></label><p className="field-help" id="portrait-hint">{PORTRAIT_HINT}</p>
         <div className="card-editor-row">{field('nickname', 'Nickname / alias', 60)}{field('age', 'Age', 30)}{field('birthdate', 'Birthdate', 40)}</div>
         <label>Quote<textarea value={draft.quote} maxLength={160} rows={2} onChange={event => set('quote', event.target.value)} /></label>
         <div className="card-editor-row">{field('song', 'Theme song', 60)}{field('artist', 'Artist', 60)}<label>Favorite color<input type="color" value={draft.favoriteColor} onChange={event => set('favoriteColor', event.target.value)} /></label></div>
@@ -160,7 +149,7 @@ export default function CharactersPage() {
   const cardStats = (row: Character): CardStats => ({ ...(counts[row.id] ?? { total: 0, mine: 0, theirs: 0 }), rps: groups.filter(group => group.characterIds.includes(row.id)).map(group => group.name) })
   const editing = rows.find(row => row.id === editingId)
   const card = (row: Character, index?: number) => view === 'cards' ? <CardTile key={row.id} row={row} stats={cardStats(row)} portrait={portraitFor(row, iconVersions[row.id])} edit={() => setEditingId(row.id)} reportError={setError} /> : <CharacterCard editCard={() => setEditingId(row.id)} key={row.id} index={index} row={row} assignments={assignments} groups={groups} stat={counts[row.id] ?? { total: 0, mine: 0, theirs: 0 }} iconVersion={iconVersions[row.id]} busy={busy} addToGroup={addToGroup} upload={upload} remove={remove} returnToPlanner={returnToPlanner} showCreateGroup={() => setAddingGroup(true)} reportError={setError} />
-  return <section aria-labelledby="page-title"><div className="character-page-heading"><div><h1 id="page-title" className="page-heading">Characters</h1><p className="page-description">Build your cast, connect their Tumblr, and place them in the RP spaces where they write.</p></div><div className="actions"><div className="view-switch" role="group" aria-label="Show characters as"><button type="button" aria-pressed={view === 'details'} onClick={() => setView('details')}>Details</button><button type="button" aria-pressed={view === 'cards'} onClick={() => setView('cards')}>✦ Cards</button></div><button onClick={() => setAddingGroup(!addingGroup)}>{addingGroup ? 'Close' : 'Add an RP'}</button><button onClick={() => setAdding(!adding)}>{adding ? 'Close' : 'Add character'}</button></div></div>
+  return <section aria-labelledby="page-title"><div className="character-page-heading"><div><h1 id="page-title" className="page-heading">Characters</h1><p className="page-description">Build your cast, connect their Tumblr, and place them in the RP spaces where they write.</p><p className="field-help upload-hint"><strong>Images:</strong> {IMAGE_HINT}</p></div><div className="actions"><div className="view-switch" role="group" aria-label="Show characters as"><button type="button" aria-pressed={view === 'details'} onClick={() => setView('details')}>Details</button><button type="button" aria-pressed={view === 'cards'} onClick={() => setView('cards')}>✦ Cards</button></div><button onClick={() => setAddingGroup(!addingGroup)}>{addingGroup ? 'Close' : 'Add an RP'}</button><button onClick={() => setAdding(!adding)}>{adding ? 'Close' : 'Add character'}</button></div></div>
     {error && <p role="alert">{error}</p>}
     {addingGroup && <form className="character-create tracking-card" onSubmit={async event => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement, name = form ? new FormData(form).get('name') : null; try { setError(''); await api('/rp-groups', 'POST', { name }); if (form) form.reset(); setAddingGroup(false); await load() } catch (problem) { setError((problem as Error).message) } }}><label>RP name<input name="name" required maxLength={120} autoFocus placeholder="e.g. avast" /></label><button>Add RP</button></form>}
     {adding && <form className="character-create tracking-card" onSubmit={async event => { event.preventDefault(); const form = event.currentTarget as HTMLFormElement, name = form ? new FormData(form).get('name') : null; try { setError(''); await api('/characters', 'POST', { name, state: 'active' }); if (form) form.reset(); setAdding(false); await load() } catch (problem) { setError((problem as Error).message) } }}><label>Name<input name="name" required maxLength={200} autoFocus placeholder="Character name" /></label><button>Add to cast</button></form>}

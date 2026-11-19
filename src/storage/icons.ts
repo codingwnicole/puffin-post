@@ -2,8 +2,8 @@ import { HTTPException } from 'hono/http-exception'
 import type { WorkspaceScope } from '../db/client'
 import { requireMembership } from '../db/repositories/workspaces'
 
-const ALLOWED = new Set(['image/jpeg','image/png','image/webp'])
-const MAX_BYTES = 2 * 1024 * 1024
+const ALLOWED = new Set(['image/jpeg','image/png','image/webp','image/gif'])
+export const MAX_ICON_BYTES = 4 * 1024 * 1024
 
 export interface IconUploadInput extends WorkspaceScope { characterId:string; file:File }
 export interface IconReadInput extends WorkspaceScope { characterId:string }
@@ -11,7 +11,7 @@ export interface IconReadInput extends WorkspaceScope { characterId:string }
 export async function putCharacterIcon(input: IconUploadInput) {
   await requireMembership(input.db,input.userId,input.workspaceId)
   if (!ALLOWED.has(input.file.type)) throw new HTTPException(415,{message:'unsupported image type'})
-  if (!input.file.size || input.file.size > MAX_BYTES) throw new HTTPException(413,{message:'Icon exceeds 2 MB limit'})
+  if (!input.file.size || input.file.size > MAX_ICON_BYTES) throw new HTTPException(413,{message:'Images can be up to 4 MB'})
   const character = await input.db.prepare('SELECT id,icon_object_key AS iconObjectKey FROM characters WHERE workspace_id=? AND id=?').bind(input.workspaceId,input.characterId).first<{id:string;iconObjectKey:string|null}>()
   if (!character) throw new HTTPException(404,{message:'Character not found'})
   const contentType = await validatedRasterType(input.file)
@@ -33,6 +33,7 @@ export async function validatedRasterType(file: File): Promise<string> {
   const matches = (...signature:number[]) => signature.every((value,index) => bytes[index] === value)
   if (matches(0xff,0xd8,0xff)) return 'image/jpeg'
   if (matches(0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a)) return 'image/png'
+  if (matches(0x47,0x49,0x46,0x38) && (bytes[4] === 0x37 || bytes[4] === 0x39) && bytes[5] === 0x61) return 'image/gif'
   if (matches(0x52,0x49,0x46,0x46) && matchesAt(bytes,8,0x57,0x45,0x42,0x50)) return 'image/webp'
   throw new HTTPException(415,{message:'unsupported image type'})
 }

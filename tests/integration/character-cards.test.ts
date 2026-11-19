@@ -28,3 +28,4 @@ describe('character trading cards', () => {
     expect(wrap('', 10, 2)).toEqual([])
   })
 })
+

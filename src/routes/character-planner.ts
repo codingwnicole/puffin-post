@@ -2,7 +2,7 @@ import { Context, Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { Env } from '../worker'
 import { requireWorkspace } from '../auth/sessions'
-import { iconContentTypeAllowed, validatedRasterType } from '../storage/icons'
+import { MAX_ICON_BYTES, iconContentTypeAllowed, validatedRasterType } from '../storage/icons'
 
 type PlanInput = { name?: string; faceclaim?: string | null; notes?: string | null; state?: 'idea' | 'developing' | 'ready' }
 
@@ -107,7 +107,7 @@ export function characterPlannerRoutes() {
 
   app.post('/:id/icon', async c => {
     const s=await requirePlan(c,c.req.param('id')),form=await c.req.formData(),file=form.get('icon')
-    if(!(file instanceof File)||!iconContentTypeAllowed(file.type)||!file.size||file.size>2*1024*1024)throw new HTTPException(400,{message:'Choose a JPG, PNG, or WebP image under 2 MB'})
+    if(!(file instanceof File)||!iconContentTypeAllowed(file.type)||!file.size||file.size>MAX_ICON_BYTES)throw new HTTPException(400,{message:'Choose a JPG, PNG, WebP, or GIF up to 4 MB'})
     const contentType=await validatedRasterType(file),previous=await s.db.prepare('SELECT icon_object_key AS iconObjectKey FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId,c.req.param('id')).first<{iconObjectKey:string|null}>(),key=`character-plans/${s.workspaceId}/${c.req.param('id')}/${crypto.randomUUID()}`
     await c.env.ICONS.put(key,file.stream(),{httpMetadata:{contentType}})
     try{await s.db.prepare('UPDATE character_plans SET icon_object_key=?,updated_at=CURRENT_TIMESTAMP WHERE workspace_id=? AND id=?').bind(key,s.workspaceId,c.req.param('id')).run()}catch(error){await c.env.ICONS.delete(key);throw error}

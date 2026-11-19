@@ -18,6 +18,13 @@ test('make a trading card, see it in the Cards view, flip it, and download a PNG
   const editor = page.getByRole('dialog')
   await editor.getByText('Vamp Romantic').click()
   await editor.getByLabel('Nickname / alias').fill('Little Fox')
+  // A GIF portrait goes up untouched (animation kept) and shows on the card; the size hint is visible.
+  await expect(editor.locator('#portrait-hint')).toContainText('600 × 600')
+  const uploaded = page.waitForResponse(r => r.url().endsWith('/icon') && r.request().method() === 'POST')
+  await editor.locator('input[type=file]').setInputFiles({ name: 'wren.gif', mimeType: 'image/gif', buffer: Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64') })
+  expect((await uploaded).status()).toBe(201)
+  await expect(editor.locator('[data-side=front] image')).toHaveCount(1)
+  expect((await page.request.get(`/api/characters/${id}/icon`)).headers()['content-type']).toBe('image/gif')
   await editor.getByLabel('Quote').fill('I keep my promises, even the bad ones.')
   await editor.getByLabel('Fun fact 1').fill('Hates the rain')
   await expect(editor.locator('.tcard')).toHaveAttribute('data-theme-id', 'vamp')
