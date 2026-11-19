@@ -9,7 +9,8 @@ export async function trackingFixture() {
   const originalFetch = globalThis.fetch
   globalThis.fetch = async (input: RequestInfo | URL) => {
     const url = String(input)
-    const match = /\/blog\/([^/]+)\/posts\/(\d+)/.exec(url)
+    // Single-post reads use the list endpoint filtered by id (with reblog_info).
+    const match = /\/blog\/([^/]+)\/posts\?id=(\d+)/.exec(url)
     if (match) {
       const blog = decodeURIComponent(match[1]).replace(/\.tumblr\.com$/,'')
       const id = match[2]
@@ -22,7 +23,7 @@ export async function trackingFixture() {
       const rootId = stub?.reblogged_root_id
       const rootName = stub?.reblogged_root_name
       const trail = stub?.trail ?? null
-      return new Response(JSON.stringify({ response:{ blog:{ name:blog }, id_string:id, tags:['ooc','open','a/o'], reblogged_root_id: rootId ?? null, reblogged_root_name: rootName ?? null, trail } }), { status:200, headers:{'content-type':'application/json'} })
+      return new Response(JSON.stringify({ response:{ posts:[{ blog_name:blog, id_string:id, tags:['ooc','open','a/o'], reblogged_root_id: rootId ?? null, reblogged_root_name: rootName ?? null, trail }] } }), { status:200, headers:{'content-type':'application/json'} })
     }
     if (url.includes('/notes?')) {
       const notesStub = (globalThis as any).__tumblrStubNotes

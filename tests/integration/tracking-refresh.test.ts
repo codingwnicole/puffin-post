@@ -94,15 +94,15 @@ function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot
         const notes = (notesByRoot[idParam] || []).map((n: any) => ({ type: 'reblog', blog_name: n.blog, post_id: n.id, reblog_parent_blog_name: n.parentBlog, timestamp: Math.floor(Date.now() / 1000) }))
         return new Response(JSON.stringify({ response: { notes } }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
-      if (path.includes('/posts/')) {
+      if (path.includes('/posts?id=')) {
         postCalls++
-        const postId = decodeURIComponent(path.split('/posts/')[1])
+        const postId = new URL(url).searchParams.get('id') || ''
         const preview = postId in postPreviews ? postPreviews[postId] : null
         const raw: any = post(postId, 'partner', 'root', 'main')
-        raw.blog = { name: 'partner' }
+        raw.blog_name = 'partner'
         raw.id_string = postId
         if (preview) raw.content = [{ text: preview }]
-        return new Response(JSON.stringify({ response: raw }), { status: 200, headers: { 'content-type': 'application/json' } })
+        return new Response(JSON.stringify({ response: { posts: [raw] } }), { status: 200, headers: { 'content-type': 'application/json' } })
       }
       if (path.includes('/info')) {
         infoCalls++

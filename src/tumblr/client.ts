@@ -74,33 +74,31 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
     }
     return response
   }
-  return { async getPost(blogIdentifier, postId) {
-    const url = `https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/posts/${encodeURIComponent(postId)}`
-    const response = await safeRun(url, { headers: { Authorization: await oauthAuthorizationHeader('GET', url, config.consumerKey, config.consumerSecret, config.token, config.tokenSecret) } })
-    if (!response.ok) throw new Error('Tumblr post not found')
-    const body = await response.json() as { response?: { blog?: { name?: string }; id_string?: string; id?: string | number; reblogged_root_id?: string|number; reblogged_root_name?:string; reblogged_root_url?:string; tags?: string[]; summary?: string; title?: string; post_url?: string; content?: Array<{ text?: string }>; trail?: Array<{ content?: Array<{ text?: string }>; blog?: { name?: string }; post?: { id?: string | number } }> } }
-    const post = body.response
-    if (!post?.blog?.name || !(post.id_string ?? post.id)) throw new Error('Tumblr post not found')
+  // reblog_info=true is what makes Tumblr include reblogged_root_id/name. Without it the root falls
+  // back to the trail, and RPers trim trails, so trail[0] is just the partner's last reply and every
+  // reply looked like a new thread. The single-post endpoint (/posts/{id}) is replaced by the list
+  // endpoint filtered by id, which returns the same NPF post plus the reblog info.
+  type RawPost = { blog_name?: string; id_string?: string; id?: string | number; reblogged_root_id?: string | number; reblogged_root_name?: string; tags?: string[]; summary?: string; title?: string; post_url?: string; content?: Array<{ text?: string }>; trail?: Array<{ content?: Array<{ text?: string }>; blog?: { name?: string }; post?: { id?: string | number } }> }
+  const toPost = (post: RawPost): TumblrPost | null => {
+    if (!post.blog_name || (post.id_string ?? post.id) == null) return null
     const title = (post.title ?? post.summary)?.trim().replace(/\s+/g, ' ').slice(0, 300)
     const parserText = postText(post.content, post.trail, title)
-    const preview = parserText?.slice(0, 700)
-    const returnedBlogIdentifier = `${post.blog.name}.tumblr.com`.toLowerCase()
-    const root = resolvePostThreadRoot({ blogIdentifier: returnedBlogIdentifier, id: String(post.id_string ?? post.id), rebloggedRootId: post.reblogged_root_id == null ? undefined : String(post.reblogged_root_id), rebloggedRootName: post.reblogged_root_name, trail: post.trail?.filter(item => Boolean(item.post?.id && item.blog?.name)).map(item => ({ blog: { name: (item.blog as { name: string }).name }, post: { id: String((item.post as { id: string | number }).id) } })) })
-    return { blogIdentifier:returnedBlogIdentifier, id: String(post.id_string ?? post.id), rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, tags: post.tags ?? [], title, preview, parserText, postUrl: post.post_url }
-  }, async getRecentPosts(blogIdentifier) {
-    const url = `https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/posts?limit=20&npf=true`
+    const blogIdentifier = `${post.blog_name}.tumblr.com`.toLowerCase(), id = String(post.id_string ?? post.id)
+    const root = resolvePostThreadRoot({ blogIdentifier, id, rebloggedRootId: post.reblogged_root_id == null ? undefined : String(post.reblogged_root_id), rebloggedRootName: post.reblogged_root_name, trail: post.trail?.filter(item => Boolean(item.post?.id && item.blog?.name)).map(item => ({ blog: { name: (item.blog as { name: string }).name }, post: { id: String((item.post as { id: string | number }).id) } })) })
+    return { blogIdentifier, id, rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, tags: post.tags ?? [], title, preview: parserText?.slice(0, 700), parserText, postUrl: post.post_url }
+  }
+  const getPosts = async (url: string, failure: (status: number) => string) => {
     const response = await safeRun(url, { headers: { Authorization: await oauthAuthorizationHeader('GET', url, config.consumerKey, config.consumerSecret, config.token, config.tokenSecret) } })
-    if (!response.ok) throw new Error(`Tumblr recent posts failed (${response.status})`)
-    const body = await response.json() as { response?: { posts?: Array<{ blog_name?: string; id_string?: string; id?: string | number; reblogged_root_id?:string|number; reblogged_root_name?:string; tags?: string[]; summary?: string; title?: string; post_url?: string; content?: Array<{ text?: string }>; trail?: Array<{ content?: Array<{ text?: string }>; blog?: { name?: string }; post?: { id?: string | number } }> }> } }
-    return (body.response?.posts ?? []).flatMap(post => {
-      if (!post.blog_name || (post.id_string ?? post.id) == null) return []
-      const title = (post.title ?? post.summary)?.trim().replace(/\s+/g, ' ').slice(0, 300)
-      const parserText = postText(post.content, post.trail, title)
-      const preview = parserText?.slice(0, 700)
-      const postIdentifier=`${post.blog_name}.tumblr.com`.toLowerCase()
-      const root = resolvePostThreadRoot({ blogIdentifier: postIdentifier, id: String(post.id_string ?? post.id), rebloggedRootId: post.reblogged_root_id == null ? undefined : String(post.reblogged_root_id), rebloggedRootName: post.reblogged_root_name, trail: post.trail?.filter(item => Boolean(item.post?.id && item.blog?.name)).map(item => ({ blog: { name: (item.blog as { name: string }).name }, post: { id: String((item.post as { id: string | number }).id) } })) })
-      return [{ blogIdentifier: postIdentifier, id: String(post.id_string ?? post.id), rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, tags: post.tags ?? [], title, preview, parserText, postUrl: post.post_url }]
-    })
+    if (!response.ok) throw new Error(failure(response.status))
+    return ((await response.json() as { response?: { posts?: RawPost[] } }).response?.posts ?? [])
+  }
+  return { async getPost(blogIdentifier, postId) {
+    const posts = await getPosts(`https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/posts?id=${encodeURIComponent(postId)}&npf=true&reblog_info=true`, () => 'Tumblr post not found')
+    const post = posts[0] && toPost(posts[0])
+    if (!post) throw new Error('Tumblr post not found')
+    return post
+  }, async getRecentPosts(blogIdentifier) {
+    return (await getPosts(`https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/posts?limit=20&npf=true&reblog_info=true`, status => `Tumblr recent posts failed (${status})`)).flatMap(post => toPost(post) ?? [])
   }, async getThreadActivity(blogIdentifier, postId) {
     // reblogs_with_tags: reblogs only (newest first), so a burst of likes can't push the latest reply
     // off the page. ponytail: one page; page 2 via before_timestamp if busy group threads ever need it.
