@@ -82,6 +82,24 @@ describe('data lifecycle: disconnect, account deletion, refresh lock', () => {
     expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM users WHERE id=?').bind('a').first()).n).toBe(0)
   })
 
+  it('account deletion succeeds for a lived-in account (rows in every linked table; foreign keys enforced)', async () => {
+    expect((await fixture.request('/api/starters', 'POST', starterInput, 'a')).status).toBe(201)
+    const starter = await env.DB.prepare("SELECT id FROM starters WHERE workspace_id='a'").first()
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO reply_branches (id,workspace_id,starter_id,partner_id) VALUES ('branch-x','a',?,'partner-a')").bind(starter.id),
+      env.DB.prepare("INSERT INTO activities (id,workspace_id,starter_id,reply_branch_id,type,actor,source) VALUES ('act-x','a',?,'branch-x','reply','me','test')").bind(starter.id),
+      env.DB.prepare("INSERT OR IGNORE INTO refresh_cursors (workspace_id,character_blog_id) VALUES ('a','blog-a')"),
+      env.DB.prepare("INSERT INTO push_subscriptions (id,workspace_id,user_id,endpoint) VALUES ('push-x','a','a','https://push.example/x')"),
+      env.DB.prepare("INSERT INTO notification_preferences (workspace_id,user_id) VALUES ('a','a')"),
+      env.DB.prepare("INSERT INTO invites (id,workspace_id,email,token_hash,expires_at) VALUES ('invite-x','a','friend@example.com','hash-x','2099-01-01')"),
+      env.DB.prepare("INSERT INTO magic_links (token_hash,email,intent,workspace_id,invite_id,expires_at) VALUES ('ml-x','friend@example.com','accept_invite','a','invite-x','2099-01-01')"),
+    ])
+    expect((await env.DB.prepare('PRAGMA foreign_keys').first()).foreign_keys).toBe(1)
+    const res = await fixture.request('/api/settings/account', 'DELETE', { confirm: 'DELETE' }, 'a')
+    expect(res.status, await res.clone().text()).toBe(204)
+    expect(await workspaceRows('a')).toBe(0)
+  })
+
   it('account deletion (shared) keeps the other member, clears only this user, and a re-sign-in is empty', async () => {
     // User b joins user a's workspace as a member.
     await env.DB.prepare("INSERT INTO memberships (workspace_id,user_id,role) VALUES (?,?,'member')").bind('a', 'b').run()

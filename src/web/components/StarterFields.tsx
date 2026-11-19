@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { api, type TrackingOptions } from '../lib/api'
 
-type Resolution = { title?:string; suggestedTitle?:string; parsedCharacterNames?:string[]; preview?:string; sourceBlogAssigned:boolean; participants:string[];suggestedPartner?:string|null;titleNeedsPartner?:boolean;characterName?:string; candidates:{characterId:string;characterName:string;characterTag:string|null}[] }
+type Resolution = { title?:string; suggestedTitle?:string; parsedCharacterNames?:string[]; preview?:string; summary?:string; sourceBlogAssigned:boolean; participants:string[];suggestedPartner?:string|null;titleNeedsPartner?:boolean;characterName?:string; candidates:{characterId:string;characterName:string;characterTag:string|null}[] }
 const blogLabel=(value:string)=>value.replace(/\.tumblr\.com$/i,'')
 
 export default function StarterFields({options,title='',characterId=''}:{options:TrackingOptions;title?:string;characterId?:string}) {
@@ -17,7 +17,7 @@ export default function StarterFields({options,title='',characterId=''}:{options
       if(result.candidates.length===1&&result.candidates[0].characterId!==chosenCharacter){setSelectedCharacter(result.candidates[0].characterId);return resolve(result.candidates[0].characterId)}
       setResolution(result)
       if(!titleTouched&&(result.suggestedTitle||result.title))setTitleValue(result.suggestedTitle||result.title||'')
-      if(!descriptionTouched&&result.preview)setDescription(result.preview)
+      if(!descriptionTouched&&(result.summary||result.preview))setDescription(result.summary||result.preview||'')
       setParticipants(result.participants)
       setSelectedPartner(current=>result.participants.includes(current)?current:result.suggestedPartner??'')
       setManualPartner(current=>current||result.parsedCharacterNames?.find(name=>name.localeCompare(options.characters.find(character=>character.id===chosenCharacter)?.name??'',undefined,{sensitivity:'accent'})!==0)||'')

@@ -45,7 +45,9 @@ export default function InboxPage() {
   const query=new URLSearchParams(); for(const [key,value] of Object.entries(filters)){if(value && value!==false)query.set(key,value===true?'true':String(value))} if(focusMode)query.set('doNext','true'); query.set('limit','100'); if(pageOffset>0)query.set('offset',String(pageOffset))
   // Mirror filters into the hash (replaceState: no history entry per keystroke) so
   // Back/Reload and deep-links land on the same view, and the view is shareable.
-  useEffect(()=>{const raw=window.location.hash.slice(1).split('?')[0];if(!['','inbox','/inbox'].includes(raw))return;const base='#'+(raw||'inbox'),qs=query.toString();window.history.replaceState(null,'',qs?`${base}?${qs}`:base)},[query])
+  // Only the view (filters, Do-next) goes in the address; limit/offset are for the API.
+  const viewQs=(()=>{const view=new URLSearchParams(query);view.delete('limit');view.delete('offset');return view.toString()})()
+  useEffect(()=>{const raw=window.location.hash.slice(1).split('?')[0];if(!['','inbox','/inbox'].includes(raw))return;const base='#'+(raw||'inbox');window.history.replaceState(null,'',viewQs?`${base}?${viewQs}`:base)},[viewQs])
   async function reload(){setInbox(await api(`/inbox${query.size?`?${query}`:''}`))}
   async function createStarter(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setError('');setBusy(true);const payload:Record<string,FormDataEntryValue|null>=Object.fromEntries(new FormData(event.currentTarget));payload.groupId=payload.groupId||null;payload.partnerBlogIdentifier=payload.partnerBlogIdentifier||null;try{const starter=await api<{id:string}>('/starters','POST',payload);window.location.hash=`starter/${starter.id}`}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
   useEffect(()=>{let active=true;setError('');

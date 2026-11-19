@@ -80,7 +80,7 @@ it('hydrates the latest direct exchange as soon as a thread is added', async () 
       {type:'reblog',blog_name:'a',post_id:'mine',reblog_parent_blog_name:'tidebvnd',timestamp:100},
       {type:'reblog',blog_name:'tidebvnd',post_id:'theirs',reblog_parent_blog_name:'a',timestamp:200},
     ]} }), {status:200,headers:{'content-type':'application/json'}})
-    if (url.includes('/posts/')) return new Response(JSON.stringify({ response:{ blog:{name:'a'},id_string:'12345'} }), {status:200,headers:{'content-type':'application/json'}})
+    if (url.includes('/posts?id=')) return new Response(JSON.stringify({ response:{ posts:[{ blog_name:'a',id_string:'12345'}] } }), {status:200,headers:{'content-type':'application/json'}})
     return originalFetch(input)
   }
   try {

@@ -51,7 +51,7 @@ describe('SSRF guard: client blocks disallowed hosts', () => {
     const calls: Array<{ url: string; signal?: AbortSignal | null }> = []
     const fakeFetch: typeof fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       calls.push({ url: String(input), signal: init?.signal })
-      return new Response(JSON.stringify({ response: { id_string: '42', blog: { name: 'a' }, content: [{ text: 'hi' }] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      return new Response(JSON.stringify({ response: { posts: [{ id_string: '42', blog_name: 'a', content: [{ text: 'hi' }] }] } }), { status: 200, headers: { 'content-type': 'application/json' } })
     }) as typeof fetch
     const client = createTumblrClient({ consumerKey: 'k', consumerSecret: 's', token: 't', tokenSecret: 'ts', fetch: fakeFetch })
     await client.getPost('a.tumblr.com', '12345')
@@ -63,7 +63,7 @@ describe('SSRF guard: client blocks disallowed hosts', () => {
 
   it('allows legitimate api.tumblr.com URLs', async () => {
     const mockFetch = (async (input: RequestInfo | URL) => {
-      return new Response(JSON.stringify({ response: { id_string: '42', blog: { name: 'a' }, content: [{ text: 'hi' }] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      return new Response(JSON.stringify({ response: { posts: [{ id_string: '42', blog_name: 'a', content: [{ text: 'hi' }] }] } }), { status: 200, headers: { 'content-type': 'application/json' } })
     }) as unknown as typeof fetch
     const client = createTumblrClient({
       consumerKey: 'k', consumerSecret: 's', token: 't', tokenSecret: 'ts',
