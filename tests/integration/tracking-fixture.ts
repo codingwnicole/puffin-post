@@ -55,12 +55,18 @@ export async function trackingFixture() {
     login.get('/', async c => { await startSession(c,id,id); return c.text('ok') })
     cookies[id] = (await login.request('/', {}, env)).headers.get('set-cookie')!.split(';')[0]
   }
+  const app = createApp(env)
+  // Fire-and-forget R2 cleanup (character/moodboard deletes) uses
+  // c.executionCtx.waitUntil. The fixture has no real ExecutionContext, and
+  // scheduling real R2 deletes makes them race platform.dispose() (ECONNRESET),
+  // so give every request a no-op waitUntil. Cleanup is not part of correctness.
+  const stubCtx = { waitUntil: (_p: unknown) => undefined, passThroughOnException: () => undefined } as unknown as ExecutionContext
   return {
-    env, dispose: async () => { globalThis.fetch = originalFetch; await platform.dispose() },
+    env, cookies, dispose: async () => { globalThis.fetch = originalFetch; await platform.dispose() },
     async request(path: string, method = 'GET', body?: unknown, tenant = 'a') {
-      return createApp(env).request(path, { method, headers: { origin: env.APP_ORIGIN,
+      return app.request(path, { method, headers: { origin: env.APP_ORIGIN,
         cookie: cookies[tenant] ?? '', 'content-type': 'application/json' },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }, env)
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }, env, stubCtx)
     },
   }
 }

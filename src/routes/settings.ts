@@ -13,7 +13,7 @@ const COOKIE = '__Host-threadums_session'
 // ON DELETE CASCADE) must come before their parents.
 const WORKSPACE_TABLES = [
   // deepest children first (FK to characters without cascade)
-  'character_blogs','character_quicklinks','rp_group_characters',
+  'character_blogs','character_quicklinks','character_moodboard_items','rp_group_characters',
   'starter_tags','starters','reply_drafts','reply_draft_characters',
   // remaining workspace tables
   'activity_dismissals','activity_notification_deliveries','character_plan_resources',
