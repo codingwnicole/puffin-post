@@ -9,7 +9,7 @@ test('More menus on a touch phone open on tap, stay open, and close on demand', 
   const ctx = await browser.newContext({ ...devices['Pixel 7'], baseURL: APP, extraHTTPHeaders: { 'cf-connecting-ip': '10.2.1.' + Math.floor(Math.random() * 250), origin: APP } })
   const page = await ctx.newPage()
   await page.goto('/#inbox')
-  expect((await page.request.post('/api/auth/password-sign-up', { data: { email: `more-${Date.now()}@example.test`, password: 'correct horse battery' } })).status()).toBe(201)
+  expect((await page.request.post('/api/auth/password-sign-up', { data: { email: `more-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`, password: 'correct horse battery' } })).status()).toBe(201)
   await page.request.post('/api/characters', { data: { name: 'Wren' } })
   await page.goto('/#characters'); await page.reload()
   const nav = page.locator('.mobile-more')

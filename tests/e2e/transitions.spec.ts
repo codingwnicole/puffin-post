@@ -101,8 +101,10 @@ test.describe('T7d view transitions', () => {
 
     // Navigate by clicking the card; the profile page carries the SAME single name.
     await page.locator('.character-card-top-link').first().click()
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
-    expect(await vtNames(page, 'character-')).toEqual(['character-char-1'])
+    // Wait for the profile page itself: during the transition the old page's h1 is briefly still there.
+    await expect(page).toHaveURL(/#character\//)
+    await expect(page.getByRole('heading', { level: 1 })).not.toHaveText('Characters')
+    await expect.poll(() => vtNames(page, 'character-')).toEqual(['character-char-1'])
   })
 })
 

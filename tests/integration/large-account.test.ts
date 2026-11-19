@@ -6,6 +6,11 @@ let fixture: Awaited<ReturnType<typeof trackingFixture>>
 beforeEach(async () => { fixture = await trackingFixture() }, 60_000)
 afterEach(async () => { await fixture?.dispose() })
 
+// The local D1 proxy can reset one very large batch, so seed in chunks of 500 statements.
+async function batchInChunks(db: D1Database, statements: D1PreparedStatement[]) {
+  for (let i = 0; i < statements.length; i += 500) await db.batch(statements.slice(i, i + 500))
+}
+
 async function seedLargeAccount() {
   const { env } = fixture
   // Fixture already seeded a.tumblr.com (character-a) and b.tumblr.com (character-b)
@@ -25,13 +30,13 @@ async function seedLargeAccount() {
     starterBatch.push(env.DB.prepare('INSERT INTO starters (id,workspace_id,character_id,title,root_post_id,root_blog_id,description,thread_root_id,thread_root_blog_id) VALUES (?,?,?,?,?,?,?,?,?)').bind(id, 'a', 'character-a', 'Scene ' + i, String(100000 + i), blogs[i % 5], '', String(100000 + i), blogs[i % 5]))
     starterBatch.push(env.DB.prepare('INSERT INTO reply_branches (id,workspace_id,starter_id,status,notes,last_activity_at) VALUES (?,?,?,? ,?,?)').bind('branch-big-' + i, 'a', id, 'your_turn', 'note ' + i, '2026-01-' + String((i % 28) + 1) + 'T0' + (i % 10) + ':00:00.000Z'))
   }
-  await env.DB.batch(starterBatch)
+  await batchInChunks(env.DB, starterBatch)
 
   const actBatch = []
   for (let i = 0; i < 3000; i++) {
     actBatch.push(env.DB.prepare('INSERT INTO activities (id,workspace_id,starter_id,reply_branch_id,type,actor,source,created_at) VALUES (?,?,?,?,?,?,?,?)').bind('act-' + i, 'a', 'starter-big-' + (i % 2000), 'branch-big-' + (i % 2000), 'note', blogs[i % 5], 'tumblr', '2026-01-' + String((i % 28) + 1) + 'T' + String(i % 24).padStart(2, '0') + ':00:00.000Z'))
   }
-  await env.DB.batch(actBatch)
+  await batchInChunks(env.DB, actBatch)
 }
 
 it('answers main list routes with bounded pages on a 2000-starter account', async () => {

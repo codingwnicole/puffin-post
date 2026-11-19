@@ -122,7 +122,8 @@ export default function CharacterProfilePage({ id }: { id: string }) {
 
   return (
     <div className="profile-page">
-      <header className="profile-header">
+      {/* Same identity name as the card on the Characters page, so the name glides between the two. */}
+      <header className="profile-header" style={{ viewTransitionName: `character-${row.id}` }}>
         <h1>{row.name}</h1>
         <p className="profile-sections">
           <strong>RP sections</strong>

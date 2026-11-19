@@ -29,8 +29,9 @@ function useSwipeToClose(open: boolean, close: () => void, hasUnsaved: () => boo
   const [notice, setNotice] = useState('')
   const offsetRef = useRef(0)
   const setOffset = (value: number) => { offsetRef.current = value; setOffsetState(value) }
+  // Listeners stay attached while the sheet exists: the browser opens it natively and React learns of that a
+  // moment later, so waiting for `open` could miss a quick first swipe. The grabber is only reachable when open.
   useEffect(() => {
-    if (!open) return
     const sheet = document.querySelector<HTMLElement>('.mobile-more-menu')
     if (!sheet) return
     let startY = 0, startX = 0, dragging = false, height = 0, lastY = 0, lastT = 0, tracking = false
@@ -65,7 +66,7 @@ function useSwipeToClose(open: boolean, close: () => void, hasUnsaved: () => boo
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
     return () => { sheet.removeEventListener('pointerdown', onDown); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); window.removeEventListener('pointercancel', onUp) }
-  }, [open, close, hasUnsaved])
+  }, [open, close, hasUnsaved]) // re-run on open: the sheet element only exists once signed in
   return { offset, notice, clearNotice: () => setNotice('') }
 }
 
