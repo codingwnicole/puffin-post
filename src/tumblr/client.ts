@@ -4,11 +4,10 @@ import { canonicalBlogIdentifier } from './normalize'
 
 function postText(content?: Array<{ text?: string }>, trail?: Array<{ content?: Array<{ text?: string }> }>, fallback?: string) {
   const text = [...(content ?? []), ...(trail?.flatMap(item => item.content ?? []) ?? [])]
-    .map(item => item.text ?? '')
+    .map(item => (item.text ?? '').replace(/\s+/g, ' ').trim())
     .filter(Boolean)
-    .join(' ')
-    .trim()
-    .replace(/\s+/g, ' ')
+    // One line per text block, so an RP header ("Where: …") never runs into the story.
+    .join('\n')
   return (text || fallback)?.slice(0, 6000)
 }
 

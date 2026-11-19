@@ -45,6 +45,40 @@ function characterTitle(own?: string | null, partners: string[] = []) {
   return undefined
 }
 
+const firstWord = (name: string) => name.trim().toLowerCase().split(/\s+/)[0] ?? ''
+const titleCase = (name: string) => name.replace(/(^|[\s'-])(\p{L})/gu, (_match, lead: string, letter: string) => lead + letter.toUpperCase())
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// RPers tag their own muse on their posts: "chayton threads", "convo: chayton and ilyas".
+// Names come only from those shapes, minus the user's own character, and must also appear in the
+// thread text, so an unrelated tag never becomes a title.
+function museNamesFromTags(tags: string[], text: string, isOwn: (name: string) => boolean) {
+  const names: string[] = []
+  for (const raw of tags) {
+    const tag = raw.toLowerCase().trim()
+    const convo = /^(?:convo|conversation|ship|pairing)s?\s*[:\-–]?\s+(.+)$/u.exec(tag)
+    const threads = /^([\p{L}][\p{L}' -]{1,30}?)(?:'s)?\s+(?:threads?|starters?|replies)$/u.exec(tag)
+    if (convo) names.push(...convo[1].split(/\s*(?:&|\+|\/|,|\band\b|\bx\b)\s*/u))
+    else if (threads) names.push(threads[1])
+  }
+  const lower = text.toLowerCase()
+  return names.map(name => name.trim())
+    .filter((name, index, all) => /^[\p{L}][\p{L}' -]{1,30}$/u.test(name) && !isOwn(name) && all.indexOf(name) === index
+      && new RegExp(`(^|[^\\p{L}])${escapeRegExp(name)}($|[^\\p{L}])`, 'u').test(lower))
+    .map(titleCase)
+}
+
+// The scene setup for the summary: the starter's "where" line plus its opening sentences, leaving out
+// the RP header lines (who/where/when/tags, "closed starter for …"). Not a random line from a reply.
+function setupSummary(text?: string, where?: string) {
+  if (!text) return ''
+  const body = text.split('\n')
+    .filter(line => !/^\s*(?:who|where|when|tags?|muses?|characters?|cast|verse|setting|notes?|tw|cw)\s*:/i.test(line) && !/^\s*(?:closed|open|gifted|private)?\s*starter\s+(?:for|to)\b/i.test(line))
+    .join(' ')
+  const opening = compactThreadSummary(body)
+  return where ? compactThreadSummary(`${where.replace(/[.\s]+$/, '')}. ${opening}`) : opening
+}
+
 function parseDeclaredCharacterNames(value?: string) {
   if (!value) return []
   const snippets: string[] = []
@@ -132,13 +166,23 @@ export function starterRoutes() {
     const whoDisplay = whoCaptured ? capAtWordBoundary(whoCaptured.replace(/@[^\s,]+/g, '').replace(/\bft\.?\b/i, '').replace(/\s+/g, ' ').replace(/^\W+|\W+$/g, ''), 60) || 'writing partner' : undefined
     const whereDisplay = whereCaptured ? capAtWordBoundary(whereCaptured, 60) : undefined
     const capTitle = (title: string) => capAtWordBoundary(title, 120)
-    // No RP header: the partner's blog name stands in for their character, never the raw post text.
-    const partnerLabel = whoDisplay ?? (suggestedPartner ? suggestedPartner.replace(/\.tumblr\.com$/, '') : null)
-    const suggestedTitle = selectedCharacter?.name ? capTitle(`${selectedCharacter.name}${partnerLabel ? ` × ${partnerLabel}` : ''}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : post.title
+    // A header usually names the RECIPIENT's muse ("Who: @you ft. Ilyas"). A who-name only stands for the
+    // partner when it is not the user's own character and is not next to an @mention of the user's blogs.
+    const ownName = selectedCharacter?.name
+    const isOwnMuse = (name: string) => Boolean(ownName) && firstWord(name) === firstWord(ownName ?? '')
+    const whoMentionsOwnBlog = Boolean(whoCaptured) && [...workspaceBlogs].some(blog => (whoCaptured ?? '').toLowerCase().includes('@' + blog.replace(/\.tumblr\.com$/, '')))
+    const whoForPartner = whoDisplay && !whoMentionsOwnBlog && !isOwnMuse(whoDisplay) ? whoDisplay : undefined
+    // No usable header: the partner's blog name stands in for their character, never the raw post text.
+    const partnerLabel = whoForPartner ?? (suggestedPartner ? suggestedPartner.replace(/\.tumblr\.com$/, '') : null)
+    const suggestedTitle = ownName ? capTitle(`${ownName}${partnerLabel ? ` × ${partnerLabel}` : ''}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : post.title
     const parsedCharacterNames = parseDeclaredCharacterNames(parserSource)
-    const partnerNames = parsedCharacterNames.filter(name => name.localeCompare(selectedCharacter?.name ?? '', undefined, { sensitivity:'accent' }) !== 0)
-    const parsedTitle = selectedCharacter?.name && partnerNames.length ? capTitle(`${selectedCharacter.name} × ${partnerNames.join(' × ')}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : undefined
-    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:selectedCharacter?.name, suggestedTitle:parsedTitle ?? suggestedTitle, titleNeedsPartner: !parsedTitle && !whoDisplay, parsedCharacterNames, preview:post.preview, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [clickedPost.rootPostId, clickedPost.id, reference.postId]) }
+    // Partner posts carry the partner's muse in their tags ("chayton threads"); the user's own posts never count.
+    const partnerTags = [clickedPost, post].filter(item => !workspaceBlogs.has(canonicalBlogIdentifier(item.blogIdentifier))).flatMap(item => item.tags)
+    const declaredPartners = parsedCharacterNames.filter(name => !isOwnMuse(name))
+    const partnerNames = declaredPartners.length ? declaredPartners : museNamesFromTags(partnerTags, parserSource, isOwnMuse)
+    const parsedTitle = ownName && partnerNames.length ? capTitle(`${ownName} × ${partnerNames.join(' × ')}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : undefined
+    const summary = setupSummary(post.parserText ?? post.preview, whereCaptured)
+    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:ownName, suggestedTitle:parsedTitle ?? suggestedTitle, titleNeedsPartner: !parsedTitle && !whoForPartner, parsedCharacterNames, preview:post.preview, summary, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [clickedPost.rootPostId, clickedPost.id, reference.postId]) }
   }
 
   async function findOrCreatePartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, blogIdentifier:string) {
@@ -199,7 +243,7 @@ export function starterRoutes() {
     const manualId=crypto.randomUUID()
     // Already tracked (any blog, any character): reuse that thread, never a second copy.
     const existing = found?.existingStarterId ? await getStarter(scope, found.existingStarterId) : null
-    const starter = existing ?? await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || (found?.titleNeedsPartner && found.characterName && partnerBlog ? capAtWordBoundary(`${found.characterName} × ${partnerBlog.replace(/\.tumblr\.com$/, '')}`, 120) : null) || found?.suggestedTitle || characterTitle(found?.characterName, found?.parsedCharacterNames) || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || compactThreadSummary(latestPost?.preview ?? found?.preview) })
+    const starter = existing ?? await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || (found?.titleNeedsPartner && found.characterName && partnerBlog ? capAtWordBoundary(`${found.characterName} × ${partnerBlog.replace(/\.tumblr\.com$/, '')}`, 120) : null) || found?.suggestedTitle || characterTitle(found?.characterName, found?.parsedCharacterNames) || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || found?.summary || compactThreadSummary(latestPost?.preview ?? found?.preview) })
     const partnerId=partnerBlog ? await findOrCreatePartner(scope,partnerBlog) : input.partnerName?.trim() ? await findOrCreateManualPartner(scope,input.partnerName) : null
     if (found?.tags?.length) await applyPostTags(scope, starter.id, found.tags)
     const branch = (partnerId || !found)
@@ -254,7 +298,7 @@ export function starterRoutes() {
     if (starter.rootBlogId === 'manual') throw new HTTPException(400, { message:'Manual scenes do not have a Tumblr post to read' })
     const found = await findPost(scope, c.env, `https://www.tumblr.com/${starter.rootBlogId.replace(/\.tumblr\.com$/i, '')}/${starter.rootPostId}`, starter.characterId)
     if (!found.parsedCharacterNames.length) throw new HTTPException(400, { message:'Puffin could not find declared character names in this post yet' })
-    return c.json(await updateStarterTitle(scope, starter.id, found.suggestedTitle || starter.title, starter.premise || compactThreadSummary(found.preview) || starter.description))
+    return c.json(await updateStarterTitle(scope, starter.id, found.suggestedTitle || starter.title, starter.premise || found.summary || compactThreadSummary(found.preview) || starter.description))
   })
   app.delete('/:starterId', async c => {
     const scope=await requireWorkspace(c),id=c.req.param('starterId')

@@ -23,7 +23,7 @@ export async function trackingFixture() {
       const rootId = stub?.reblogged_root_id
       const rootName = stub?.reblogged_root_name
       const trail = stub?.trail ?? null
-      return new Response(JSON.stringify({ response:{ posts:[{ blog_name:blog, id_string:id, tags:['ooc','open','a/o'], reblogged_root_id: rootId ?? null, reblogged_root_name: rootName ?? null, trail }] } }), { status:200, headers:{'content-type':'application/json'} })
+      return new Response(JSON.stringify({ response:{ posts:[{ blog_name:blog, id_string:id, tags: stub?.tags ?? ['ooc','open','a/o'], content: stub?.content, reblogged_root_id: rootId ?? null, reblogged_root_name: rootName ?? null, trail }] } }), { status:200, headers:{'content-type':'application/json'} })
     }
     if (url.includes('/notes?')) {
       const notesStub = (globalThis as any).__tumblrStubNotes
