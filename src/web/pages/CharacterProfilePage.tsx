@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import { api, staleGet } from '../lib/api'
-import TradingCard, { emptyCard, THEMES, type CardProfile, type CardStats } from '../components/TradingCard'
+import TradingCard, { downloadCard, emptyCard, THEMES, type CardProfile, type CardStats } from '../components/TradingCard'
 import CardEditor from '../components/CardEditor'
 import { parsePlaylist } from '../../shared/embeds'
 import { fitImage, IMAGE_ACCEPT, IMAGE_HINT } from '../lib/uploads'
@@ -22,7 +22,10 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [editingCard, setEditingCard] = useState(false)
+  const [showCard, setShowCard] = useState(false)
+  const [downloading, setDownloading] = useState(false)
   const [pinUrl, setPinUrl] = useState('')
+  const overlayRef = useRef<HTMLDivElement>(null)
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -47,6 +50,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   }
 
   useEffect(() => { reload() }, [id])
+  useEffect(() => { if (!showCard) return; const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowCard(false) }; document.addEventListener('keydown', handler); return () => document.removeEventListener('keydown', handler) }, [showCard])
 
   const act = async (run: () => Promise<void>) => {
     setBusy(true)
@@ -127,23 +131,35 @@ export default function CharacterProfilePage({ id }: { id: string }) {
     <div className="profile-page">
       {/* Same identity name as the card on the Characters page, so the name glides between the two. */}
       <header className="profile-header" style={{ viewTransitionName: `character-${row.id}` }}>
-        <h1>{row.name}</h1>
-        <p className="profile-sections">
-          <strong>RP sections</strong>
-          {rpGroups.length ? <span>{rpGroups.map(group => group.name).join(' / ')}</span> : <span>Not sorted yet</span>}
-        </p>
-        <div className="profile-actions">
-          <button type="button" onClick={() => setEditingCard(true)}>Edit card</button>
-          <a href="#characters">Back to characters</a>
-        </div>
-        <p className="profile-stats">{characterBranches.length} thread{characterBranches.length === 1 ? '' : 's'} · your turn on {stats.mine} · their turn on {stats.theirs}</p>
-      </header>
-
-      <div className="profile-columns">
-        <div className="profile-card-col">
+        <div className="profile-preview" aria-hidden="true">
           <TradingCard name={row.name} profile={profile} stats={stats} portrait={portrait} moodboard={moodUrls} />
         </div>
+        <div className="profile-header-text">
+          <h1>{row.name}</h1>
+          <p className="profile-sections">
+            <strong>RP sections</strong>
+            {rpGroups.length ? <span>{rpGroups.map(group => group.name).join(' / ')}</span> : <span>Not sorted yet</span>}
+          </p>
+          <p className="profile-stats">{characterBranches.length} thread{characterBranches.length === 1 ? '' : 's'} · your turn on {stats.mine} · their turn on {stats.theirs}</p>
+          <div className="profile-actions">
+            <button type="button" onClick={() => setShowCard(true)}>View card</button>
+            <button type="button" onClick={() => setEditingCard(true)}>Edit card</button>
+            <a href="#characters">Back to characters</a>
+          </div>
+        </div>
+      </header>
 
+      {showCard && <div className="profile-overlay" role="dialog" aria-label={`${row.name}'s card`} ref={overlayRef} onClick={e => { if (e.target === e.currentTarget) setShowCard(false) }}>
+        <div className="profile-overlay-card">
+          <TradingCard name={row.name} profile={profile} stats={stats} portrait={portrait} moodboard={moodUrls} />
+          <div className="profile-overlay-actions">
+            <button type="button" disabled={downloading} onClick={async () => { try { setDownloading(true); await downloadCard(overlayRef.current!, row.name) } catch { /* download helper throws its own error */ } finally { setDownloading(false) } }}>{downloading ? 'Preparing…' : 'Download'}</button>
+            <button type="button" onClick={() => setShowCard(false)}>Close</button>
+          </div>
+        </div>
+      </div>}
+
+      <div className="profile-content">
         <div className="profile-side">
           <section className="profile-section" aria-labelledby="moodboard-title">
             <div className="profile-section-head">
