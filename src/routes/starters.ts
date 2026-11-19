@@ -12,6 +12,7 @@ import { canonicalBlogIdentifier, normalizeTumblrTag, parseTumblrPostReference }
 import { createTumblrClient } from '../tumblr/client'
 import { decryptToken } from '../tumblr/oauth'
 import { latestDirectExchange } from '../tumblr/refresh'
+import { museNameFromProse, museNamesFromTags } from '../tumblr/muse'
 
 type Assignment = { id:string; characterId:string; characterTag:string|null; characterName:string }
 
@@ -46,28 +47,6 @@ function characterTitle(own?: string | null, partners: string[] = []) {
 }
 
 const firstWord = (name: string) => name.trim().toLowerCase().split(/\s+/)[0] ?? ''
-const titleCase = (name: string) => name.replace(/(^|[\s'-])(\p{L})/gu, (_match, lead: string, letter: string) => lead + letter.toUpperCase())
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-
-// RPers tag their own muse on their posts: "chayton threads", "convo: chayton and ilyas".
-// Names come only from those shapes, minus the user's own character, and must also appear in the
-// thread text, so an unrelated tag never becomes a title.
-function museNamesFromTags(tags: string[], text: string, isOwn: (name: string) => boolean) {
-  const names: string[] = []
-  for (const raw of tags) {
-    const tag = raw.toLowerCase().trim()
-    const convo = /^(?:convo|conversation|ship|pairing)s?\s*[:\-–]?\s+(.+)$/u.exec(tag)
-    const threads = /^([\p{L}][\p{L}' -]{1,30}?)(?:'s)?\s+(?:threads?|starters?|replies)$/u.exec(tag)
-    if (convo) names.push(...convo[1].split(/\s*(?:&|\+|\/|,|\band\b|\bx\b)\s*/u))
-    else if (threads) names.push(threads[1])
-  }
-  const lower = text.toLowerCase()
-  return names.map(name => name.trim())
-    .filter((name, index, all) => /^[\p{L}][\p{L}' -]{1,30}$/u.test(name) && !isOwn(name) && all.indexOf(name) === index
-      && new RegExp(`(^|[^\\p{L}])${escapeRegExp(name)}($|[^\\p{L}])`, 'u').test(lower))
-    .map(titleCase)
-}
-
 // The scene setup for the summary: the starter's "where" line plus its opening sentences, leaving out
 // the RP header lines (who/where/when/tags, "closed starter for …"). Not a random line from a reply.
 function setupSummary(text?: string, where?: string) {
@@ -179,7 +158,13 @@ export function starterRoutes() {
     // Partner posts carry the partner's muse in their tags ("chayton threads"); the user's own posts never count.
     const partnerTags = [clickedPost, post].filter(item => !workspaceBlogs.has(canonicalBlogIdentifier(item.blogIdentifier))).flatMap(item => item.tags)
     const declaredPartners = parsedCharacterNames.filter(name => !isOwnMuse(name))
-    const partnerNames = declaredPartners.length ? declaredPartners : museNamesFromTags(partnerTags, parserSource, isOwnMuse)
+    // Last resort before the blog name: the partner's own prose ("mateo recognizes him…"), checked against the user's replies.
+    const voices = [...(clickedPost.voices ?? []), ...(post === clickedPost ? [] : post.voices ?? [])]
+    const isWorkspaceBlog = (blog: string) => workspaceBlogs.has(canonicalBlogIdentifier(blog))
+    const textBy = (partner: boolean) => voices.filter(v => isWorkspaceBlog(v.blogIdentifier) !== partner).map(v => v.text).join('\n')
+    const proseMuse = () => museNameFromProse(textBy(true), textBy(false), isOwnMuse)
+    const tagMuses = declaredPartners.length ? [] : museNamesFromTags(partnerTags, parserSource, isOwnMuse)
+    const partnerNames = declaredPartners.length ? declaredPartners : tagMuses.length ? tagMuses : [proseMuse()].filter((name): name is string => Boolean(name))
     const parsedTitle = ownName && partnerNames.length ? capTitle(`${ownName} × ${partnerNames.join(' × ')}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : undefined
     const summary = setupSummary(post.parserText ?? post.preview, whereCaptured)
     return { client, reference, tags:[...tags], candidates, title:post.title, characterName:ownName, suggestedTitle:parsedTitle ?? suggestedTitle, titleNeedsPartner: !parsedTitle && !whoForPartner, parsedCharacterNames, preview:post.preview, summary, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [clickedPost.rootPostId, clickedPost.id, reference.postId]) }

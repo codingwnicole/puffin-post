@@ -11,7 +11,7 @@ function postText(content?: Array<{ text?: string }>, trail?: Array<{ content?: 
   return (text || fallback)?.slice(0, 6000)
 }
 
-export interface TumblrPost { blogIdentifier: string; id: string; rootPostId: string; rootBlogIdentifier: string; tags: string[]; title?: string; preview?: string; parserText?: string; postUrl?: string }
+export interface TumblrPost { blogIdentifier: string; id: string; rootPostId: string; rootBlogIdentifier: string; tags: string[]; title?: string; preview?: string; parserText?: string; postUrl?: string; /** Who wrote which text: the post's own content, then each trail entry. */ voices?: { blogIdentifier: string; text: string }[] }
 /** Inputs for thread-root resolution; TumblrPost satisfies it (so getPost and
  * getRecentPosts share this one resolver without raw reblog fields leaking
  * into the public post shape). */
@@ -84,7 +84,8 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
     const parserText = postText(post.content, post.trail, title)
     const blogIdentifier = `${post.blog_name}.tumblr.com`.toLowerCase(), id = String(post.id_string ?? post.id)
     const root = resolvePostThreadRoot({ blogIdentifier, id, rebloggedRootId: post.reblogged_root_id == null ? undefined : String(post.reblogged_root_id), rebloggedRootName: post.reblogged_root_name, trail: post.trail?.filter(item => Boolean(item.post?.id && item.blog?.name)).map(item => ({ blog: { name: (item.blog as { name: string }).name }, post: { id: String((item.post as { id: string | number }).id) } })) })
-    return { blogIdentifier, id, rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, tags: post.tags ?? [], title, preview: parserText?.slice(0, 700), parserText, postUrl: post.post_url }
+    const voices = [{ blogIdentifier, text: postText(post.content) ?? '' }, ...(post.trail ?? []).map(item => ({ blogIdentifier: `${item.blog?.name ?? ''}.tumblr.com`.toLowerCase(), text: postText(item.content) ?? '' }))].filter(voice => voice.text && voice.blogIdentifier !== '.tumblr.com')
+    return { blogIdentifier, id, rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, tags: post.tags ?? [], title, preview: parserText?.slice(0, 700), parserText, postUrl: post.post_url, voices }
   }
   const getPosts = async (url: string, failure: (status: number) => string) => {
     const response = await safeRun(url, { headers: { Authorization: await oauthAuthorizationHeader('GET', url, config.consumerKey, config.consumerSecret, config.token, config.tokenSecret) } })

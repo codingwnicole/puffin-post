@@ -72,3 +72,11 @@ it('"closed starter for @you (your muse)" never makes a title with your muse twi
   expect(found.suggestedTitle).not.toMatch(/Character a × Character a/i)
   expect(found.summary).toBe('the sun is just setting on the sixth day at the docks. gulls circle overhead.')
 })
+
+it('with no header or tag naming the partner muse, the partner\'s own prose supplies it', async () => {
+  stubPost('stx:700', { tags: ['w. character a 01'], content: [{ text: 'closed starter for @a (character a)' }, { text: 'the sun is just setting at the docks. mateo waits by the rail.' }] })
+  stubPost('a:701', { reblogged_root_id: '700', reblogged_root_name: 'stx', content: [{ text: 'relief at seeing mateo washes over him.' }],
+    trail: [{ blog: { name: 'stx' }, post: { id: '699' }, content: [{ text: 'mateo recognizes him by voice. he steps closer.' }] }] })
+  const found = await resolveFull('https://a.tumblr.com/post/701')
+  expect(found.suggestedTitle).toBe('Character a × Mateo')
+})
