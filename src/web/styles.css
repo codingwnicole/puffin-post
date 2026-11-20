@@ -376,7 +376,7 @@ p{text-wrap:pretty}
 .card-editor-preview{position:sticky;top:0;align-self:start;display:grid;gap:.5rem}
 @media (max-width:760px){.modal-card.card-editor{grid-template-columns:1fr}.card-editor-preview{position:static;order:-1;width:min(15rem,100%);margin-inline:auto}}
 @media (prefers-reduced-motion:reduce){.tcard,.tcard-flip{transition:none}.tcard{transform:none}}
-.card-editor input:not([type=radio]):not([type=file]):not(.color-hex),.card-editor textarea{width:100%;box-sizing:border-box}.card-editor-row>label{min-width:0}
+.card-editor input:not([type=radio]):not([type=file]):not(.color-hex),.card-editor textarea{width:100%;box-sizing:border-box}.card-editor-row>label{min-width:0;align-content:start}
 .color-combo{display:flex;align-items:center;gap:.4rem}.color-combo input[type=color]{width:2.75rem;min-height:2.75rem;padding:2px;border:1px solid var(--border);border-radius:.5rem;cursor:pointer}.color-hex{width:6rem;min-height:2.75rem;padding:.5rem;border:1px solid var(--border);border-radius:max(4px,calc(var(--radius) - .55rem));background:var(--surface);color:var(--text);font:inherit;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.88rem}
 .third-face-group{padding:1rem!important;border:1px solid var(--border)!important;border-radius:.85rem!important;background:var(--surface-muted)}.third-face-group>legend{font:600 1.1rem Georgia,serif;color:var(--text);padding:0 .3rem}
 .mood-section-label{font-weight:700;color:var(--muted);font-size:.9rem;margin-top:.35rem}
