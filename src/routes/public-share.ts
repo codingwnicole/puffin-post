@@ -13,7 +13,7 @@ const moderatorEmail = 'tmixwix@gmail.com'
 type ShareRow = { id: string; workspaceId: string; characterId: string; slug: string; style: 'card' | 'stats'; showMoodboard: number; showPlaylist: number; showStats: number; indexable: number; previewObjectKey: string | null; disabledByModerator: number }
 type CharRow = { name: string; iconObjectKey: string | null; portraitObjectKey: string | null; cardJson: string | null }
 
-const PAGE_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self'; frame-src https://open.spotify.com https://www.youtube-nocookie.com https://embed.music.apple.com https://assets.pinterest.com; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+const PAGE_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self'; frame-src https://open.spotify.com https://www.youtube-nocookie.com https://embed.music.apple.com https://assets.pinterest.com https://petracoding.github.io; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
 const EMBED_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self'; frame-ancestors *; base-uri 'none'"
 
 function escapeHtml(s: string): string {
@@ -82,8 +82,10 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
     statsHtml = `<section class="section"><h2 class="section-title">Thread Stats</h2><div class="stat-row"><div class="stat-card"><span class="stat-num">${stats.total}</span><span class="stat-label">threads</span></div><div class="stat-card"><span class="stat-num">${stats.mine}</span><span class="stat-label">your turn</span></div><div class="stat-card"><span class="stat-num">${stats.theirs}</span><span class="stat-label">their turn</span></div></div>${stats.rps.length ? `<p class="rp-list">Writes in ${escapeHtml(stats.rps.join(' &middot; '))}</p>` : ''}</section>`
   }
 
-  const boardLabel = card.boardUrl ? card.boardUrl.replace(/^https?:\/\/(www\.)?pinterest\.[a-z.]+\//, '').replace(/\/$/, '').split('/').pop()?.replace(/-/g, ' ') || 'Pinterest board' : ''
-  const boardHtml = share.showMoodboard && card.boardUrl ? `<section class="section"><h2 class="section-title">Pinterest Board</h2><a href="${escapeHtml(card.boardUrl)}" target="_blank" rel="noopener" class="board-link"><span class="board-icon">&#x1F4CC;</span><span class="board-label-text"><strong>${escapeHtml(boardLabel)}</strong><small>View on Pinterest &rarr;</small></span></a></section>` : ''
+  const boardPath = card.boardUrl ? card.boardUrl.replace(/^https?:\/\/(www\.)?pinterest\.[a-z.]+\//, '').replace(/\/$/, '') : ''
+  const boardLabel = boardPath ? boardPath.split('/').pop()?.replace(/-/g, ' ') || 'Pinterest board' : ''
+  const boardEmbedSrc = boardPath ? `https://petracoding.github.io/pinterest/board.html?link=${encodeURIComponent(boardPath + '/')}&hideHeader=0&hideFooter=1&transparent=1` : ''
+  const boardHtml = share.showMoodboard && card.boardUrl ? `<section class="section"><h2 class="section-title">Pinterest Board</h2>${boardEmbedSrc ? `<iframe src="${escapeHtml(boardEmbedSrc)}" class="board-embed" loading="lazy"></iframe>` : ''}<a href="${escapeHtml(card.boardUrl)}" target="_blank" rel="noopener" class="board-link"><span class="board-icon">&#x1F4CC;</span><span class="board-label-text"><strong>${escapeHtml(boardLabel)}</strong><small>View on Pinterest &rarr;</small></span></a></section>` : ''
 
   const detailsHtml = (card.likes || card.dislikes || card.notes) ? `<section class="section"><h2 class="section-title">About</h2><div class="detail-grid">${card.likes ? `<div class="detail-item"><span class="detail-label">Likes</span><span>${escapeHtml(card.likes)}</span></div>` : ''}${card.dislikes ? `<div class="detail-item"><span class="detail-label">Dislikes</span><span>${escapeHtml(card.dislikes)}</span></div>` : ''}${card.notes ? `<div class="detail-item detail-wide"><span class="detail-label">Notes</span><span>${escapeHtml(card.notes)}</span></div>` : ''}</div></section>` : ''
 
@@ -172,6 +174,7 @@ a{color:var(--accent)}
 
 /* Board link */
 .board-link{display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-radius:var(--corner);background:color-mix(in srgb,var(--panel0) 60%,transparent);border:1px solid color-mix(in srgb,var(--stroke) 30%,transparent);color:var(--ink);text-decoration:none;font-size:.9rem;word-break:break-all}
+.board-embed{width:100%;height:420px;border:none;border-radius:var(--corner);margin-bottom:.75rem;background:transparent}
 .board-link:hover{border-color:var(--accent)}
 .board-icon{font-size:1.4rem}
 .board-label-text{display:flex;flex-direction:column;gap:.15rem}
