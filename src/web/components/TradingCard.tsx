@@ -57,7 +57,7 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
   const id = (key: string) => `${uid}-${side}-${key}`
   const label = { fill: t.sub, fontFamily: t.sans, fontSize: 12, letterSpacing: 3 } as const
   const body = { fill: t.ink, fontFamily: t.font }
-  const box = (y: number, h: number, extra?: object) => <rect x={40} y={y} width={560} height={h} rx={Math.min(t.corner, 14)} fill={`url(#${id('panel')})`} stroke={t.stroke} strokeOpacity={.7} {...extra} />
+  const box = (y: number, h: number, extra?: object) => <rect x={40} y={y} width={560} height={h} rx={Math.min(t.corner, 14)} fill={`url(#${id('panel')})`} stroke={t.stroke} strokeOpacity={.7} filter={`url(#${id('shadow')})`} {...extra} />
   // The writer's chosen symbol (none by default) sits beside the name, on the fun-fact bullets and in the footer.
   const glyph: string = CARD_SYMBOLS[profile.symbol ?? 'none']?.glyph ?? ''
   const symbolText = (x: number, y: number, size: number) => <text x={x} y={y} textAnchor="middle" fill={t.accent} fontFamily={SYMBOL_FONT} fontSize={size} data-symbol>{glyph}</text>
@@ -70,6 +70,7 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
       <linearGradient id={id('bg')} x1="0" y1="0" x2="1" y2="1">{t.bg.map((c, i) => <stop key={i} offset={i / 2} stopColor={c} />)}</linearGradient>
       <linearGradient id={id('foil')} x1="0" y1="0" x2="1" y2="1">{t.foil.map((c, i) => <stop key={i} offset={i / (t.foil.length - 1)} stopColor={c} />)}</linearGradient>
       <linearGradient id={id('panel')} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={t.panel[0]} stopOpacity={.92} /><stop offset="1" stopColor={t.panel[1]} stopOpacity={.92} /></linearGradient>
+      <filter id={id('shadow')}><feDropShadow dx="0" dy="2" stdDeviation="4" floodColor={t.panel[1]} floodOpacity=".4" /></filter>
       {side === 'front' && <clipPath id={id('portrait')}><rect x={40} y={70} width={560} height={330} rx={Math.min(t.corner * 2, 40)} /></clipPath>}
       {side === 'mood' && Array.from({ length: 12 }, (_, i) => { const x = 40 + (i % 3) * 192, y = 70 + Math.floor(i / 3) * 155; return <clipPath key={i} id={id('tile' + i)}><rect x={x} y={y} width={186} height={149} rx={Math.min(t.corner, 12)} /></clipPath> })}
     </defs>
@@ -89,9 +90,9 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
       {(() => { const display = profile.nickname || name; return <text x={glyph ? 104 : 62} y={468} {...body} fontSize={fitSize(display, 16, 40, 22)}>{display.slice(0, 34)}</text> })()}
       {box(506, 44)}<text x={60} y={533} {...label}>AGE</text><text x={120} y={534} {...body} fontSize={17}>{profile.age || '—'}</text><text x={330} y={533} {...label}>BIRTHDATE</text><text x={440} y={534} {...body} fontSize={17}>{profile.birthdate || '—'}</text>
       {box(562, 120)}<text x={56} y={596} fill={t.accent} fontFamily={t.font} fontSize={34}>"</text>
-      {wrap(profile.quote || 'A line that captures them.', 46, 4).map((line, i) => <text key={i} x={320} y={596 + i * 24} textAnchor="middle" {...body} fontStyle="italic" fontSize={18}>{line}</text>)}
+      {(() => { const q = profile.quote || 'A line that captures them.'; const fs = fitSize(q, 80, 18, 13); const lh = Math.round(fs * 1.35); const lines = wrap(q, Math.round(46 * 18 / fs), 4); return lines.map((line, i) => <text key={i} x={320} y={596 + i * lh} textAnchor="middle" {...body} fontStyle="italic" fontSize={fs}>{line}</text>) })()}
       {box(694, 56)}<circle cx={70} cy={722} r={15} fill="none" stroke={t.ink} strokeWidth={2} /><path d="M65 714l13 8-13 8z" fill={t.ink} />
-      <text x={98} y={716} {...label}>THEME SONG</text>{(() => { const songLine = profile.song || 'Song title'; return <text x={98} y={738} {...body} fontSize={fitSize(songLine, 40, 16, 11)}>{songLine.slice(0, 60)}</text> })()}
+      <text x={98} y={716} {...label}>THEME SONG</text>{(() => { const songLine = (profile.song || 'Song title') + (profile.artist ? ' — ' + profile.artist : ''); return <text x={98} y={738} {...body} fontSize={fitSize(songLine, 40, 16, 11)}>{songLine.slice(0, 60)}</text> })()}
       {Array.from({ length: 22 }, (_, i) => { const h = 6 + ((i * 7) % 11) * 2; return <rect key={i} x={460 + i * 6} y={722 - h / 2} width={3} height={h} fill={t.sub} opacity={.8} /> })}
       {box(762, 44)}<text x={60} y={789} {...label}>FAVORITE COLOR</text><rect x={430} y={772} width={150} height={24} rx={6} fill={profile.favoriteColor} stroke={t.ink} strokeOpacity={.5} />
     </> : side === 'back' ? <>
@@ -107,18 +108,27 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
       {box(688, 150)}<text x={60} y={718} {...label}>MISC. / NOTES</text>
       {wrap(profile.notes || '—', 54, 4).map((line, i) => <text key={i} x={60} y={748 + i * 24} {...body} fontSize={17}>{line}</text>)}
     </> : <>
-      {/* Moodboard side: the first 12 uploaded images, 3 x 4, each cropped to its rounded tile; empty
-          slots stay soft panels. Pins are iframes and never drawn here. */}
-      {Array.from({ length: 12 }, (_, i) => {
-        const x = 40 + (i % 3) * 192, y = 70 + Math.floor(i / 3) * 155
-        return moodTiles[i]
-          ? <g key={i} clipPath={`url(#${id('tile' + i)})`}><rect x={x} y={y} width={186} height={149} fill={`url(#${id('panel')})`} /><image href={moodTiles[i]} x={x} y={y} width={186} height={149} preserveAspectRatio="xMidYMid slice" data-moodboard /></g>
-          : <rect key={i} x={x} y={y} width={186} height={149} rx={Math.min(t.corner, 12)} fill={`url(#${id('panel')})`} opacity={.35} />
-      })}
-      {board ? wrap('Full board: ' + board, 70, 1).map((line, i) => <text key={i} x={320} y={712} textAnchor="middle" {...body} fontSize={15}>{line}</text>) : null}
-      {tracks.length > 0 && <>
-        <text x={44} y={750} {...label}>PLAYLIST</text>
-        {tracks.map((track, i) => <text key={i} x={44} y={778 + i * 24} {...body} fontSize={16}>{wrap(track, 68, 1)[0]}</text>)}
+      {moodTiles.length > 0 ? <>
+        {Array.from({ length: 12 }, (_, i) => {
+          const x = 40 + (i % 3) * 192, y = 70 + Math.floor(i / 3) * 155
+          return moodTiles[i]
+            ? <g key={i} clipPath={`url(#${id('tile' + i)})`}><rect x={x} y={y} width={186} height={149} fill={`url(#${id('panel')})`} /><image href={moodTiles[i]} x={x} y={y} width={186} height={149} preserveAspectRatio="xMidYMid slice" data-moodboard /></g>
+            : <rect key={i} x={x} y={y} width={186} height={149} rx={Math.min(t.corner, 12)} fill={`url(#${id('panel')})`} opacity={.35} />
+        })}
+        {board ? wrap('Full board: ' + board, 70, 1).map((line, i) => <text key={i} x={320} y={712} textAnchor="middle" {...body} fontSize={15}>{line}</text>) : null}
+        {tracks.length > 0 && <>
+          <text x={44} y={750} {...label}>PLAYLIST</text>
+          {tracks.map((track, i) => <text key={i} x={44} y={778 + i * 24} {...body} fontSize={16}>{wrap(track, 68, 1)[0]}</text>)}
+        </>}
+      </> : <>
+        {box(70, 340)}
+        {board ? <><text x={320} y={160} textAnchor="middle" {...label}>PINTEREST BOARD</text>{wrap(board, 50, 2).map((line, i) => <text key={i} x={320} y={195 + i * 28} textAnchor="middle" {...body} fontSize={20}>{line}</text>)}</> : null}
+        {profile.playlistUrl ? <><text x={320} y={board ? 280 : 160} textAnchor="middle" {...label}>PLAYLIST</text><text x={320} y={board ? 310 : 195} textAnchor="middle" {...body} fontSize={16}>{wrap(profile.playlistUrl.replace(/^https?:\/\//, ''), 50, 1)[0]}</text></> : null}
+        {tracks.length > 0 && <>
+          {box(board || profile.playlistUrl ? 430 : 70, 40 + tracks.length * 28)}
+          <text x={60} y={(board || profile.playlistUrl ? 460 : 100)} {...label}>TRACKLIST</text>
+          {tracks.map((track, i) => <text key={i} x={60} y={(board || profile.playlistUrl ? 492 : 132) + i * 28} {...body} fontSize={17}>{wrap(track, 60, 1)[0]}</text>)}
+        </>}
       </>}
     </>}
   </svg>
