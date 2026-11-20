@@ -48,7 +48,7 @@ function CardEditor({ row, stats, portrait, upload, close, saved }: { row: Chara
         {error && <p role="alert">{error}</p>}
         <div className="modal-actions"><button disabled={saving}>{saving ? 'Saving…' : 'Save card'}</button><button type="button" className="text-button" onClick={close}>Cancel</button><button type="button" className="text-button danger-text" disabled={saving} onClick={async () => { if (!confirm('Delete this card? The character stays, only the card is removed.')) return; try { setSaving(true); await api('/characters/' + row.id + '/card', 'DELETE'); await saved(); close() } catch (problem) { setError((problem as Error).message) } finally { setSaving(false) } }}>Delete card</button></div>
       </div>
-      <div className="card-editor-preview"><TradingCard name={row.name} profile={draft} stats={stats} portrait={portrait} moodboard={moodUrls} /><p className="field-help">Tap the card to flip it. Thread stats fill in on their own.</p></div>
+      <div className="card-editor-preview"><TradingCard name={row.name} profile={draft} stats={stats} portrait={portrait} moodboard={moodUrls} initialSide="back" /><p className="field-help">Tap the card to flip it. Thread stats fill in on their own.</p></div>
     </form>
   </div>, document.body)
 }

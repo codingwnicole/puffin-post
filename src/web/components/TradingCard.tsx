@@ -138,14 +138,10 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
  * With moodboard images the click cycles front -> back -> moodboard: the hidden face is refilled with
  * the next side just before the rotation, so the two physical faces always hold the current and next
  * side. The aria-label names the side that comes next. */
-export default function TradingCard({ name, profile, stats, portrait, moodboard }: { name: string; profile: CardProfile; stats: CardStats; portrait: string | null; moodboard?: string[] }) {
+export default function TradingCard({ name, profile, stats, portrait, moodboard, initialSide = 'front' }: { name: string; profile: CardProfile; stats: CardStats; portrait: string | null; moodboard?: string[]; initialSide?: 'front' | 'back' }) {
   const hasMoodboard = (moodboard?.length ?? 0) > 0 || !!profile.boardUrl || !!profile.playlistUrl || (profile.tracklist?.length ?? 0) > 0
-  // visible = the side on the face pointing at the viewer (what you read); hidden = the side on the
-  // other face, revealed by a flip. A click just swaps the two, so each click shows the next side in
-  // the cycle front -> back -> moodboard -> front. Without moodboard images the cycle is the old
-  // two-sides flip, byte-for-byte.
-  const [visible, setVisible] = useState<'front' | 'back' | 'mood'>('front')
-  const [hidden, setHidden] = useState<'front' | 'back' | 'mood'>('back')
+  const [visible, setVisible] = useState<'front' | 'back' | 'mood'>(initialSide)
+  const [hidden, setHidden] = useState<'front' | 'back' | 'mood'>(initialSide === 'front' ? 'back' : 'front')
   const flipped = visible !== 'front'
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '')
   const move = (event: PointerEvent<HTMLDivElement>) => {
