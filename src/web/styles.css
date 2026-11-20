@@ -274,6 +274,22 @@ p{text-wrap:pretty}
 /* 38: squircle corners where supported; border-radius above stays as the fallback. */
 @supports (corner-shape:squircle){.branch-card,.rp-group,.character-card,.planner-card,.modal-card,.connection-card,.command-card{corner-shape:squircle}}
 .connection-sync{margin:.4rem 0 0;font-size:.82rem;color:var(--muted)}.connection-sync-error{margin:.2rem 0 0;font-size:.82rem;color:var(--danger)}.danger-section{border-color:var(--danger)}.delete-account-help{max-width:40rem;margin:.65rem 0;padding-left:1.25rem;color:var(--muted);line-height:1.8}.delete-account-form{max-width:26rem}
+
+/* Mobile More is a React-controlled popover. Keep its one menu box scrollable without applying
+   position/overflow rules to every nested div (the old broad selector destabilized touch taps). */
+.mobile-more-toggle{border:0;background:transparent;color:inherit}
+.mobile-more-menu{overscroll-behavior:contain;touch-action:pan-y}
+.mobile-more-menu .sheet-menu-head{position:static!important;width:auto!important;max-height:none!important;overflow:visible!important;padding:.15rem .2rem!important;border:0!important;border-radius:0!important;background:transparent!important;box-shadow:none!important}
+@media (max-width:1024px){
+  .mobile-more-toggle{display:flex!important;min-width:0;min-height:3.3rem;flex-direction:column;justify-content:center;gap:.2rem;margin:0;padding:.2rem;color:#eef2ed!important;font-size:.75rem;text-align:center}
+  .mobile-more.is-open .mobile-more-toggle{background:var(--accent)!important;color:var(--on-accent)!important}
+  .mobile-more-menu{position:absolute!important;right:0!important;bottom:3.75rem!important;width:min(22rem,calc(100vw - 1rem))!important;max-height:min(70svh,calc(100dvh - 8rem))!important;overflow-y:auto!important;padding:.4rem!important;border:1px solid var(--border)!important;border-radius:.8rem!important;background:var(--surface)!important;box-shadow:0 .8rem 1.6rem rgba(0,0,0,.2)!important;animation:sheet-up var(--motion-med) var(--ease-out) both}
+}
+
+/* Character sections use intentional wrapping, never an accidental horizontal scroller. */
+.character-scroll-shell{min-width:0}.character-scroll-controls{display:none}.character-scroll-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:1rem;min-width:0}.character-scroll-row>*{min-width:0}
+@media (max-width:1024px){.character-scroll-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem}}
+@media (max-width:640px){.character-scroll-row{grid-template-columns:1fr;gap:.75rem}}
 /* Form controls keep a solid boundary that clears the 3:1 contrast floor in both
    themes, independent of the soft 12% surface borders (T8d item 14). */
 :root:not([data-theme="dark"]) input:not([type=checkbox]):not([type=radio]),:root:not([data-theme="dark"]) select,:root:not([data-theme="dark"]) textarea{border-color:oklch(38% 0.022 72)!important}
