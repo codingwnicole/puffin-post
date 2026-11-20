@@ -246,9 +246,9 @@ export async function cardPreviewBlob(cardElement: Element): Promise<Blob> {
   return blob
 }
 
-// ponytail: 30 complete frames avoids the transparent-delta disposal bug seen in browser GIF viewers
-// while keeping exports comfortably shareable.
-const MAX_FRAMES = 30
+// Complete frames avoid disposal bugs. A shared palette keeps the card's gradients stable across
+// the animation, while 60 samples preserve a portrait GIF's motion.
+const MAX_FRAMES = 60
 
 /** Every GIF frame is a complete card. Transparent delta frames are smaller, but browser decoders
  * do not agree on how to dispose them when the GIF loops, which made the front flash or "flip". */
@@ -264,6 +264,8 @@ async function animatedCard(svgs: SVGSVGElement[], moodUrls: string[], gif: Blob
   if (!context || !stillContext) throw new Error('Could not prepare the card')
   canvas.width = W; canvas.height = H
   const encoder = GIFEncoder()
+  let colorPalette: number[][] | null = null
+  let transparentIndex = 0
   try {
     for (let start = 0; start < count; start += step) {
       let delay = 0, frameData = ''
@@ -284,12 +286,14 @@ async function animatedCard(svgs: SVGSVGElement[], moodUrls: string[], gif: Blob
       for (let p = 0; p < rgba.length; p += 4) if (rgba[p + 3] >= 128) opaqueOffsets.push(p)
       const opaque = new Uint8ClampedArray(Math.max(1, opaqueOffsets.length) * 4)
       opaqueOffsets.forEach((p, i) => opaque.set(rgba.subarray(p, p + 4), i * 4))
-      const palette = quantize(opaque, 255)
-      palette.push([0, 0, 0])
-      const transparentIndex = palette.length - 1
+      if (!colorPalette) {
+        colorPalette = quantize(opaque, 255)
+        transparentIndex = colorPalette.length
+      }
       const index = new Uint8Array(W * H).fill(transparentIndex)
-      const mapped = applyPalette(opaque, palette)
+      const mapped = applyPalette(opaque, colorPalette)
       opaqueOffsets.forEach((p, i) => { index[p / 4] = mapped[i] })
+      const palette = start === 0 ? [...colorPalette, [0, 0, 0]] : undefined
       encoder.writeFrame(index, W, H, { palette, delay: Math.max(20, delay), dispose: 1, transparent: true, transparentIndex, ...(start ? {} : { repeat: 0 }) })
     }
   } finally { decoder.close() }
