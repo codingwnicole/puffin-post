@@ -171,8 +171,7 @@ test('390px bottom nav More button shows no stray chevron', async ({ page }) => 
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('#inbox')
   await test.expect(page.locator('.mobile-more')).toBeVisible()
-  const display = await page.evaluate(() => getComputedStyle(document.querySelector('.mobile-more>summary') as HTMLElement, '::after').display)
-  test.expect(display).toBe('none')
+  await test.expect(page.locator('.mobile-more-toggle')).toBeVisible()
 })
 
 test('character card lifecycle buttons never clip their label', async ({ page }) => {
@@ -209,10 +208,10 @@ test.describe('expanded More menu stays on top of cards', () => {
         await page.goto('#inbox')
         await page.waitForSelector('article.branch-card', { timeout: 15000 })
         await page.waitForTimeout(400) // let the rise animation settle (transform stacking context)
-        await page.locator('.mobile-more summary').click()
+        await page.locator('.mobile-more-toggle').click()
         await page.waitForTimeout(150)
         const res = await page.evaluate(() => {
-          const panel = document.querySelector<HTMLElement>('.mobile-more div')
+          const panel = document.querySelector<HTMLElement>('.mobile-more-menu')
           if (!panel) return { contains: false, err: 'no panel' }
           const r = panel.getBoundingClientRect()
           const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2)
