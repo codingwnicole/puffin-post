@@ -8,7 +8,7 @@ import { createInvite } from '../../src/auth/invites'
 describe('public magic-link sign-up and invites against local D1', () => {
   let env: Env
   let dispose: () => Promise<void>
-  let sent: { to: string; url: string }[]
+  let sent: { to: string; url: string; html: string }[]
   let mail: MailSender
 
   beforeEach(async () => {
@@ -149,6 +149,14 @@ describe('public magic-link sign-up and invites against local D1', () => {
     expect(accepted.status).toBe(302)
     const session = await (await request('/api/auth/session', undefined, accepted.headers.get('set-cookie')!.split(';')[0])).json() as any
     expect(session).toMatchObject({ userId: stranger!.id, workspaceId: stranger!.workspace_id })
+  })
+
+  it('sends a branded HTML sign-in email with a text-safe fallback link', async () => {
+    await request('/api/auth/magic-link', { email: 'owner@example.com' })
+    expect(sent[0].html).toContain('Puffin Post')
+    expect(sent[0].html).toContain('Open Puffin Post')
+    expect(sent[0].html).toContain(sent[0].url)
+    expect(sent[0].html).toContain('15 minutes')
   })
 
   it('creates secure signed sessions, rejects tampering and invalidates logout', async () => {

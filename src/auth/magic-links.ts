@@ -3,7 +3,36 @@ import { findInvite, normalizeEmail } from './invites'
 import { hashToken, randomToken } from './sessions'
 
 export interface MailSender {
-  send(message: { to: string; url: string }): Promise<void>
+  send(message: { to: string; url: string; html: string }): Promise<void>
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!)
+}
+
+export function magicLinkEmail(url: string) {
+  const safeUrl = escapeHtml(url)
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#142027;color:#f8f3e9;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#142027;"><tr><td style="padding:40px 16px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;margin:0 auto;">
+      <tr><td style="padding:0 12px 18px;color:#f8f3e9;font-family:Georgia,'Times New Roman',serif;font-size:23px;font-weight:bold;">
+        <span style="display:inline-block;width:30px;height:30px;line-height:30px;text-align:center;margin-right:9px;border-radius:50%;background:#dce8e9;color:#263d45;font-family:Georgia,'Times New Roman',serif;font-style:italic;">P</span>Puffin Post
+      </td></tr>
+      <tr><td style="padding:38px 34px 34px;border:1px solid #4c6670;border-radius:16px;background:#213138;">
+        <p style="margin:0 0 12px;color:#a9d4dc;font-size:11px;font-weight:bold;letter-spacing:1.8px;text-transform:uppercase;">Your writing space</p>
+        <h1 style="margin:0;color:#f8f3e9;font-family:Georgia,'Times New Roman',serif;font-size:32px;line-height:1.1;font-weight:normal;">Your sign-in link is ready.</h1>
+        <p style="margin:20px 0 26px;color:#d9e1dd;font-size:16px;line-height:1.6;">Open Puffin and pick your story back up right where you left it.</p>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius:9px;background:#a9d4dc;">
+          <a href="${safeUrl}" style="display:inline-block;padding:14px 22px;border-radius:9px;color:#17242a;font-size:16px;font-weight:bold;line-height:1;text-decoration:none;">Open Puffin Post</a>
+        </td></tr></table>
+        <p style="margin:27px 0 0;padding-top:20px;border-top:1px solid #4c6670;color:#b9c8c7;font-size:13px;line-height:1.55;">This private link expires in 15 minutes and works once. If you did not request it, you can safely ignore this email.</p>
+      </td></tr>
+      <tr><td style="padding:18px 12px 0;color:#9badad;font-size:12px;line-height:1.5;">Button giving you trouble? Copy this link into your browser:<br><a href="${safeUrl}" style="color:#a9d4dc;word-break:break-all;">${safeUrl}</a></td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`
 }
 
 export function resendMailSender(env: Env): MailSender {
@@ -12,7 +41,7 @@ export function resendMailSender(env: Env): MailSender {
       method: 'POST',
       headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
       body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject: 'Your Puffin Post sign-in link',
-        text: `Sign in to Puffin Post: ${url}\n\nThis link expires in 15 minutes and can be used once.` }),
+        text: `Sign in to Puffin Post: ${url}\n\nThis link expires in 15 minutes and can be used once.`, html: magicLinkEmail(url) }),
     })
     if (!response.ok) throw new Error('Unable to send sign-in email')
   } }
@@ -71,7 +100,7 @@ export function createMagicLinks(env: Env, sender: MailSender = resendMailSender
     const token = await issueMagicLink(email, intent, invite)
     const url = new URL('/api/auth/verify', env.APP_ORIGIN)
     url.searchParams.set('token', token)
-    try { await sender.send({ to: normalizeEmail(email), url: url.toString() }) } catch (error) {
+    try { await sender.send({ to: normalizeEmail(email), url: url.toString(), html: magicLinkEmail(url.toString()) }) } catch (error) {
       await env.DB.prepare('DELETE FROM magic_links WHERE token_hash = ?').bind(await hashToken(token)).run()
       throw error
     }
