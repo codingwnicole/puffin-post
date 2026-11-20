@@ -222,6 +222,23 @@ export async function downloadCard(cardElement: Element, name: string): Promise<
   save(blob, name, 'png'); return isGif ? 'png-no-gif-support' : 'png'
 }
 
+/** Renders the card front+back side by side as a 1320×900 PNG Blob (static, first frame only). */
+export async function cardPreviewBlob(cardElement: Element): Promise<Blob> {
+  const svgs = Array.from(cardElement.querySelectorAll<SVGSVGElement>('.tcard-face > svg'))
+  if (svgs.length < 2) throw new Error('Could not prepare the card')
+  const portraitHref = svgs.find(svg => svg.dataset.side !== 'mood')?.querySelector('image:not([data-moodboard])')?.getAttribute('href')
+  const portrait = portraitHref ? await fetch(portraitHref).then(r => r.ok ? r.blob() : null) : null
+  const data = portrait ? (portrait.type === 'image/gif' && 'ImageDecoder' in window ? await firstGifFrame(portrait) : await blobToData(portrait)) : null
+  const canvas = document.createElement('canvas'), context = canvas.getContext('2d')
+  if (!context) throw new Error('Could not prepare the card')
+  canvas.width = 1320; canvas.height = 900
+  await drawSide(context, svgs[0], data, null, 0, 640, 900)
+  await drawSide(context, svgs[1], null, null, 680, 640, 900)
+  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+  if (!blob) throw new Error('Could not export the card')
+  return blob
+}
+
 // ponytail: at most 60 frames (longer GIFs are sampled, delays summed) so the file stays a shareable size.
 const MAX_FRAMES = 60
 

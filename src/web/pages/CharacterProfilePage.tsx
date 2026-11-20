@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type
 import { api, staleGet } from '../lib/api'
 import TradingCard, { downloadCard, emptyCard, THEMES, type CardProfile, type CardStats } from '../components/TradingCard'
 import CardEditor from '../components/CardEditor'
+import SharePanel from '../components/SharePanel'
 import { parsePlaylist } from '../../shared/embeds'
 import { fitImage, IMAGE_ACCEPT, IMAGE_HINT } from '../lib/uploads'
 
@@ -24,8 +25,10 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   const [editingCard, setEditingCard] = useState(false)
   const [showCard, setShowCard] = useState(false)
   const [downloading, setDownloading] = useState(false)
+  const [sharing, setSharing] = useState(false)
   const [pinUrl, setPinUrl] = useState('')
   const overlayRef = useRef<HTMLDivElement>(null)
+  const cardAreaRef = useRef<HTMLDivElement>(null)
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -131,7 +134,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
     <div className="profile-page">
       {/* Same identity name as the card on the Characters page, so the name glides between the two. */}
       <header className="profile-header" style={{ viewTransitionName: `character-${row.id}` }}>
-        <div className="profile-preview" aria-hidden="true">
+        <div className="profile-preview" aria-hidden="true" ref={cardAreaRef}>
           <TradingCard name={row.name} profile={profile} stats={stats} portrait={portrait} moodboard={moodUrls} />
         </div>
         <div className="profile-header-text">
@@ -144,6 +147,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
           <div className="profile-actions">
             <button type="button" onClick={() => setShowCard(true)}>View card</button>
             <button type="button" onClick={() => setEditingCard(true)}>Edit card</button>
+            <button type="button" onClick={() => setSharing(true)}>Share</button>
             <a href="#characters">Back to characters</a>
           </div>
         </div>
@@ -225,6 +229,16 @@ export default function CharacterProfilePage({ id }: { id: string }) {
           upload={file => uploadIcon(file).then(() => reload())}
           close={() => setEditingCard(false)}
           saved={reload}
+        />
+      )}
+      {sharing && (
+        <SharePanel
+          character={row}
+          counts={{ total: stats.total, mine: stats.mine, theirs: stats.theirs }}
+          stats={stats}
+          cardRef={cardAreaRef}
+          close={() => setSharing(false)}
+          onChanged={reload}
         />
       )}
     </div>

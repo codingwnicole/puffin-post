@@ -14,7 +14,7 @@ type ShareRow = { id: string; workspaceId: string; characterId: string; slug: st
 type CharRow = { name: string; iconObjectKey: string | null; cardJson: string | null }
 
 const PAGE_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self'; frame-src https://open.spotify.com https://www.youtube-nocookie.com https://embed.music.apple.com https://assets.pinterest.com; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
-const EMBED_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; frame-ancestors *; base-uri 'none'"
+const EMBED_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self'; frame-ancestors *; base-uri 'none'"
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;')
@@ -63,7 +63,9 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
   if (share.showPlaylist && card.playlistUrl) {
     const parsed = parsePlaylist(card.playlistUrl)
     if (parsed) {
-      playlistHtml = `<section style="margin-top:24px"><h2 style="font-size:18px;margin:0 0 12px">Playlist</h2><a href="${escapeHtml(parsed.openUrl)}" target="_blank" rel="noopener" style="color:#7c5cbf">Open in ${escapeHtml(parsed.provider === 'spotify' ? 'Spotify' : parsed.provider === 'apple' ? 'Apple Music' : 'YouTube')}</a></section>`
+      const label = parsed.provider === 'spotify' ? 'Spotify' : parsed.provider === 'apple' ? 'Apple Music' : 'YouTube'
+      const embedHeight = parsed.provider === 'spotify' ? '352' : parsed.provider === 'apple' ? '450' : '315'
+      playlistHtml = `<section style="margin-top:24px"><h2 style="font-size:18px;margin:0 0 12px">Playlist</h2><div data-playlist-container data-embed-src="${escapeHtml(parsed.embedUrl)}" data-embed-height="${embedHeight}"><button type="button" data-playlist-load style="padding:8px 20px;background:#7c5cbf;color:#fff;border:none;border-radius:4px;cursor:pointer;min-height:44px">Load the ${escapeHtml(label)} player</button><br><a href="${escapeHtml(parsed.openUrl)}" target="_blank" rel="noopener" style="color:#7c5cbf;margin-top:8px;display:inline-block">Open in ${escapeHtml(label)}</a></div></section>`
     }
   }
 
@@ -73,8 +75,10 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
   }
 
   const cardPreviewHtml = share.style === 'card'
-    ? `<div style="flex-shrink:0"><div id="card-preview" style="width:220px">${frontSvg}</div><div id="card-back-preview" style="width:220px;margin-top:8px">${backSvg}</div></div>`
+    ? `<div style="flex-shrink:0"><button type="button" data-open-overlay style="background:none;border:none;padding:0;cursor:pointer" title="View card"><div id="card-preview" style="width:220px">${frontSvg}</div></button></div>`
     : `<div style="flex-shrink:0;text-align:center"><div style="width:80px;height:80px;border-radius:50%;overflow:hidden;margin:0 auto 12px"><img src="/c/${escapeHtml(slug)}/portrait" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'"></div></div>`
+
+  const overlayHtml = share.style === 'card' ? `<div id="card-overlay" hidden style="position:fixed;inset:0;z-index:900;display:grid;place-items:center;padding:1rem;background:rgba(0,0,0,.65);backdrop-filter:blur(4px)"><div style="max-width:340px;width:100%"><div id="card-flip-area" data-flipped="false"><div class="card-face-front">${frontSvg}</div><div class="card-face-back" style="display:none">${backSvg}</div></div><div style="display:flex;gap:12px;justify-content:center;margin-top:12px"><button type="button" data-card-flip="card-flip-area" aria-pressed="false" style="padding:8px 20px;background:#7c5cbf;color:#fff;border:none;border-radius:4px;cursor:pointer;min-height:44px">Flip</button><button type="button" data-close-overlay style="padding:8px 20px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer;min-height:44px">Close</button></div></div></div>` : ''
 
   const boardHtml = share.showMoodboard && card.boardUrl ? `<p style="margin:8px 0 0"><a href="${escapeHtml(card.boardUrl)}" target="_blank" rel="noopener" style="color:#7c5cbf">Pinterest board</a></p>` : ''
 
@@ -98,8 +102,11 @@ a{color:#7c5cbf}.container{max-width:720px;margin:0 auto}
 h1{font-size:28px;margin:0 0 8px}
 .subtitle{opacity:0.7;font-style:italic;margin-bottom:16px}
 footer{margin-top:48px;padding-top:16px;border-top:1px solid #333;font-size:13px;opacity:0.6}
-#card-preview svg,#card-back-preview svg{width:100%;height:auto}
-@media(max-width:600px){.header{flex-direction:column}#card-preview,#card-back-preview{width:160px!important}}
+#card-preview svg{width:100%;height:auto}
+[data-flipped="false"] .card-face-front{display:block}[data-flipped="false"] .card-face-back{display:none}
+[data-flipped="true"] .card-face-front{display:none}[data-flipped="true"] .card-face-back{display:block}
+.card-face-front svg,.card-face-back svg{width:100%;height:auto}
+@media(max-width:600px){.header{flex-direction:column}#card-preview{width:160px!important}}
 </style>
 </head>
 <body>
@@ -113,6 +120,7 @@ ${card.quote ? `<p style="font-style:italic;margin-bottom:16px">&ldquo;${escapeH
 </div>
 </div>
 ${moodboardHtml}${boardHtml}${playlistHtml}${statsHtml}
+${overlayHtml}
 <footer>
 <p><a href="https://puffinpost.app">Made with Puffin Post</a></p>
 <details style="margin-top:12px"><summary style="cursor:pointer">Report this page</summary>
@@ -123,6 +131,7 @@ ${moodboardHtml}${boardHtml}${playlistHtml}${statsHtml}
 </details>
 </footer>
 </div>
+<script src="/share.js" defer></script>
 </body>
 </html>`
 }
@@ -132,7 +141,8 @@ function renderEmbed(share: ShareRow, char: CharRow, card: CardProfile, stats: C
   const slug = share.slug
   if (share.style === 'card') {
     const frontSvg = renderToString(createElement(Side, { side: 'front', name, profile: card, stats, portrait: `/c/${slug}/portrait`, moodboard: [], uid: 'ef' }))
-    return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh}svg{width:340px;max-height:480px}a{font-size:12px;color:#7c5cbf;margin-top:4px;font-family:sans-serif}</style></head><body>${frontSvg}<a href="${escapeHtml(appOrigin)}/c/${escapeHtml(slug)}" target="_blank" rel="noopener">Open on Puffin Post</a></body></html>`
+    const backSvg = renderToString(createElement(Side, { side: 'back', name, profile: card, stats: share.showStats ? stats : { total: 0, mine: 0, theirs: 0, rps: [] }, portrait: null, moodboard: [], uid: 'eb' }))
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh}svg{width:340px;max-height:480px}a{font-size:12px;color:#7c5cbf;margin-top:4px;font-family:sans-serif}[data-flipped="false"] .card-face-front{display:block}[data-flipped="false"] .card-face-back{display:none}[data-flipped="true"] .card-face-front{display:none}[data-flipped="true"] .card-face-back{display:block}button.flip-btn{padding:6px 16px;background:#7c5cbf;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;margin-top:4px;min-height:44px}</style></head><body><div id="embed-card" data-flipped="false"><div class="card-face-front">${frontSvg}</div><div class="card-face-back">${backSvg}</div></div><button type="button" class="flip-btn" data-card-flip="embed-card" aria-pressed="false">Flip</button><a href="${escapeHtml(appOrigin)}/c/${escapeHtml(slug)}" target="_blank" rel="noopener">Open on Puffin Post</a><script src="/share.js" defer></script></body></html>`
   }
   return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1520;color:#f0e8f0;font-family:Georgia,serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:16px}img{width:64px;height:64px;border-radius:50%;object-fit:cover;margin-bottom:8px}.stats{display:flex;gap:16px;margin-top:12px;font-size:14px}a{font-size:12px;color:#7c5cbf;margin-top:8px}</style></head><body><img src="/c/${escapeHtml(slug)}/portrait" alt="" onerror="this.style.display='none'"><strong>${escapeHtml(name)}</strong>${share.showStats ? `<div class="stats"><span>${stats.total} threads</span><span>${stats.mine} yours</span><span>${stats.theirs} theirs</span></div>` : ''}<a href="${escapeHtml(appOrigin)}/c/${escapeHtml(slug)}" target="_blank" rel="noopener">Open on Puffin Post</a></body></html>`
 }

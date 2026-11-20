@@ -6,6 +6,7 @@ import { toast, undoCharacterArchive, undoReturnToPlanner } from '../lib/toast'
 import { initialsFor } from '../components/InitialsAvatar'
 import TradingCard, { THEMES, downloadCard, emptyCard, type CardProfile, type CardStats, type ThemeId } from '../components/TradingCard'
 import CardEditor from '../components/CardEditor'
+import SharePanel from '../components/SharePanel'
 
 // A single moodboard entry as GET /characters/:id/moodboard returns it (kind, not the stored file).
 type MoodboardItem = { id: string; kind: 'image' | 'pin' }
@@ -18,7 +19,7 @@ type InboxBranch = { characterId: string; status: string }
 type Counts = { total: number; mine: number; theirs: number }
 const blogLabel = (value: string) => value.replace(/\.tumblr\.com$/i, '')
 
-async function exportCharacterCard(character: Character, counts: Counts) {
+export async function statsCardBlob(character: { id: string; name: string; state: string; iconObjectKey: string | null }, counts: Counts): Promise<Blob> {
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d')
   if (!context) throw new Error('Could not make a stats card')
   canvas.width = 1200; canvas.height = 630
@@ -33,7 +34,13 @@ async function exportCharacterCard(character: Character, counts: Counts) {
     if (blob) { const url = URL.createObjectURL(blob), image = new Image(); await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error('Could not load icon')); image.src = url }); context.drawImage(image, 90, 170, 210, 210); URL.revokeObjectURL(url) }
   } else { context.fillStyle = '#a9d4dc'; context.fillRect(90, 170, 210, 210); context.fillStyle = '#182126'; context.font = '600 92px Georgia'; context.fillText(character.name.slice(0, 1).toUpperCase(), 160, 310) }
   context.restore(); context.strokeStyle = '#f8f3e9'; context.lineWidth = 7; context.beginPath(); context.arc(195, 275, 105, 0, Math.PI * 2); context.stroke()
-  const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png')); if (!blob) throw new Error('Could not export stats card')
+  const result = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
+  if (!result) throw new Error('Could not export stats card')
+  return result
+}
+
+async function exportCharacterCard(character: Character, counts: Counts) {
+  const blob = await statsCardBlob(character, counts)
   const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = (character.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'character') + '-puffin-post-stats.png'; link.click(); URL.revokeObjectURL(url)
 }
 
@@ -94,11 +101,13 @@ const portraitFor = (row: Character, version?: number) => row.iconObjectKey ? '/
 const VIEW_KEY = 'puffin.characters.view'
 
 function CardTile({ row, stats, portrait, moodUrls, edit, reportError }: { row: Character; stats: CardStats; portrait: string | null; moodUrls?: string[]; edit: () => void; reportError: (error: string) => void }) {
-  const tile = useRef<HTMLElement>(null), [saving, setSaving] = useState(false), [note, setNote] = useState('')
+  const tile = useRef<HTMLElement>(null), [saving, setSaving] = useState(false), [note, setNote] = useState(''), [sharing, setSharing] = useState(false)
+  const counts = { total: stats.total, mine: stats.mine, theirs: stats.theirs }
   const download = async () => { try { setSaving(true); setNote(''); const kind = await downloadCard(tile.current!, row.name); setNote(kind === 'gif' ? 'Saved as an animated GIF.' : kind === 'png-no-gif-support' ? 'This browser can’t make animated GIFs, so the card was saved as a PNG.' : 'Saved as a PNG.') } catch (problem) { reportError((problem as Error).message) } finally { setSaving(false) } }
   return <article className="tcard-tile" ref={tile} aria-label={row.name}>
     <TradingCard name={row.name} profile={row.card ?? emptyCard()} stats={stats} portrait={portrait} moodboard={moodUrls} />
-    <div className="tcard-actions"><a className="secondary-button" href={'#character/' + row.id}>Open profile</a><button type="button" className="secondary-button" onClick={edit}>{row.card ? 'Edit card' : 'Make this card'}</button><button type="button" className="secondary-button" disabled={saving} title="Animated GIF when the portrait is a GIF, otherwise PNG" onClick={() => void download()}>{saving ? 'Preparing…' : 'Download'}</button></div><p className="field-help tcard-note" role="status">{note}</p>
+    <div className="tcard-actions"><a className="secondary-button" href={'#character/' + row.id}>Open profile</a><button type="button" className="secondary-button" onClick={edit}>{row.card ? 'Edit card' : 'Make this card'}</button><button type="button" className="secondary-button" disabled={saving} title="Animated GIF when the portrait is a GIF, otherwise PNG" onClick={() => void download()}>{saving ? 'Preparing…' : 'Download'}</button><button type="button" className="secondary-button" onClick={() => setSharing(true)}>Share</button></div><p className="field-help tcard-note" role="status">{note}</p>
+    {sharing && <SharePanel character={row} counts={counts} stats={stats} cardRef={tile} close={() => setSharing(false)} />}
   </article>
 }
 
