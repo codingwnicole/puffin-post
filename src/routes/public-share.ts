@@ -11,7 +11,7 @@ import { parsePlaylist } from '../shared/embeds'
 const moderatorEmail = 'tmixwix@gmail.com'
 
 type ShareRow = { id: string; workspaceId: string; characterId: string; slug: string; style: 'card' | 'stats'; showMoodboard: number; showPlaylist: number; showStats: number; indexable: number; previewObjectKey: string | null; disabledByModerator: number }
-type CharRow = { name: string; iconObjectKey: string | null; cardJson: string | null }
+type CharRow = { name: string; iconObjectKey: string | null; portraitObjectKey: string | null; cardJson: string | null }
 
 const PAGE_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self'; frame-src https://open.spotify.com https://www.youtube-nocookie.com https://embed.music.apple.com https://assets.pinterest.com; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
 const EMBED_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self'; frame-ancestors *; base-uri 'none'"
@@ -23,7 +23,7 @@ function escapeHtml(s: string): string {
 async function loadShare(db: D1Database, slug: string): Promise<{ share: ShareRow; char: CharRow } | null> {
   const share = await db.prepare('SELECT id, workspace_id AS workspaceId, character_id AS characterId, slug, style, show_moodboard AS showMoodboard, show_playlist AS showPlaylist, show_stats AS showStats, indexable, preview_object_key AS previewObjectKey, disabled_by_moderator AS disabledByModerator FROM character_shares WHERE slug=?').bind(slug).first<ShareRow>()
   if (!share || share.disabledByModerator) return null
-  const char = await db.prepare('SELECT name, icon_object_key AS iconObjectKey, card_json AS cardJson FROM characters WHERE workspace_id=? AND id=?').bind(share.workspaceId, share.characterId).first<CharRow>()
+  const char = await db.prepare('SELECT name, icon_object_key AS iconObjectKey, portrait_object_key AS portraitObjectKey, card_json AS cardJson FROM characters WHERE workspace_id=? AND id=?').bind(share.workspaceId, share.characterId).first<CharRow>()
   if (!char) return null
   return { share, char }
 }
@@ -95,13 +95,13 @@ ${hasPreview ? `<meta property="og:image" content="${escapeHtml(appOrigin)}/c/${
 <meta name="twitter:card" content="summary_large_image">
 ${noindex ? '<meta name="robots" content="noindex,nofollow">' : ''}
 <style>
-*{box-sizing:border-box;margin:0}body{font-family:Georgia,serif;background:#1a1520;color:#f0e8f0;padding:24px 16px;min-height:100vh}
-a{color:#7c5cbf}.container{max-width:720px;margin:0 auto}
+*{box-sizing:border-box;margin:0}body{font-family:system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.5;background:#1a1520;color:#f0eaf5;padding:24px 16px;min-height:100vh}
+a{color:#b49adb}.container{max-width:720px;margin:0 auto}
 .header{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
 .content{flex:1;min-width:200px}
-h1{font-size:28px;margin:0 0 8px}
-.subtitle{opacity:0.7;font-style:italic;margin-bottom:16px}
-footer{margin-top:48px;padding-top:16px;border-top:1px solid #333;font-size:13px;opacity:0.6}
+h1{font:600 28px/1.2 Georgia,serif;margin:0 0 8px}
+.subtitle{color:#c8b8d8;font-style:italic;margin-bottom:16px}
+footer{margin-top:48px;padding-top:16px;border-top:1px solid #333;font-size:13px;color:#9a8fa0}
 #card-preview svg{width:100%;height:auto}
 [data-flipped="false"] .card-face-front{display:block}[data-flipped="false"] .card-face-back{display:none}
 [data-flipped="true"] .card-face-front{display:none}[data-flipped="true"] .card-face-back{display:block}
@@ -189,8 +189,9 @@ export function publicShareRoutes() {
 
   app.get('/:slug/portrait', async c => {
     const data = await loadShare(c.env.DB, c.req.param('slug'))
-    if (!data || !data.char.iconObjectKey) throw new HTTPException(404, { message: 'Not found' })
-    const object = await c.env.ICONS.get(data.char.iconObjectKey)
+    const portraitKey = data?.char.portraitObjectKey ?? data?.char.iconObjectKey
+    if (!data || !portraitKey) throw new HTTPException(404, { message: 'Not found' })
+    const object = await c.env.ICONS.get(portraitKey)
     if (!object) throw new HTTPException(404, { message: 'Not found' })
     return new Response(object.body, { headers: { 'content-type': object.httpMetadata?.contentType ?? 'application/octet-stream', 'cache-control': 'public, max-age=300', 'x-content-type-options': 'nosniff' } })
   })

@@ -11,7 +11,7 @@ import SharePanel from '../components/SharePanel'
 // A single moodboard entry as GET /characters/:id/moodboard returns it (kind, not the stored file).
 type MoodboardItem = { id: string; kind: 'image' | 'pin' }
 
-type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; card?: CardProfile | null }
+type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; portraitObjectKey: string | null; card?: CardProfile | null }
 type ArchivedCharacter = { id: string; name: string; color: string | null; notes: string | null; iconObjectKey: string | null; createdAt: string; rpGroupNames: string[]; threadCount: number }
 type Connection = { assignments: { characterId: string; blogIdentifier: string; characterTag: string | null }[] }
 type Group = { id: string; name: string; characterIds: string[] }
@@ -97,7 +97,7 @@ function CharacterCard({ row, index, assignments, groups, stat, iconVersion, bus
   </article>
 }
 
-const portraitFor = (row: Character, version?: number) => row.iconObjectKey ? '/api/characters/' + row.id + '/icon?v=' + (version ?? row.iconObjectKey) : null
+const portraitFor = (row: Character, version?: number) => (row.portraitObjectKey || row.iconObjectKey) ? '/api/characters/' + row.id + '/portrait?v=' + (version ?? row.portraitObjectKey ?? row.iconObjectKey) : null
 const VIEW_KEY = 'puffin.characters.view'
 
 function CardTile({ row, stats, portrait, moodUrls, edit, reportError }: { row: Character; stats: CardStats; portrait: string | null; moodUrls?: string[]; edit: () => void; reportError: (error: string) => void }) {
@@ -106,7 +106,7 @@ function CardTile({ row, stats, portrait, moodUrls, edit, reportError }: { row: 
   const download = async () => { try { setSaving(true); setNote(''); const kind = await downloadCard(tile.current!, row.name); setNote(kind === 'gif' ? 'Saved as an animated GIF.' : kind === 'png-no-gif-support' ? 'This browser can’t make animated GIFs, so the card was saved as a PNG.' : 'Saved as a PNG.') } catch (problem) { reportError((problem as Error).message) } finally { setSaving(false) } }
   return <article className="tcard-tile" ref={tile} aria-label={row.name}>
     <TradingCard name={row.name} profile={row.card ?? emptyCard()} stats={stats} portrait={portrait} moodboard={moodUrls} />
-    <div className="tcard-actions"><a className="secondary-button" href={'#character/' + row.id}>Open profile</a><button type="button" className="secondary-button" onClick={edit}>{row.card ? 'Edit card' : 'Make this card'}</button><button type="button" className="secondary-button" disabled={saving} title="Animated GIF when the portrait is a GIF, otherwise PNG" onClick={() => void download()}>{saving ? 'Preparing…' : 'Download'}</button><button type="button" className="secondary-button" onClick={() => setSharing(true)}>Share</button></div><p className="field-help tcard-note" role="status">{note}</p>
+    <div className="tcard-actions"><button type="button" className="secondary-button" onClick={edit}>{row.card ? 'Edit card' : 'Make a card'}</button><button type="button" className="secondary-button" disabled={saving} title="Animated GIF when the portrait is a GIF, otherwise PNG" onClick={() => void download()}>{saving ? 'Preparing…' : 'Download'}</button><button type="button" className="secondary-button" onClick={() => setSharing(true)}>Share</button></div><p className="field-help tcard-note" role="status">{note}</p>
     {sharing && <SharePanel character={row} counts={counts} stats={stats} cardRef={tile} close={() => setSharing(false)} />}
   </article>
 }
@@ -157,7 +157,7 @@ export default function CharactersPage() {
     {!rows.length && <p>No characters yet. Add your first one above.</p>}
     </>
     )}
-    {editing && <CardEditor row={editing} stats={cardStats(editing)} portrait={portraitFor(editing, iconVersions[editing.id])} upload={file => upload(editing.id, file)} close={() => setEditingId(null)} saved={load} />}
+    {editing && <CardEditor row={editing} stats={cardStats(editing)} portrait={portraitFor(editing, iconVersions[editing.id])} upload={async file => { const form = new FormData(); form.set('image', file); const r = await fetch('/api/characters/' + editing.id + '/portrait', { method: 'POST', body: form }); if (!r.ok) throw new Error('Portrait upload failed'); setIconVersions(v => ({ ...v, [editing.id]: Date.now() })); await load() }} close={() => setEditingId(null)} saved={load} />}
     {deleteTarget && (
       <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
         <div className="modal-card">

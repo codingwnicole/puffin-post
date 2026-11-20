@@ -6,7 +6,7 @@ import SharePanel from '../components/SharePanel'
 import { parsePlaylist } from '../../shared/embeds'
 import { fitImage, IMAGE_ACCEPT, IMAGE_HINT } from '../lib/uploads'
 
-type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; card?: CardProfile | null }
+type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; portraitObjectKey: string | null; card?: CardProfile | null }
 type Group = { id: string; name: string; characterIds: string[] }
 type MoodboardItem = { id: string; kind: 'image' | 'pin'; pinId: string | null; position: number }
 
