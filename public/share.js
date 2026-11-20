@@ -40,9 +40,11 @@
   var openBtn = document.querySelector('[data-open-overlay]')
   var closeBtn = overlay && overlay.querySelector('[data-close-overlay]')
   if (overlay && openBtn) {
-    openBtn.addEventListener('click', function () { overlay.hidden = false })
-    if (closeBtn) closeBtn.addEventListener('click', function () { overlay.hidden = true })
-    overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.hidden = true })
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !overlay.hidden) overlay.hidden = true })
+    function showOverlay() { overlay.style.display = 'grid' }
+    function hideOverlay() { overlay.style.display = 'none' }
+    openBtn.addEventListener('click', showOverlay)
+    if (closeBtn) closeBtn.addEventListener('click', hideOverlay)
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) hideOverlay() })
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && overlay.style.display !== 'none') hideOverlay() })
   }
 })()

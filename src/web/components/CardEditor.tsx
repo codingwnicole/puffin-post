@@ -31,7 +31,7 @@ function CardEditor({ row, stats, portrait, upload, close, saved }: { row: Chara
         <label>Pinterest board link<input value={draft.boardUrl} maxLength={500} placeholder="https://pin.it/… or a board URL" onChange={event => set('boardUrl', event.target.value)} /></label>
         <label>Track list<textarea value={draft.tracklist.join('\n')} rows={4} placeholder="One song per line (up to 10)" onChange={event => set('tracklist', event.target.value.split('\n').slice(0, 10))} /></label>
         {error && <p role="alert">{error}</p>}
-        <div className="modal-actions"><button disabled={saving}>{saving ? 'Saving…' : 'Save card'}</button><button type="button" className="text-button" onClick={close}>Cancel</button></div>
+        <div className="modal-actions"><button disabled={saving}>{saving ? 'Saving…' : 'Save card'}</button><button type="button" className="text-button" onClick={close}>Cancel</button><button type="button" className="text-button danger-text" disabled={saving} onClick={async () => { if (!confirm('Delete this card? The character stays, only the card is removed.')) return; try { setSaving(true); await api('/characters/' + row.id + '/card', 'DELETE'); await saved(); close() } catch (problem) { setError((problem as Error).message) } finally { setSaving(false) } }}>Delete card</button></div>
       </div>
       <div className="card-editor-preview"><TradingCard name={row.name} profile={draft} stats={stats} portrait={portrait} /><p className="field-help">Tap the card to flip it. Thread stats fill in on their own.</p></div>
     </form>
