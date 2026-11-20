@@ -93,7 +93,8 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
   const tracklistHtml = tracks.length > 0 ? `<section class="section"><h2 class="section-title">Tracklist</h2><ol class="track-list">${tracks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ol></section>` : ''
 
   const portraitHtml = `<img class="hero-portrait" src="/c/${escapeHtml(slug)}/portrait" alt="" onerror="this.style.display='none'">`
-  const cardDisplayHtml = share.style === 'card' ? `<div class="card-display">${frontSvg}${backSvg}</div>` : ''
+  const cardPng = `/c/${escapeHtml(slug)}/card.png`
+  const cardDisplayHtml = share.style === 'card' ? `<div class="card-display"><a href="${cardPng}" target="_blank" title="View full card">${frontSvg}</a><a href="${cardPng}" target="_blank" title="View full card">${backSvg}</a></div>` : ''
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -118,7 +119,9 @@ a{color:var(--accent)}
 .hero{padding-bottom:2rem;border-bottom:1px solid var(--stroke);overflow:hidden}
 .hero-portrait{float:left;width:180px;height:180px;border-radius:1rem;object-fit:cover;margin:0 2rem 1rem 0;border:3px solid var(--stroke)}
 .card-display{display:flex;gap:1.5rem;justify-content:center;margin-top:2rem;padding:2rem 0;border-top:1px solid color-mix(in srgb,var(--stroke) 40%,transparent)}
-.card-display svg{width:220px;height:auto;filter:drop-shadow(0 4px 12px rgba(0,0,0,.2))}
+.card-display a{display:block;text-decoration:none;transition:transform .15s ease}
+.card-display a:hover{transform:scale(1.03)}
+.card-display svg{width:320px;height:auto;filter:drop-shadow(0 4px 12px rgba(0,0,0,.2))}
 .hero-text{display:grid;gap:.75rem;align-content:start;padding-top:.5rem}
 .hero-name{font:600 clamp(2rem,5vw,3.2rem)/1.1 var(--font);letter-spacing:-.03em;color:var(--ink)}
 .hero-nickname{font:italic 500 1.1rem/1.3 var(--font);color:var(--sub)}
@@ -192,7 +195,7 @@ a{color:var(--accent)}
   .hero-portrait{float:none;display:block;width:140px;height:140px;margin:0 auto 1rem;border-radius:50%}
   .hero-quote{text-align:left}
   .hero-meta{justify-content:center}
-  .card-display{flex-wrap:wrap}.card-display svg{width:180px}
+  .card-display{flex-wrap:wrap}.card-display svg{width:260px}
   .detail-grid{grid-template-columns:1fr}
   .stat-row{grid-template-columns:repeat(3,1fr);gap:.5rem}
   .stat-num{font-size:1.4rem}
