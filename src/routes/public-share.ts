@@ -122,7 +122,7 @@ ${card.quote ? `<p style="font-style:italic;margin-bottom:16px">&ldquo;${escapeH
 ${moodboardHtml}${boardHtml}${playlistHtml}${statsHtml}
 ${overlayHtml}
 <footer>
-<p><a href="https://puffinpost.app">Made with Puffin Post</a></p>
+<p>Made with <a href="https://puffinpost.app">Puffin Post</a> &middot; <a href="https://puffinpost.app">Make your own</a></p>
 <details style="margin-top:12px"><summary style="cursor:pointer">Report this page</summary>
 <form method="POST" action="/c/${escapeHtml(slug)}/report" style="margin-top:8px">
 <textarea name="reason" maxlength="1000" required placeholder="Why are you reporting this page?" style="width:100%;height:80px;background:#2a2230;color:#f0e8f0;border:1px solid #444;border-radius:4px;padding:8px;font-family:inherit"></textarea>
