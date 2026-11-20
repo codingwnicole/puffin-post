@@ -46,7 +46,7 @@ export function boardLabel(url: string): string {
   try { return new URL(url).pathname.split('/').filter(Boolean).pop()?.replace(/-/g, ' ') ?? '' } catch { return '' }
 }
 
-function Side({ side, name, profile, stats, portrait, moodboard = [], uid }: { side: 'front' | 'back' | 'mood'; name: string; profile: CardProfile; stats: CardStats; portrait: string | null; moodboard?: string[]; uid: string }) {
+export function Side({ side, name, profile, stats, portrait, moodboard = [], uid }: { side: 'front' | 'back' | 'mood'; name: string; profile: CardProfile; stats: CardStats; portrait: string | null; moodboard?: string[]; uid: string }) {
   const t: Theme = THEMES[profile.theme] ?? THEMES.holo
   const id = (key: string) => `${uid}-${side}-${key}`
   const label = { fill: t.sub, fontFamily: t.sans, fontSize: 11, letterSpacing: 3 } as const

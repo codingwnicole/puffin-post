@@ -19,7 +19,7 @@ const WORKSPACE_TABLES = [
   'starters',                          // -> characters
   'refresh_cursors',                   // -> character_blogs
   'character_blogs',                   // -> characters, tumblr_connections
-  'character_quicklinks','character_moodboard_items','rp_group_characters', // -> characters (rp_group_characters also -> rp_groups)
+  'character_shares','character_quicklinks','character_moodboard_items','rp_group_characters', // -> characters (rp_group_characters also -> rp_groups)
   'rp_groups','partners','tags','tumblr_connections','tumblr_oauth_states','starter_templates',
   'activity_dismissals','activity_notification_deliveries',
   'character_plan_resources','character_plans','feature_suggestions',

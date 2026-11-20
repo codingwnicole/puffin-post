@@ -67,6 +67,8 @@ const ALLOWLIST: { file: string; sql: string; reason: string }[] = [
   { file: 'src/auth/invites.ts', sql: 'SELECT 1 FROM users u JOIN memberships m ON m.user_id = u.id', reason: 'invite eligibility checks whether the email is an owner, cross-workspace by design' },
   { file: 'src/auth/magic-links.ts', sql: 'DELETE FROM magic_links WHERE token_hash = ?', reason: 'magic link consumed by its one-time token hash' },
   { file: 'src/refresh/runner.ts', sql: 'SELECT cb.id, cb.workspace_id AS workspaceId', reason: 'cron refresh selects due blogs across all tenants; each row is workspace-scoped downstream' },
+  { file: 'src/routes/public-share.ts', sql: 'UPDATE character_shares SET disabled_by_moderator=1,updated_at=? WHERE slug=?', reason: 'moderator takedown by slug, gated by moderator email check' },
+  { file: 'src/routes/public-share.ts', sql: 'UPDATE character_shares SET disabled_by_moderator=0,updated_at=? WHERE slug=?', reason: 'moderator re-enable by slug, gated by moderator email check' },
 ]
 
 describe('tenant scoping (static audit)', () => {

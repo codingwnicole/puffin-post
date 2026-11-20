@@ -25,6 +25,7 @@ import { characterPlannerRoutes } from './routes/character-planner'
 import { featureSuggestionRoutes } from './routes/feature-suggestions'
 import { supportRoutes } from './routes/support'
 import { clientErrorRoutes } from './routes/client-errors'
+import { publicShareRoutes, shareAdminRoutes } from './routes/public-share'
 import { redact } from './shared/redact'
 
 export interface Env {
@@ -99,6 +100,8 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   app.route('/api/feature-suggestions',featureSuggestionRoutes())
   app.route('/api/support',supportRoutes())
   app.route('/api/client-errors',clientErrorRoutes(BUILD_REVISION))
+  app.route('/api/share-admin',shareAdminRoutes())
+  app.route('/c',publicShareRoutes())
   return app
 }
 
