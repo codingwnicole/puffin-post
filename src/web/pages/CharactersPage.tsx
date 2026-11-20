@@ -97,7 +97,7 @@ function CharacterCard({ row, index, assignments, groups, stat, iconVersion, bus
   </article>
 }
 
-const portraitFor = (row: Character, version?: number) => (row.portraitObjectKey || row.iconObjectKey) ? '/api/characters/' + row.id + '/portrait?v=' + (version ?? row.portraitObjectKey ?? row.iconObjectKey) : null
+const portraitFor = (row: Character, version?: number) => row.portraitObjectKey ? '/api/characters/' + row.id + '/portrait?v=' + (version ?? row.portraitObjectKey) : null
 const VIEW_KEY = 'puffin.characters.view'
 
 function CardTile({ row, stats, portrait, moodUrls, edit, reportError }: { row: Character; stats: CardStats; portrait: string | null; moodUrls?: string[]; edit: () => void; reportError: (error: string) => void }) {
