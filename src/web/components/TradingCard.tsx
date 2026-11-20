@@ -108,7 +108,7 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
       {([['THREADS', stats.total], ['YOUR TURN', stats.mine], ['THEIR TURN', stats.theirs]] as const).map(([what, value], i) => <g key={what}><text x={133 + i * 187} y={185} textAnchor="middle" fill={t.ink} fontFamily={t.font} fontSize={64}>{value}</text><text x={133 + i * 187} y={215} textAnchor="middle" {...label}>{what}</text></g>)}
       <text x={320} y={252} textAnchor="middle" {...body} fontSize={15}>{wrap(stats.rps.length ? 'Writes in ' + stats.rps.join(' / ') : 'Not in an RP section yet', 60, 1)[0]}</text>
       {box(286, 250)}<text x={60} y={316} {...label}>FUN FACTS</text>
-      {(() => { const facts = [0,1,2,3,4].map(i => (profile.facts[i] || '—').slice(0, 60)); let fs = 17; let wr: string[][] = []; for (; fs >= 11; fs--) { wr = facts.map(f => wrap(f, Math.round(42 * 17 / fs), 2)); if (wr.reduce((s, l) => s + l.length, 0) * Math.round(fs * 1.4) <= 180) break } const lh = Math.round(fs * 1.4); let y = 358; return facts.map((_, i) => { const sy = y; y += wr[i].length * lh + 2; return <g key={i}>{glyph ? symbolText(66, sy, 16) : <circle cx={66} cy={sy - 6} r={3} fill={t.accent} />}{wr[i].map((line, j) => <text key={j} x={88} y={sy + j * lh} {...body} fontSize={fs}>{line}</text>)}</g> }) })()}
+      {(() => { const facts = [0,1,2,3,4].map(i => (profile.facts[i] || '-').slice(0, 60)); let fs = 17; let wr: string[][] = []; for (; fs >= 11; fs--) { wr = facts.map(f => wrap(f, Math.round(56 * 17 / fs), 2)); if (wr.reduce((s, l) => s + l.length, 0) * Math.round(fs * 1.4) <= 180) break } const lh = Math.round(fs * 1.4); let y = 358; return facts.map((_, i) => { const sy = y; y += wr[i].length * lh + 2; return <g key={i}>{glyph ? symbolText(66, sy, 16) : <circle cx={66} cy={sy - 6} r={3} fill={t.accent} />}{wr[i].map((line, j) => <text key={j} x={88} y={sy + j * lh} {...body} fontSize={fs}>{line}</text>)}</g> }) })()}
       {box(552, 120, { width: 272 })}{box(552, 120, { x: 328, width: 272 })}
       <text x={60} y={580} {...label}>LIKES</text><text x={348} y={580} {...label}>DISLIKES</text>
       {wrap(profile.likes || '—', 24, 3).map((line, i) => <text key={'l' + i} x={60} y={608 + i * 22} {...body} fontSize={17}>{line}</text>)}
@@ -142,15 +142,11 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
   </svg>
 }
 
-/** Flip on click / Enter / Space; tilt and foil shine follow the pointer (off under reduced motion via CSS).
- * With moodboard images the click cycles front -> back -> moodboard: the hidden face is refilled with
- * the next side just before the rotation, so the two physical faces always hold the current and next
- * side. The aria-label names the side that comes next. */
+/** Flip between the printable front and details back. Moodboards stay available to exports and profiles,
+ * but never occupy a physical flip face: legacy cards with board/playlist data otherwise flashed it mid-turn. */
 export default function TradingCard({ name, profile, stats, portrait, moodboard, initialSide = 'front' }: { name: string; profile: CardProfile; stats: CardStats; portrait: string | null; moodboard?: string[]; initialSide?: 'front' | 'back' }) {
   const hasMoodboard = (moodboard?.length ?? 0) > 0 || !!profile.boardUrl || !!profile.playlistUrl || (profile.tracklist?.length ?? 0) > 0
-  const [visible, setVisible] = useState<'front' | 'back' | 'mood'>(initialSide)
-  const [hidden, setHidden] = useState<'front' | 'back' | 'mood'>(initialSide === 'front' ? 'back' : 'front')
-  const flipped = visible !== 'front'
+  const [flipped, setFlipped] = useState(initialSide === 'back')
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '')
   const move = (event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== 'mouse') return
@@ -159,19 +155,12 @@ export default function TradingCard({ name, profile, stats, portrait, moodboard,
     event.currentTarget.style.setProperty('--mx', `${x * 100}%`); event.currentTarget.style.setProperty('--my', `${y * 100}%`)
   }
   const leave = (event: PointerEvent<HTMLDivElement>) => { for (const key of ['--rx', '--ry', '--mx', '--my']) event.currentTarget.style.removeProperty(key) }
-  // One face renderer: a given side drawn on whichever physical face it currently rides.
   const face = (side: 'front' | 'back' | 'mood') => <Side side={side} name={name} profile={profile} stats={stats} portrait={side === 'front' ? portrait : null} moodboard={side === 'mood' ? moodboard : undefined} uid={uid} />
-  return <div className="tcard" data-theme-id={profile.theme} data-flipped={flipped || undefined} data-visible={visible} onPointerMove={move} onPointerLeave={leave} style={{ '--card-glow': THEMES[profile.theme]?.accent } as CSSProperties}>
-    <button type="button" className="tcard-inner" aria-pressed={flipped} aria-label={`Flip ${name}'s card to the ${hidden === 'mood' ? 'moodboard' : hidden}`} onClick={() => {
-      if (!hasMoodboard) { setVisible(s => (s === 'front' ? 'back' : 'front')); return }
-      const nextVisible = visible === 'front' ? 'back' : visible === 'back' ? 'mood' : 'front'
-      const nextHidden = nextVisible === 'front' ? 'back' : nextVisible === 'back' ? 'mood' : 'front'
-      setVisible(nextVisible); setHidden(nextHidden)
-    }}>
+  return <div className="tcard" data-theme-id={profile.theme} data-flipped={flipped || undefined} onPointerMove={move} onPointerLeave={leave} style={{ '--card-glow': THEMES[profile.theme]?.accent } as CSSProperties}>
+    <button type="button" className="tcard-inner" aria-pressed={flipped} aria-label={`Flip ${name}'s card to the ${flipped ? 'front' : 'back'}`} onClick={() => setFlipped(current => !current)}>
       <span className="tcard-flip">
-      {/* The unflipped face (no rotation) shows the visible side; the rotated face shows the other. */}
-      <span className="tcard-face tcard-front">{face(visible)}</span>
-      <span className="tcard-face tcard-back">{face(hidden)}</span>
+      <span className="tcard-face tcard-front">{face('front')}</span>
+      <span className="tcard-face tcard-back">{face('back')}</span>
       {/* A raster-only copy of the mood side, kept in the DOM (hidden) so the download can draw it. */}
       {hasMoodboard && <span className="tcard-face tcard-mood" hidden>{face('mood')}</span>}
       </span>
@@ -289,9 +278,19 @@ async function animatedCard(svgs: SVGSVGElement[], moodUrls: string[], gif: Blob
       await drawSide(context, svgs[0], frameData, null, 0, SIDE, H)
       for (const [i, svg] of svgs.entries()) { if (i === 0) continue; await drawSide(context, svg, null, svg.dataset.side === 'mood' ? moodData : null, i * (SIDE + GAP), SIDE, H) }
       const rgba = context.getImageData(0, 0, W, H).data
-      const palette = quantize(rgba, 256)
-      const index = applyPalette(rgba, palette)
-      encoder.writeFrame(index, W, H, { palette, delay: Math.max(20, delay), dispose: 1, ...(start ? {} : { repeat: 0 }) })
+      // Keep the gap and rounded outside corners truly transparent, but give visible pixels all
+      // 255 available colors. This is a complete frame, not a brittle transparent delta.
+      const opaqueOffsets: number[] = []
+      for (let p = 0; p < rgba.length; p += 4) if (rgba[p + 3] >= 128) opaqueOffsets.push(p)
+      const opaque = new Uint8ClampedArray(Math.max(1, opaqueOffsets.length) * 4)
+      opaqueOffsets.forEach((p, i) => opaque.set(rgba.subarray(p, p + 4), i * 4))
+      const palette = quantize(opaque, 255)
+      palette.push([0, 0, 0])
+      const transparentIndex = palette.length - 1
+      const index = new Uint8Array(W * H).fill(transparentIndex)
+      const mapped = applyPalette(opaque, palette)
+      opaqueOffsets.forEach((p, i) => { index[p / 4] = mapped[i] })
+      encoder.writeFrame(index, W, H, { palette, delay: Math.max(20, delay), dispose: 1, transparent: true, transparentIndex, ...(start ? {} : { repeat: 0 }) })
     }
   } finally { decoder.close() }
   encoder.finish()
