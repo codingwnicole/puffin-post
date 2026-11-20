@@ -45,18 +45,23 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
   const description = card.nickname || card.quote || 'A character card on Puffin Post'
   const hasPreview = !!share.previewObjectKey
   const noindex = !share.indexable
+  const t = THEMES[card.theme] ?? THEMES.holo
 
   const frontSvg = share.style === 'card' ? renderToString(createElement(Side, { side: 'front', name, profile: card, stats, portrait: `/c/${slug}/portrait`, moodboard: [], uid: 'f' })) : ''
   const backSvg = share.style === 'card' ? renderToString(createElement(Side, { side: 'back', name, profile: card, stats: share.showStats ? stats : { total: 0, mine: 0, theirs: 0, rps: [] }, portrait: null, moodboard: [], uid: 'b' })) : ''
 
+  const songLine = (card.song || '') + (card.artist ? ' — ' + card.artist : '')
+  const facts = (card.facts || []).filter(Boolean)
+  const tracks = (card.tracklist || []).filter(Boolean).slice(0, 10)
+
   let moodboardHtml = ''
   if (share.showMoodboard && moodItems.length > 0) {
     const items = moodItems.map(item => {
-      if (item.kind === 'pin' && item.pinId) return `<iframe src="https://assets.pinterest.com/ext/embed.html?id=${escapeHtml(item.pinId)}" style="width:236px;height:326px;border:none;border-radius:8px" loading="lazy"></iframe>`
-      if (item.kind === 'image') return `<img src="/c/${escapeHtml(slug)}/m/${escapeHtml(item.id)}" alt="" style="width:100%;border-radius:8px;object-fit:cover" loading="lazy">`
+      if (item.kind === 'pin' && item.pinId) return `<iframe src="https://assets.pinterest.com/ext/embed.html?id=${escapeHtml(item.pinId)}" class="mood-pin" loading="lazy"></iframe>`
+      if (item.kind === 'image') return `<img src="/c/${escapeHtml(slug)}/m/${escapeHtml(item.id)}" alt="" class="mood-img" loading="lazy">`
       return ''
     }).filter(Boolean).join('')
-    moodboardHtml = `<section style="margin-top:24px"><h2 style="font-size:18px;margin:0 0 12px">Moodboard</h2><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">${items}</div></section>`
+    moodboardHtml = `<section class="section"><h2 class="section-title">Moodboard</h2><div class="mood-grid">${items}</div></section>`
   }
 
   let playlistHtml = ''
@@ -65,22 +70,28 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
     if (parsed) {
       const label = parsed.provider === 'spotify' ? 'Spotify' : parsed.provider === 'apple' ? 'Apple Music' : 'YouTube'
       const embedHeight = parsed.provider === 'spotify' ? '352' : parsed.provider === 'apple' ? '450' : '315'
-      playlistHtml = `<section style="margin-top:24px"><h2 style="font-size:18px;margin:0 0 12px">Playlist</h2><div data-playlist-container data-embed-src="${escapeHtml(parsed.embedUrl)}" data-embed-height="${embedHeight}"><button type="button" data-playlist-load style="padding:8px 20px;background:#7c5cbf;color:#fff;border:none;border-radius:4px;cursor:pointer;min-height:44px">Load the ${escapeHtml(label)} player</button><br><a href="${escapeHtml(parsed.openUrl)}" target="_blank" rel="noopener" style="color:#7c5cbf;margin-top:8px;display:inline-block">Open in ${escapeHtml(label)}</a></div></section>`
+      playlistHtml = `<section class="section"><h2 class="section-title">Playlist</h2><div data-playlist-container data-embed-src="${escapeHtml(parsed.embedUrl)}" data-embed-height="${embedHeight}"><button type="button" data-playlist-load class="btn-accent">Load the ${escapeHtml(label)} player</button><br><a href="${escapeHtml(parsed.openUrl)}" target="_blank" rel="noopener" class="link">Open in ${escapeHtml(label)} &rarr;</a></div></section>`
     }
   }
 
   let statsHtml = ''
   if (share.showStats) {
-    statsHtml = `<section style="margin-top:24px"><h2 style="font-size:18px;margin:0 0 12px">Thread Stats</h2><div style="display:flex;gap:24px"><div><strong>${stats.total}</strong> threads</div><div><strong>${stats.mine}</strong> your turn</div><div><strong>${stats.theirs}</strong> their turn</div></div>${stats.rps.length ? `<p style="margin:8px 0 0;opacity:0.7">Writes in ${escapeHtml(stats.rps.join(' / '))}</p>` : ''}</section>`
+    statsHtml = `<section class="section"><h2 class="section-title">Thread Stats</h2><div class="stat-row"><div class="stat-card"><span class="stat-num">${stats.total}</span><span class="stat-label">threads</span></div><div class="stat-card"><span class="stat-num">${stats.mine}</span><span class="stat-label">your turn</span></div><div class="stat-card"><span class="stat-num">${stats.theirs}</span><span class="stat-label">their turn</span></div></div>${stats.rps.length ? `<p class="rp-list">Writes in ${escapeHtml(stats.rps.join(' &middot; '))}</p>` : ''}</section>`
   }
 
+  const boardHtml = share.showMoodboard && card.boardUrl ? `<section class="section"><h2 class="section-title">Pinterest Board</h2><a href="${escapeHtml(card.boardUrl)}" target="_blank" rel="noopener" class="board-link"><span class="board-icon">&#x1F4CC;</span>${escapeHtml(card.boardUrl.replace(/^https?:\/\//, ''))}</a></section>` : ''
+
+  const detailsHtml = (card.likes || card.dislikes || card.notes) ? `<section class="section"><h2 class="section-title">About</h2><div class="detail-grid">${card.likes ? `<div class="detail-item"><span class="detail-label">Likes</span><span>${escapeHtml(card.likes)}</span></div>` : ''}${card.dislikes ? `<div class="detail-item"><span class="detail-label">Dislikes</span><span>${escapeHtml(card.dislikes)}</span></div>` : ''}${card.notes ? `<div class="detail-item detail-wide"><span class="detail-label">Notes</span><span>${escapeHtml(card.notes)}</span></div>` : ''}</div></section>` : ''
+
+  const factsHtml = facts.length > 0 ? `<section class="section"><h2 class="section-title">Fun Facts</h2><ul class="fact-list">${facts.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul></section>` : ''
+
+  const tracklistHtml = tracks.length > 0 ? `<section class="section"><h2 class="section-title">Tracklist</h2><ol class="track-list">${tracks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ol></section>` : ''
+
+  const overlayHtml = share.style === 'card' ? `<div id="card-overlay" class="overlay"><div class="overlay-inner"><div id="card-flip-area" data-flipped="false"><div class="card-face-front">${frontSvg}</div><div class="card-face-back">${backSvg}</div></div><div class="overlay-btns"><button type="button" data-card-flip="card-flip-area" aria-pressed="false" class="btn-accent">Flip</button><button type="button" data-close-overlay class="btn-muted">Close</button></div></div></div>` : ''
+
   const cardPreviewHtml = share.style === 'card'
-    ? `<div style="flex-shrink:0"><button type="button" data-open-overlay style="background:none;border:none;padding:0;cursor:pointer" title="View card"><div id="card-preview" style="width:220px">${frontSvg}</div></button></div>`
-    : `<div style="flex-shrink:0;text-align:center"><div style="width:80px;height:80px;border-radius:50%;overflow:hidden;margin:0 auto 12px"><img src="/c/${escapeHtml(slug)}/portrait" alt="" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'"></div></div>`
-
-  const overlayHtml = share.style === 'card' ? `<div id="card-overlay" style="display:none;position:fixed;inset:0;z-index:900;place-items:center;padding:1rem;background:rgba(0,0,0,.65);backdrop-filter:blur(4px)"><div style="max-width:340px;width:100%"><div id="card-flip-area" data-flipped="false"><div class="card-face-front">${frontSvg}</div><div class="card-face-back">${backSvg}</div></div><div style="display:flex;gap:12px;justify-content:center;margin-top:12px"><button type="button" data-card-flip="card-flip-area" aria-pressed="false" style="padding:8px 20px;background:#7c5cbf;color:#fff;border:none;border-radius:4px;cursor:pointer;min-height:44px">Flip</button><button type="button" data-close-overlay style="padding:8px 20px;background:#333;color:#fff;border:none;border-radius:4px;cursor:pointer;min-height:44px">Close</button></div></div></div>` : ''
-
-  const boardHtml = share.showMoodboard && card.boardUrl ? `<p style="margin:8px 0 0"><a href="${escapeHtml(card.boardUrl)}" target="_blank" rel="noopener" style="color:#7c5cbf">Pinterest board</a></p>` : ''
+    ? `<button type="button" data-open-overlay class="card-preview-btn" title="View card"><div id="card-preview">${frontSvg}</div><span class="preview-hint">Click to view</span></button>`
+    : `<div class="portrait-circle"><img src="/c/${escapeHtml(slug)}/portrait" alt="" onerror="this.style.display='none'"></div>`
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -95,40 +106,127 @@ ${hasPreview ? `<meta property="og:image" content="${escapeHtml(appOrigin)}/c/${
 <meta name="twitter:card" content="summary_large_image">
 ${noindex ? '<meta name="robots" content="noindex,nofollow">' : ''}
 <style>
-*{box-sizing:border-box;margin:0}body{font-family:system-ui,-apple-system,sans-serif;font-size:16px;line-height:1.5;background:#1a1520;color:#f0eaf5;padding:24px 16px;min-height:100vh}
-a{color:#b49adb}.container{max-width:720px;margin:0 auto}
-.header{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
-.content{flex:1;min-width:200px}
-h1{font:600 28px/1.2 Georgia,serif;margin:0 0 8px}
-.subtitle{color:#c8b8d8;font-style:italic;margin-bottom:16px}
-footer{margin-top:48px;padding-top:16px;border-top:1px solid #333;font-size:13px;color:#9a8fa0}
-#card-preview svg{width:100%;height:auto}
+:root{--bg0:${t.bg[0]};--bg1:${t.bg[1]};--bg2:${t.bg[2]};--ink:${t.ink};--sub:${t.sub};--accent:${t.accent};--stroke:${t.stroke};--panel0:${t.panel[0]};--panel1:${t.panel[1]};--foil0:${t.foil[0]};--foil1:${t.foil[1]};--foil2:${t.foil[2] || t.foil[0]};--corner:${t.corner}px;--font:${t.font};--sans:${t.sans}}
+*{box-sizing:border-box;margin:0}
+body{font-family:var(--sans);font-size:16px;line-height:1.6;color:var(--ink);min-height:100vh;background:var(--bg1);background-image:radial-gradient(circle at 20% 10%,var(--bg0) 0%,transparent 50%),radial-gradient(circle at 80% 90%,var(--bg2) 0%,transparent 50%)}
+a{color:var(--accent)}
+.page{max-width:860px;margin:0 auto;padding:2rem 1.25rem 3rem}
+
+/* Hero: card + name + quote */
+.hero{display:grid;grid-template-columns:240px minmax(0,1fr);gap:2.5rem;align-items:start;padding-bottom:2rem;border-bottom:1px solid var(--stroke)}
+.card-preview-btn{background:none;border:none;padding:0;cursor:pointer;position:relative;display:block;width:100%}
+#card-preview svg{width:100%;height:auto;filter:drop-shadow(0 8px 24px rgba(0,0,0,.35))}
+.preview-hint{display:block;margin-top:.5rem;text-align:center;font:600 .8rem var(--sans);color:var(--sub);letter-spacing:.06em;text-transform:uppercase;opacity:.7}
+.portrait-circle{width:120px;height:120px;border-radius:50%;overflow:hidden;border:3px solid var(--stroke);margin:0 auto}
+.portrait-circle img{width:100%;height:100%;object-fit:cover}
+.hero-text{display:grid;gap:.75rem;align-content:start;padding-top:.5rem}
+.hero-name{font:600 clamp(2rem,5vw,3.2rem)/1.1 var(--font);letter-spacing:-.03em;color:var(--ink)}
+.hero-nickname{font:italic 500 1.1rem/1.3 var(--font);color:var(--sub)}
+.hero-quote{font:italic 1.05rem/1.5 var(--font);color:var(--ink);opacity:.85;padding:.75rem 1rem;border-left:3px solid var(--accent);background:linear-gradient(90deg,color-mix(in srgb,var(--panel0) 40%,transparent),transparent)}
+.hero-meta{display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;font-size:.9rem;color:var(--sub)}
+.hero-meta strong{color:var(--ink)}
+.hero-song{display:flex;align-items:center;gap:.5rem;font-size:.9rem;color:var(--sub);margin-top:.25rem}
+.hero-song::before{content:'\\266B';font-size:1.1rem;color:var(--accent)}
+.hero-color{display:inline-flex;align-items:center;gap:.4rem}
+.hero-color-swatch{width:1rem;height:1rem;border-radius:50%;border:1px solid var(--stroke);vertical-align:middle}
+
+/* Sections */
+.section{margin-top:2rem;padding:1.5rem;border:1px solid color-mix(in srgb,var(--stroke) 50%,transparent);border-radius:calc(var(--corner) + 6px);background:linear-gradient(135deg,color-mix(in srgb,var(--panel0) 60%,transparent),color-mix(in srgb,var(--panel1) 40%,transparent))}
+.section-title{font:600 .75rem/1 var(--sans);color:var(--accent);letter-spacing:.14em;text-transform:uppercase;margin-bottom:1rem}
+
+/* Stats */
+.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem}
+.stat-card{display:flex;flex-direction:column;align-items:center;gap:.25rem;padding:1rem;border-radius:var(--corner);background:color-mix(in srgb,var(--panel0) 80%,transparent);border:1px solid color-mix(in srgb,var(--stroke) 30%,transparent)}
+.stat-num{font:700 1.8rem var(--font);color:var(--ink)}
+.stat-label{font:600 .75rem var(--sans);color:var(--sub);text-transform:uppercase;letter-spacing:.08em}
+.rp-list{margin-top:.75rem;font-size:.9rem;color:var(--sub)}
+
+/* Moodboard */
+.mood-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
+.mood-img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:var(--corner);border:1px solid color-mix(in srgb,var(--stroke) 30%,transparent)}
+.mood-pin{width:100%;height:326px;border:none;border-radius:var(--corner)}
+
+/* Facts */
+.fact-list{list-style:none;padding:0;display:grid;gap:.5rem}
+.fact-list li{padding:.6rem 1rem;border-radius:var(--corner);background:color-mix(in srgb,var(--panel0) 80%,transparent);border:1px solid color-mix(in srgb,var(--stroke) 20%,transparent);font-size:.95rem}
+.fact-list li::before{content:'\\2726 ';color:var(--accent);margin-right:.3rem}
+
+/* Details */
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
+.detail-item{display:flex;flex-direction:column;gap:.2rem;font-size:.95rem}
+.detail-wide{grid-column:1/-1}
+.detail-label{font:600 .7rem var(--sans);color:var(--accent);letter-spacing:.1em;text-transform:uppercase}
+
+/* Tracklist */
+.track-list{padding-left:1.5rem;display:grid;gap:.35rem}
+.track-list li{font-size:.95rem;color:var(--ink)}
+.track-list li::marker{color:var(--accent)}
+
+/* Board link */
+.board-link{display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-radius:var(--corner);background:color-mix(in srgb,var(--panel0) 60%,transparent);border:1px solid color-mix(in srgb,var(--stroke) 30%,transparent);color:var(--ink);text-decoration:none;font-size:.9rem;word-break:break-all}
+.board-link:hover{border-color:var(--accent)}
+.board-icon{font-size:1.2rem}
+
+/* Buttons */
+.btn-accent{padding:.6rem 1.4rem;background:var(--accent);color:var(--panel1);border:none;border-radius:calc(var(--corner) + 2px);cursor:pointer;font:700 .9rem var(--sans);min-height:44px}
+.btn-accent:hover{filter:brightness(1.1)}
+.btn-muted{padding:.6rem 1.4rem;background:var(--panel0);color:var(--ink);border:1px solid var(--stroke);border-radius:calc(var(--corner) + 2px);cursor:pointer;font:700 .9rem var(--sans);min-height:44px}
+.link{color:var(--accent);margin-top:.5rem;display:inline-block;font-size:.9rem}
+
+/* Overlay */
+.overlay{display:none;position:fixed;inset:0;z-index:900;place-items:center;padding:1rem;background:rgba(0,0,0,.7);backdrop-filter:blur(6px)}
+.overlay-inner{max-width:360px;width:100%}
+.overlay-btns{display:flex;gap:.75rem;justify-content:center;margin-top:.75rem}
 [data-flipped="false"] .card-face-front{display:block}[data-flipped="false"] .card-face-back{display:none}
 [data-flipped="true"] .card-face-front{display:none}[data-flipped="true"] .card-face-back{display:block}
 .card-face-front svg,.card-face-back svg{width:100%;height:auto}
-@media(max-width:600px){.header{flex-direction:column}#card-preview{width:160px!important}}
+
+/* Footer */
+.footer{margin-top:3rem;padding-top:1.25rem;border-top:1px solid color-mix(in srgb,var(--stroke) 40%,transparent);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem}
+.footer-brand{display:flex;align-items:center;gap:.5rem;font:600 .95rem Georgia,serif;color:var(--sub);text-decoration:none}
+.footer-brand:hover{color:var(--ink)}
+.footer-mark{display:grid;place-items:center;width:1.6rem;height:1.6rem;border-radius:50%;background:var(--accent);color:var(--panel1);font:italic 700 1rem Georgia,serif}
+.footer-right{font-size:.82rem;color:var(--sub)}
+.footer-right a{color:var(--accent);font-weight:600}
+.report-toggle{background:none;border:none;color:var(--sub);font-size:.78rem;cursor:pointer;padding:.2rem}
+.report-toggle:hover{color:var(--ink)}
+.report-form{margin-top:.5rem}
+.report-form textarea{width:100%;height:70px;background:color-mix(in srgb,var(--panel0) 80%,transparent);color:var(--ink);border:1px solid var(--stroke);border-radius:var(--corner);padding:.5rem;font:inherit;resize:vertical}
+
+@media(max-width:600px){
+  .hero{grid-template-columns:1fr;gap:1.25rem;text-align:center}
+  #card-preview{max-width:220px;margin:0 auto}
+  .hero-quote{text-align:left}
+  .hero-meta{justify-content:center}
+  .detail-grid{grid-template-columns:1fr}
+  .stat-row{grid-template-columns:repeat(3,1fr);gap:.5rem}
+  .stat-num{font-size:1.4rem}
+  .mood-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
+  .footer{flex-direction:column;text-align:center}
+}
 </style>
 </head>
 <body>
-<div class="container">
-<div class="header">
+<div class="page">
+<div class="hero">
 ${cardPreviewHtml}
-<div class="content">
-<h1>${escapeHtml(name)}</h1>
-${card.nickname ? `<p class="subtitle">${escapeHtml(card.nickname)}</p>` : ''}
-${card.quote ? `<p style="font-style:italic;margin-bottom:16px">&ldquo;${escapeHtml(card.quote)}&rdquo;</p>` : ''}
+<div class="hero-text">
+<h1 class="hero-name">${escapeHtml(name)}</h1>
+${card.nickname && card.nickname !== name ? `<p class="hero-nickname">${escapeHtml(card.nickname)}</p>` : ''}
+${card.quote ? `<blockquote class="hero-quote">&ldquo;${escapeHtml(card.quote)}&rdquo;</blockquote>` : ''}
+<div class="hero-meta">
+${card.age ? `<span><strong>${escapeHtml(card.age)}</strong> years old</span>` : ''}
+${card.birthdate ? `<span>Born <strong>${escapeHtml(card.birthdate)}</strong></span>` : ''}
+${card.favoriteColor && card.favoriteColor !== '#b07a9e' ? `<span class="hero-color"><span class="hero-color-swatch" style="background:${escapeHtml(card.favoriteColor)}"></span>${escapeHtml(card.favoriteColor)}</span>` : ''}
+</div>
+${songLine ? `<p class="hero-song">${escapeHtml(songLine)}</p>` : ''}
 </div>
 </div>
-${moodboardHtml}${boardHtml}${playlistHtml}${statsHtml}
+${factsHtml}${detailsHtml}${moodboardHtml}${boardHtml}${playlistHtml}${tracklistHtml}${statsHtml}
 ${overlayHtml}
-<footer>
-<p>Made with <a href="https://puffinpost.app">Puffin Post</a> &middot; <a href="https://puffinpost.app">Make your own</a></p>
-<details style="margin-top:12px"><summary style="cursor:pointer">Report this page</summary>
-<form method="POST" action="/c/${escapeHtml(slug)}/report" style="margin-top:8px">
-<textarea name="reason" maxlength="1000" required placeholder="Why are you reporting this page?" style="width:100%;height:80px;background:#2a2230;color:#f0e8f0;border:1px solid #444;border-radius:4px;padding:8px;font-family:inherit"></textarea>
-<button type="submit" style="margin-top:4px;padding:6px 16px;background:#7c5cbf;color:#fff;border:none;border-radius:4px;cursor:pointer">Report</button>
-</form>
-</details>
+<footer class="footer">
+<a href="https://puffinpost.app" class="footer-brand"><span class="footer-mark">P</span>Puffin Post</a>
+<div class="footer-right"><a href="https://puffinpost.app">Make your own</a><span> &middot; </span><details style="display:inline"><summary class="report-toggle">Report</summary><form method="POST" action="/c/${escapeHtml(slug)}/report" class="report-form"><textarea name="reason" maxlength="1000" required placeholder="Why are you reporting this page?"></textarea><button type="submit" class="btn-accent" style="margin-top:.35rem;padding:.4rem 1rem;font-size:.82rem">Send report</button></form></details></div>
 </footer>
 </div>
 <script src="/share.js" defer></script>
