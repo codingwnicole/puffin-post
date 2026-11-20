@@ -27,6 +27,12 @@ export type ThemeId = keyof typeof THEMES
 
 export const emptyCard = (): CardProfile => ({ theme: 'holo', nickname: '', age: '', birthdate: '', quote: '', song: '', artist: '', favoriteColor: '#b07a9e', facts: ['', '', '', '', ''], likes: '', dislikes: '', notes: '', playlistUrl: '', boardUrl: '', tracklist: [], symbol: 'none' })
 
+/** Keeps cards made before newer fields existed usable everywhere they render. */
+export function normalizeCard(value: Partial<CardProfile> | null | undefined): CardProfile {
+  const card = { ...emptyCard(), ...value }
+  return { ...card, facts: Array.isArray(value?.facts) ? value.facts.slice(0, 5).map(fact => String(fact ?? '')) : emptyCard().facts, tracklist: Array.isArray(value?.tracklist) ? value.tracklist.map(track => String(track ?? '')) : [] }
+}
+
 // ponytail: char-count heuristic, upgrade to measureText when SVG is in a DOM
 function fitSize(text: string, maxChars: number, maxFont: number, minFont: number): number {
   const ratio = Math.min(1, maxChars / Math.max(1, text.length))
@@ -65,6 +71,8 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
   const moodTiles = moodboard.slice(0, 12)
   const board = profile.boardUrl ? boardLabel(profile.boardUrl) : ''
   const tracks = profile.tracklist.slice(0, 3)
+  const hasThemeSong = Boolean(profile.song.trim() || profile.artist.trim())
+  const favoriteY = hasThemeSong ? 762 : 694
   return <svg viewBox="0 0 640 860" xmlns="http://www.w3.org/2000/svg" role="img" aria-label={`${name}'s card, ${side}`} data-side={side}>
     <defs>
       <linearGradient id={id('bg')} x1="0" y1="0" x2="1" y2="1">{t.bg.map((c, i) => <stop key={i} offset={i / 2} stopColor={c} />)}</linearGradient>
@@ -90,11 +98,11 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
       {(() => { const display = profile.nickname || name; return <text x={glyph ? 104 : 62} y={468} {...body} fontSize={fitSize(display, 16, 40, 22)}>{display.slice(0, 34)}</text> })()}
       {box(506, 44)}<text x={60} y={533} {...label}>AGE</text><text x={120} y={534} {...body} fontSize={17}>{profile.age || '—'}</text><text x={330} y={533} {...label}>BIRTHDATE</text><text x={440} y={534} {...body} fontSize={17}>{profile.birthdate || '—'}</text>
       {box(562, 120)}<text x={56} y={596} fill={t.accent} fontFamily={t.font} fontSize={34}>"</text>
-      {(() => { const q = profile.quote || 'A line that captures them.'; const fs = fitSize(q, 60, 22, 13); const lh = Math.round(fs * 1.35); const lines = wrap(q, Math.round(46 * 18 / fs), 4); return lines.map((line, i) => <text key={i} x={320} y={596 + i * lh} textAnchor="middle" {...body} fontStyle="italic" fontSize={fs}>{line}</text>) })()}
-      {box(694, 56)}<circle cx={70} cy={722} r={15} fill="none" stroke={t.ink} strokeWidth={2} /><path d="M65 714l13 8-13 8z" fill={t.ink} />
-      <text x={98} y={716} {...label}>THEME SONG</text>{(() => { const songLine = (profile.song || 'Song title') + (profile.artist ? ' — ' + profile.artist : ''); return <text x={98} y={738} {...body} fontSize={fitSize(songLine, 40, 16, 11)}>{songLine.slice(0, 60)}</text> })()}
-      {Array.from({ length: 22 }, (_, i) => { const h = 6 + ((i * 7) % 11) * 2; return <rect key={i} x={460 + i * 6} y={722 - h / 2} width={3} height={h} fill={t.sub} opacity={.8} /> })}
-      {box(762, 44)}<text x={60} y={789} {...label}>FAVORITE COLOR</text><rect x={430} y={772} width={150} height={24} rx={6} fill={profile.favoriteColor} stroke={t.ink} strokeOpacity={.5} />
+      {(() => { const q = profile.quote || 'A line that captures them.'; const fs = fitSize(q, 60, 22, 13); const lh = Math.round(fs * 1.35); const lines = wrap(q, Math.round(46 * 18 / fs), 4); const start = 622 - (lines.length - 1) * lh / 2; return lines.map((line, i) => <text key={i} x={320} y={start + i * lh} textAnchor="middle" {...body} fontStyle="italic" fontSize={fs}>{line}</text>) })()}
+      {hasThemeSong && <>{box(694, 56)}<circle cx={70} cy={722} r={15} fill="none" stroke={t.ink} strokeWidth={2} /><path d="M65 714l13 8-13 8z" fill={t.ink} />
+      <text x={98} y={716} {...label}>THEME SONG</text>{(() => { const songLine = profile.song + (profile.artist ? ' - ' + profile.artist : ''); return <text x={98} y={738} {...body} fontSize={fitSize(songLine, 40, 16, 11)}>{songLine.slice(0, 60)}</text> })()}
+      {Array.from({ length: 22 }, (_, i) => { const h = 6 + ((i * 7) % 11) * 2; return <rect key={i} x={460 + i * 6} y={722 - h / 2} width={3} height={h} fill={t.sub} opacity={.8} /> })}</>}
+      {box(favoriteY, 44)}<text x={60} y={favoriteY + 27} {...label}>FAVORITE COLOR</text><rect x={430} y={favoriteY + 10} width={150} height={24} rx={6} fill={profile.favoriteColor} stroke={t.ink} strokeOpacity={.5} />
     </> : side === 'back' ? <>
       {box(70, 200)}<text x={60} y={100} {...label}>THREAD STATS</text>
       {([['THREADS', stats.total], ['YOUR TURN', stats.mine], ['THEIR TURN', stats.theirs]] as const).map(([what, value], i) => <g key={what}><text x={133 + i * 187} y={185} textAnchor="middle" fill={t.ink} fontFamily={t.font} fontSize={64}>{value}</text><text x={133 + i * 187} y={215} textAnchor="middle" {...label}>{what}</text></g>)}
@@ -206,28 +214,25 @@ function save(blob: Blob, name: string, ext: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 4000)
 }
 
-/** Downloads the card sides side by side. Without moodboard images: two faces, a 2640 x 1720 PNG (or
- * a 1320 x 860 animated GIF for a GIF portrait). With them: three panels - 3960 x 1720 PNG (gap 60)
- * or 1980 x 860 GIF (gap 30, only the portrait animates, moodboard GIFs use their first frame).
- * Images are inlined as data URLs because an SVG drawn into a canvas may not load outside images.
+/** Downloads the canonical front and character-details back side by side. The moodboard is a third,
+ * on-screen face only; it must never replace the printable back after a user flips their card.
  * Returns which format was saved. */
 export async function downloadCard(cardElement: Element, name: string): Promise<'gif' | 'png' | 'png-no-gif-support'> {
   const svgs = Array.from(cardElement.querySelectorAll<SVGSVGElement>('.tcard-face > svg'))
   if (svgs.length < 2) throw new Error('Could not prepare the card')
-  const moodSvg = svgs.find(svg => svg.dataset.side === 'mood')
-  const moodUrls = moodSvg ? Array.from(moodSvg.querySelectorAll('image[data-moodboard]')).map(image => image.getAttribute('href')).filter((href): href is string => !!href) : []
-  const portraitHref = svgs.find(svg => svg.dataset.side !== 'mood')?.querySelector('image:not([data-moodboard])')?.getAttribute('href')
+  const front = svgs.find(svg => svg.dataset.side === 'front'), back = svgs.find(svg => svg.dataset.side === 'back')
+  if (!front || !back) throw new Error('Could not prepare the card')
+  const portraitHref = front.querySelector('image:not([data-moodboard])')?.getAttribute('href')
   const portrait = portraitHref ? await fetch(portraitHref).then(r => r.ok ? r.blob() : null) : null
   const isGif = portrait?.type === 'image/gif'
-  if (isGif && 'ImageDecoder' in window) { save(await animatedCard(moodSvg ? [svgs[0], svgs[1], moodSvg] : [svgs[0], svgs[1]], moodUrls, portrait!), name, 'gif'); return 'gif' }
+  if (isGif && 'ImageDecoder' in window) { save(await animatedCard([front, back], [], portrait!), name, 'gif'); return 'gif' }
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d')
   if (!context) throw new Error('Could not prepare the card')
   const data = portrait ? await blobToData(portrait) : null
-  const moodData = moodSvg ? await moodDataFor(moodUrls) : null
-  const panels = moodSvg ? [svgs[0], svgs[1], moodSvg] : [svgs[0], svgs[1]]
-  const SIDE = 1280, GAP = moodSvg ? 60 : 80
+  const panels = [front, back]
+  const SIDE = 1280, GAP = 80
   canvas.width = panels.length * SIDE + (panels.length - 1) * GAP; canvas.height = 1720
-  for (const [i, svg] of panels.entries()) await drawSide(context, svg, svg === moodSvg ? null : data, svg === moodSvg ? moodData : null, i * (SIDE + GAP), SIDE, 1720)
+  for (const [i, svg] of panels.entries()) await drawSide(context, svg, svg === front ? data : null, null, i * (SIDE + GAP), SIDE, 1720)
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
   if (!blob) throw new Error('Could not export the card')
   save(blob, name, 'png'); return isGif ? 'png-no-gif-support' : 'png'
@@ -237,14 +242,16 @@ export async function downloadCard(cardElement: Element, name: string): Promise<
 export async function cardPreviewBlob(cardElement: Element): Promise<Blob> {
   const svgs = Array.from(cardElement.querySelectorAll<SVGSVGElement>('.tcard-face > svg'))
   if (svgs.length < 2) throw new Error('Could not prepare the card')
-  const portraitHref = svgs.find(svg => svg.dataset.side !== 'mood')?.querySelector('image:not([data-moodboard])')?.getAttribute('href')
+  const front = svgs.find(svg => svg.dataset.side === 'front'), back = svgs.find(svg => svg.dataset.side === 'back')
+  if (!front || !back) throw new Error('Could not prepare the card')
+  const portraitHref = front.querySelector('image:not([data-moodboard])')?.getAttribute('href')
   const portrait = portraitHref ? await fetch(portraitHref).then(r => r.ok ? r.blob() : null) : null
   const data = portrait ? (portrait.type === 'image/gif' && 'ImageDecoder' in window ? await firstGifFrame(portrait) : await blobToData(portrait)) : null
   const canvas = document.createElement('canvas'), context = canvas.getContext('2d')
   if (!context) throw new Error('Could not prepare the card')
   canvas.width = 1320; canvas.height = 860
-  await drawSide(context, svgs[0], data, null, 0, 640, 860)
-  await drawSide(context, svgs[1], null, null, 680, 640, 860)
+  await drawSide(context, front, data, null, 0, 640, 860)
+  await drawSide(context, back, null, null, 680, 640, 860)
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
   if (!blob) throw new Error('Could not export the card')
   return blob

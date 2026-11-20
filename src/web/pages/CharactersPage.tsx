@@ -4,7 +4,7 @@ import { api, peekCache, staleGet } from '../lib/api'
 import { IMAGE_ACCEPT, IMAGE_HINT, PORTRAIT_HINT, squareIcon } from '../lib/uploads'
 import { toast, undoCharacterArchive, undoReturnToPlanner } from '../lib/toast'
 import { initialsFor } from '../components/InitialsAvatar'
-import TradingCard, { THEMES, downloadCard, emptyCard, type CardProfile, type CardStats, type ThemeId } from '../components/TradingCard'
+import TradingCard, { THEMES, downloadCard, normalizeCard, type CardProfile, type CardStats, type ThemeId } from '../components/TradingCard'
 import CardEditor from '../components/CardEditor'
 import SharePanel from '../components/SharePanel'
 
@@ -105,7 +105,7 @@ function CardTile({ row, stats, portrait, moodUrls, edit, reportError }: { row: 
   const counts = { total: stats.total, mine: stats.mine, theirs: stats.theirs }
   const download = async () => { try { setSaving(true); setNote(''); const kind = await downloadCard(tile.current!, row.name); setNote(kind === 'gif' ? 'Saved as an animated GIF.' : kind === 'png-no-gif-support' ? 'This browser can’t make animated GIFs, so the card was saved as a PNG.' : 'Saved as a PNG.') } catch (problem) { reportError((problem as Error).message) } finally { setSaving(false) } }
   return <article className="tcard-tile" ref={tile} aria-label={row.name}>
-    <TradingCard name={row.name} profile={row.card ?? emptyCard()} stats={stats} portrait={portrait} moodboard={moodUrls} />
+    <TradingCard name={row.name} profile={normalizeCard(row.card)} stats={stats} portrait={portrait} moodboard={moodUrls} />
     <div className="tcard-actions"><button type="button" className="secondary-button" onClick={edit}>{row.card ? 'Edit card' : 'Make a card'}</button><button type="button" className="secondary-button" disabled={saving} title="Animated GIF when the portrait is a GIF, otherwise PNG" onClick={() => void download()}>{saving ? 'Preparing…' : 'Download'}</button><button type="button" className="secondary-button" onClick={() => setSharing(true)}>Share</button></div><p className="field-help tcard-note" role="status">{note}</p>
     {sharing && <SharePanel character={row} counts={counts} stats={stats} cardRef={tile} close={() => setSharing(false)} />}
   </article>

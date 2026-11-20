@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { trackingFixture } from './tracking-fixture'
-import { wrap } from '../../src/web/components/TradingCard'
+import { normalizeCard, wrap } from '../../src/web/components/TradingCard'
 
 describe('character trading cards', () => {
   it('saves a validated card, returns it with the character list, and stays inside its workspace', async () => {
@@ -28,6 +28,12 @@ describe('character trading cards', () => {
     expect(wrap('one two three four', 9, 2)).toEqual(['one two', 'three…'])
     expect(wrap('short', 20, 3)).toEqual(['short'])
     expect(wrap('', 10, 2)).toEqual([])
+  })
+
+  it('fills in fields missing from cards saved before the current card format', () => {
+    const card = normalizeCard({ theme: 'deco', nickname: 'Nora', facts: ['Smuggler'] })
+    expect(card).toMatchObject({ theme: 'deco', nickname: 'Nora', artist: '', playlistUrl: '', boardUrl: '', tracklist: [] })
+    expect(card.facts).toEqual(['Smuggler'])
   })
 })
 

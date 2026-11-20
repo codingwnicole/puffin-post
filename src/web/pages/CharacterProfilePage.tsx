@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import { api, staleGet } from '../lib/api'
-import TradingCard, { downloadCard, emptyCard, THEMES, type CardProfile, type CardStats } from '../components/TradingCard'
+import TradingCard, { downloadCard, emptyCard, normalizeCard, THEMES, type CardProfile, type CardStats } from '../components/TradingCard'
 import CardEditor from '../components/CardEditor'
 import SharePanel from '../components/SharePanel'
 import { parsePlaylist } from '../../shared/embeds'
@@ -47,7 +47,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
       setItems(boardItems)
       setMoodUrls(boardItems.filter(item => item.kind === 'image').map(item => `/api/characters/${id}/moodboard/${item.id}/image`))
       const match = characters.find(c => c.id === id)
-      setCard(match?.card ?? emptyCard())
+      setCard(normalizeCard(match?.card))
     } catch (problem) { setError(problem instanceof Error ? problem.message : 'Something went wrong') }
     finally { setLoading(false) }
   }

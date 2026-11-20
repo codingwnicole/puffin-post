@@ -5,7 +5,7 @@ import { requireWorkspace } from '../auth/sessions'
 import { checkRateLimit } from '../auth/rate-limits'
 import { renderToString } from 'react-dom/server'
 import { createElement } from 'react'
-import { Side, type CardProfile, type CardStats, THEMES } from '../web/components/TradingCard'
+import { Side, emptyCard, normalizeCard, type CardProfile, type CardStats, THEMES } from '../web/components/TradingCard'
 import { parsePlaylist } from '../shared/embeds'
 
 const moderatorEmail = 'tmixwix@gmail.com'
@@ -18,6 +18,10 @@ const EMBED_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-i
 
 function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;')
+}
+
+function savedCard(cardJson: string | null): CardProfile {
+  try { return normalizeCard(cardJson ? JSON.parse(cardJson) as Partial<CardProfile> : null) } catch { return emptyCard() }
 }
 
 async function loadShare(db: D1Database, slug: string): Promise<{ share: ShareRow; char: CharRow } | null> {
@@ -258,7 +262,7 @@ export function publicShareRoutes() {
     const data = await loadShare(c.env.DB, c.req.param('slug'))
     if (!data) return c.html(notFoundPage(), 404, { 'Content-Security-Policy': PAGE_CSP, 'Cache-Control': 'public, max-age=60' })
     const { share, char } = data
-    const card: CardProfile = char.cardJson ? JSON.parse(char.cardJson) : { theme: 'holo', nickname: '', age: '', birthdate: '', quote: '', song: '', artist: '', favoriteColor: '#b07a9e', facts: [], likes: '', dislikes: '', notes: '', playlistUrl: '', boardUrl: '', tracklist: [], symbol: 'none' }
+    const card = savedCard(char.cardJson)
     const stats = await getStats(c.env.DB, share.workspaceId, share.characterId)
     const moodItems = share.showMoodboard ? (await c.env.DB.prepare('SELECT id,kind,pin_id AS pinId FROM character_moodboard_items WHERE workspace_id=? AND character_id=? ORDER BY position').bind(share.workspaceId, share.characterId).all<{ id: string; kind: string; pinId: string | null }>()).results : []
     const headers: Record<string, string> = { 'Content-Security-Policy': PAGE_CSP, 'Cache-Control': 'public, max-age=60' }
@@ -270,7 +274,7 @@ export function publicShareRoutes() {
     const data = await loadShare(c.env.DB, c.req.param('slug'))
     if (!data) return c.html(notFoundPage(), 404)
     const { share, char } = data
-    const card: CardProfile = char.cardJson ? JSON.parse(char.cardJson) : { theme: 'holo', nickname: '', age: '', birthdate: '', quote: '', song: '', artist: '', favoriteColor: '#b07a9e', facts: [], likes: '', dislikes: '', notes: '', playlistUrl: '', boardUrl: '', tracklist: [], symbol: 'none' }
+    const card = savedCard(char.cardJson)
     const stats = await getStats(c.env.DB, share.workspaceId, share.characterId)
     return c.html(renderEmbed(share, char, card, stats, c.env.APP_ORIGIN), 200, { 'Content-Security-Policy': EMBED_CSP, 'X-Robots-Tag': 'noindex, nofollow', 'Cache-Control': 'public, max-age=60' })
   })
