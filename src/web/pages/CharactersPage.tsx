@@ -97,7 +97,11 @@ function CharacterCard({ row, index, assignments, groups, stat, iconVersion, bus
   </article>
 }
 
-const portraitFor = (row: Character, version?: number) => row.portraitObjectKey ? '/api/characters/' + row.id + '/portrait?v=' + (version ?? row.portraitObjectKey) : null
+// Cards created before portraits were split from character icons still keep their art in iconObjectKey.
+const portraitFor = (row: Character, version?: number) => {
+  const key = row.portraitObjectKey ?? row.iconObjectKey
+  return key ? '/api/characters/' + row.id + '/portrait?v=' + (version ?? key) : null
+}
 const VIEW_KEY = 'puffin.characters.view'
 
 function CardTile({ row, stats, portrait, moodUrls, edit, reportError }: { row: Character; stats: CardStats; portrait: string | null; moodUrls?: string[]; edit: () => void; reportError: (error: string) => void }) {

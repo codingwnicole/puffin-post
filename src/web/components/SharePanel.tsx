@@ -4,14 +4,18 @@ import { api } from '../lib/api'
 import { cardPreviewBlob, type CardStats } from './TradingCard'
 import { statsCardBlob } from '../pages/CharactersPage'
 
-type ShareSettings = { slug: string; style: 'card' | 'stats'; showMoodboard: boolean; showPlaylist: boolean; showStats: boolean; indexable: boolean; url: string } | null
+type ShareSettings = { slug: string; style: 'card' | 'stats'; showMoodboard: boolean; showPlaylist: boolean; showStats: boolean; indexable: boolean; hasPreview: boolean; url: string } | null
 type Character = { id: string; name: string; state: string; iconObjectKey: string | null }
 type Counts = { total: number; mine: number; theirs: number }
 
 async function uploadPreview(characterId: string, blob: Blob) {
   const form = new FormData()
   form.append('image', new File([blob], 'preview.png', { type: 'image/png' }))
-  await fetch(`/api/characters/${characterId}/share/preview`, { method: 'POST', body: form })
+  const response = await fetch(`/api/characters/${characterId}/share/preview`, { method: 'POST', body: form })
+  if (!response.ok) {
+    const problem = await response.json().catch(() => null) as { error?: string } | null
+    throw new Error(problem?.error ?? 'Could not refresh the share preview')
+  }
 }
 
 export default function SharePanel({ character, counts, stats, cardRef, close, onChanged }: {
@@ -49,8 +53,17 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
         blob = await statsCardBlob(character, currentShowStats ? counts : { total: 0, mine: 0, theirs: 0 })
       }
       await uploadPreview(character.id, blob)
-    } catch { /* preview upload is best-effort */ }
+    } catch (problem) { throw problem }
   }
+
+  // Card edits deliberately clear an old social-preview PNG. Rebuild it from the live card when
+  // the owner next opens Share, including older cards that were created before this system existed.
+  useEffect(() => {
+    if (loading || saving || !share || share.hasPreview || !cardRef.current) return
+    void renderAndUploadPreview(share.style, share.showStats).then(() => {
+      setShare(current => current ? { ...current, hasPreview: true } : current)
+    }).catch(problem => setError((problem as Error).message))
+  }, [loading, saving, share?.slug, share?.hasPreview, cardRef])
 
   const save = async () => {
     setSaving(true); setError('')
@@ -59,6 +72,7 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
       const result = await api<NonNullable<ShareSettings>>(`/characters/${character.id}/share`, 'PUT', body)
       setShare(result)
       await renderAndUploadPreview(style, true)
+      setShare(current => current ? { ...current, hasPreview: true } : current)
       onChanged?.()
     } catch (problem) { setError((problem as Error).message) }
     finally { setSaving(false) }

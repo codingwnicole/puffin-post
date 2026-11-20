@@ -117,7 +117,9 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   const playlist = profile.playlistUrl ? parsePlaylist(profile.playlistUrl) : null
   const boardName = profile.boardUrl ? new URL(profile.boardUrl).pathname.split('/').filter(Boolean).pop() ?? '' : ''
 
-  const portrait = row.iconObjectKey ? `/api/characters/${id}/icon?v=${portraitVersion ?? row.iconObjectKey}` : null
+  // /portrait already falls back to the legacy icon, so older cards retain their original art.
+  const portraitKey = row.portraitObjectKey ?? row.iconObjectKey
+  const portrait = portraitKey ? `/api/characters/${id}/portrait?v=${portraitVersion ?? portraitKey}` : null
 
   const uploadIcon = async (file: File) => {
     const form = new FormData()
