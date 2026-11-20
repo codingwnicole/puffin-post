@@ -70,7 +70,10 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
     if (parsed) {
       const label = parsed.provider === 'spotify' ? 'Spotify' : parsed.provider === 'apple' ? 'Apple Music' : 'YouTube'
       const embedHeight = parsed.provider === 'spotify' ? '352' : parsed.provider === 'apple' ? '450' : '315'
-      playlistHtml = `<section class="section"><h2 class="section-title">Playlist</h2><div data-playlist-container data-embed-src="${escapeHtml(parsed.embedUrl)}" data-embed-height="${embedHeight}"><button type="button" data-playlist-load class="btn-accent">Load the ${escapeHtml(label)} player</button><br><a href="${escapeHtml(parsed.openUrl)}" target="_blank" rel="noopener" class="link">Open in ${escapeHtml(label)} &rarr;</a></div></section>`
+      const previewTracks = tracks.slice(0, 5)
+      const trackPreviewHtml = previewTracks.length > 0 ? `<ol class="track-preview">${previewTracks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ol>` : ''
+      const embedSrc = parsed.provider === 'spotify' ? parsed.embedUrl + (parsed.embedUrl.includes('?') ? '&' : '?') + 'theme=0' : parsed.embedUrl
+      playlistHtml = `<section class="section"><h2 class="section-title">Playlist</h2>${trackPreviewHtml}<div class="playlist-embed"><iframe src="${escapeHtml(embedSrc)}" width="100%" height="${embedHeight}" style="border-radius:12px" frameborder="0" allowfullscreen allow="autoplay;clipboard-write;encrypted-media;fullscreen;picture-in-picture" loading="lazy"></iframe></div><a href="${escapeHtml(parsed.openUrl)}" target="_blank" rel="noopener" class="link">Open in ${escapeHtml(label)} &rarr;</a></section>`
     }
   }
 
@@ -79,7 +82,8 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
     statsHtml = `<section class="section"><h2 class="section-title">Thread Stats</h2><div class="stat-row"><div class="stat-card"><span class="stat-num">${stats.total}</span><span class="stat-label">threads</span></div><div class="stat-card"><span class="stat-num">${stats.mine}</span><span class="stat-label">your turn</span></div><div class="stat-card"><span class="stat-num">${stats.theirs}</span><span class="stat-label">their turn</span></div></div>${stats.rps.length ? `<p class="rp-list">Writes in ${escapeHtml(stats.rps.join(' &middot; '))}</p>` : ''}</section>`
   }
 
-  const boardHtml = share.showMoodboard && card.boardUrl ? `<section class="section"><h2 class="section-title">Pinterest Board</h2><a href="${escapeHtml(card.boardUrl)}" target="_blank" rel="noopener" class="board-link"><span class="board-icon">&#x1F4CC;</span>${escapeHtml(card.boardUrl.replace(/^https?:\/\//, ''))}</a></section>` : ''
+  const boardLabel = card.boardUrl ? card.boardUrl.replace(/^https?:\/\/(www\.)?pinterest\.[a-z.]+\//, '').replace(/\/$/, '').split('/').pop()?.replace(/-/g, ' ') || 'Pinterest board' : ''
+  const boardHtml = share.showMoodboard && card.boardUrl ? `<section class="section"><h2 class="section-title">Pinterest Board</h2><a href="${escapeHtml(card.boardUrl)}" target="_blank" rel="noopener" class="board-link"><span class="board-icon">&#x1F4CC;</span><span class="board-label-text"><strong>${escapeHtml(boardLabel)}</strong><small>View on Pinterest &rarr;</small></span></a></section>` : ''
 
   const detailsHtml = (card.likes || card.dislikes || card.notes) ? `<section class="section"><h2 class="section-title">About</h2><div class="detail-grid">${card.likes ? `<div class="detail-item"><span class="detail-label">Likes</span><span>${escapeHtml(card.likes)}</span></div>` : ''}${card.dislikes ? `<div class="detail-item"><span class="detail-label">Dislikes</span><span>${escapeHtml(card.dislikes)}</span></div>` : ''}${card.notes ? `<div class="detail-item detail-wide"><span class="detail-label">Notes</span><span>${escapeHtml(card.notes)}</span></div>` : ''}</div></section>` : ''
 
@@ -161,17 +165,25 @@ a{color:var(--accent)}
 .track-list{padding-left:1.5rem;display:grid;gap:.35rem}
 .track-list li{font-size:.95rem;color:var(--ink)}
 .track-list li::marker{color:var(--accent)}
+.track-preview{list-style:none;padding:0;display:grid;gap:.35rem;margin-bottom:1rem}
+.track-preview li{display:flex;align-items:center;gap:.6rem;padding:.45rem .75rem;border-radius:var(--corner);background:color-mix(in srgb,var(--panel0) 70%,transparent);font-size:.9rem;color:var(--ink)}
+.track-preview li::before{counter-increment:tp;content:counter(tp);font:700 .75rem var(--sans);color:var(--accent);min-width:1.2rem;text-align:right}
+.track-preview{counter-reset:tp}
 
 /* Board link */
 .board-link{display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-radius:var(--corner);background:color-mix(in srgb,var(--panel0) 60%,transparent);border:1px solid color-mix(in srgb,var(--stroke) 30%,transparent);color:var(--ink);text-decoration:none;font-size:.9rem;word-break:break-all}
 .board-link:hover{border-color:var(--accent)}
-.board-icon{font-size:1.2rem}
+.board-icon{font-size:1.4rem}
+.board-label-text{display:flex;flex-direction:column;gap:.15rem}
+.board-label-text strong{font:600 1rem var(--font);color:var(--ink);text-transform:capitalize}
+.board-label-text small{font-size:.78rem;color:var(--sub);word-break:break-all}
 
 /* Buttons */
 .btn-accent{padding:.6rem 1.4rem;background:var(--accent);color:var(--panel1);border:none;border-radius:calc(var(--corner) + 2px);cursor:pointer;font:700 .9rem var(--sans);min-height:44px}
 .btn-accent:hover{filter:brightness(1.1)}
 .btn-muted{padding:.6rem 1.4rem;background:var(--panel0);color:var(--ink);border:1px solid var(--stroke);border-radius:calc(var(--corner) + 2px);cursor:pointer;font:700 .9rem var(--sans);min-height:44px}
-.link{color:var(--accent);margin-top:.5rem;display:inline-block;font-size:.9rem}
+.link{color:var(--accent);display:inline-block;font-size:.9rem;margin-top:.5rem}
+.playlist-embed{border-radius:12px;overflow:hidden}
 
 /* Overlay */
 .overlay{display:none;position:fixed;inset:0;z-index:900;place-items:center;padding:1rem;background:rgba(0,0,0,.7);backdrop-filter:blur(6px)}
