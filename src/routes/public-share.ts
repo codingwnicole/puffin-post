@@ -69,7 +69,7 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
     const parsed = parsePlaylist(card.playlistUrl)
     if (parsed) {
       const label = parsed.provider === 'spotify' ? 'Spotify' : parsed.provider === 'apple' ? 'Apple Music' : 'YouTube'
-      const embedHeight = parsed.provider === 'spotify' ? '352' : parsed.provider === 'apple' ? '450' : '315'
+      const embedHeight = parsed.provider === 'spotify' ? '500' : parsed.provider === 'apple' ? '450' : '315'
       const previewTracks = tracks.slice(0, 5)
       const trackPreviewHtml = previewTracks.length > 0 ? `<ol class="track-preview">${previewTracks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ol>` : ''
       const embedSrc = parsed.provider === 'spotify' ? parsed.embedUrl + (parsed.embedUrl.includes('?') ? '&' : '?') + 'theme=0' : parsed.embedUrl
@@ -174,7 +174,7 @@ a{color:var(--accent)}
 
 /* Board link */
 .board-link{display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-radius:var(--corner);background:color-mix(in srgb,var(--panel0) 60%,transparent);border:1px solid color-mix(in srgb,var(--stroke) 30%,transparent);color:var(--ink);text-decoration:none;font-size:.9rem;word-break:break-all}
-.board-embed{width:100%;height:420px;border:none;border-radius:var(--corner);margin-bottom:.75rem;background:transparent}
+.board-embed{width:100%;height:520px;border:none;border-radius:var(--corner);margin-bottom:.75rem;background:transparent;overflow:hidden}
 .board-link:hover{border-color:var(--accent)}
 .board-icon{font-size:1.4rem}
 .board-label-text{display:flex;flex-direction:column;gap:.15rem}
