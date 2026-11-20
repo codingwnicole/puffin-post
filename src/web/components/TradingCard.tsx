@@ -257,12 +257,12 @@ export async function cardPreviewBlob(cardElement: Element): Promise<Blob> {
   return blob
 }
 
-// ponytail: at most 60 frames (longer GIFs are sampled, delays summed) so the file stays a shareable size.
-const MAX_FRAMES = 60
+// ponytail: 30 complete frames avoids the transparent-delta disposal bug seen in browser GIF viewers
+// while keeping exports comfortably shareable.
+const MAX_FRAMES = 30
 
-/** Frame 0 is the whole card (one panel per side, portrait at its first frame). Later frames repaint
- * only pixels that changed since the previous frame (the rest is transparent and kept from before,
- * dispose = 1), so only the portrait area costs bytes. */
+/** Every GIF frame is a complete card. Transparent delta frames are smaller, but browser decoders
+ * do not agree on how to dispose them when the GIF loops, which made the front flash or "flip". */
 async function animatedCard(svgs: SVGSVGElement[], moodUrls: string[], gif: Blob) {
   const { GIFEncoder, quantize, applyPalette } = await import('gifenc')
   const moodData = moodUrls.length ? await moodDataFor(moodUrls) : null
@@ -275,7 +275,6 @@ async function animatedCard(svgs: SVGSVGElement[], moodUrls: string[], gif: Blob
   if (!context || !stillContext) throw new Error('Could not prepare the card')
   canvas.width = W; canvas.height = H
   const encoder = GIFEncoder()
-  let previous: Uint8ClampedArray | null = null
   try {
     for (let start = 0; start < count; start += step) {
       let delay = 0, frameData = ''
@@ -285,20 +284,14 @@ async function animatedCard(svgs: SVGSVGElement[], moodUrls: string[], gif: Blob
         if (i === start) { still.width = image.displayWidth; still.height = image.displayHeight; stillContext.drawImage(image, 0, 0); frameData = still.toDataURL('image/png') }
         image.close()
       }
-      // Frame 0 paints every panel; later frames only the portrait side (back and mood never change).
+      // Paint every panel on every frame. This makes each frame independently correct at loop points.
+      context.clearRect(0, 0, W, H)
       await drawSide(context, svgs[0], frameData, null, 0, SIDE, H)
-      if (!previous) for (const [i, svg] of svgs.entries()) { if (i === 0) continue; await drawSide(context, svg, null, svg.dataset.side === 'mood' ? moodData : null, i * (SIDE + GAP), SIDE, H) }
+      for (const [i, svg] of svgs.entries()) { if (i === 0) continue; await drawSide(context, svg, null, svg.dataset.side === 'mood' ? moodData : null, i * (SIDE + GAP), SIDE, H) }
       const rgba = context.getImageData(0, 0, W, H).data
-      // Everything not repainted this frame stays transparent (dispose = 1 keeps the pixels from before).
-      const changed: number[] = []
-      for (let p = 0; p < rgba.length; p += 4) if (previous ? rgba[p] !== previous[p] || rgba[p + 1] !== previous[p + 1] || rgba[p + 2] !== previous[p + 2] : rgba[p + 3] >= 128) changed.push(p)
-      const only = new Uint8ClampedArray(Math.max(1, changed.length) * 4)
-      changed.forEach((p, k) => only.set(rgba.subarray(p, p + 4), k * 4))
-      const palette = quantize(only, 255); palette.push([0, 0, 0])
-      const transparentIndex = palette.length - 1, index = new Uint8Array(W * H).fill(transparentIndex), mapped = applyPalette(only, palette)
-      changed.forEach((p, k) => { index[p / 4] = mapped[k] })
-      encoder.writeFrame(index, W, H, { palette, delay: Math.max(20, delay), dispose: 1, transparent: true, transparentIndex, ...(previous ? {} : { repeat: 0 }) })
-      previous = rgba
+      const palette = quantize(rgba, 256)
+      const index = applyPalette(rgba, palette)
+      encoder.writeFrame(index, W, H, { palette, delay: Math.max(20, delay), dispose: 1, ...(start ? {} : { repeat: 0 }) })
     }
   } finally { decoder.close() }
   encoder.finish()
