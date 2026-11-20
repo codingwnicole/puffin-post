@@ -65,7 +65,7 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
   }
 
   let playlistHtml = ''
-  if (share.showPlaylist && card.playlistUrl) {
+  if (card.playlistUrl) {
     const parsed = parsePlaylist(card.playlistUrl)
     if (parsed) {
       const label = parsed.provider === 'spotify' ? 'Spotify' : parsed.provider === 'apple' ? 'Apple Music' : 'YouTube'
@@ -85,7 +85,7 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
   const boardPath = card.boardUrl ? card.boardUrl.replace(/^https?:\/\/(www\.)?pinterest\.[a-z.]+\//, '').replace(/\/$/, '') : ''
   const boardLabel = boardPath ? boardPath.split('/').pop()?.replace(/-/g, ' ') || 'Pinterest board' : ''
   const boardEmbedSrc = boardPath ? `https://petracoding.github.io/pinterest/board.html?link=${encodeURIComponent(boardPath + '/')}&hideHeader=0&hideFooter=1&transparent=1` : ''
-  const boardHtml = share.showMoodboard && card.boardUrl ? `<section class="section"><h2 class="section-title">Pinterest Board</h2>${boardEmbedSrc ? `<iframe src="${escapeHtml(boardEmbedSrc)}" class="board-embed" loading="lazy"></iframe>` : ''}<a href="${escapeHtml(card.boardUrl)}" target="_blank" rel="noopener" class="board-link"><span class="board-icon">&#x1F4CC;</span><span class="board-label-text"><strong>${escapeHtml(boardLabel)}</strong><small>View on Pinterest &rarr;</small></span></a></section>` : ''
+  const boardHtml = card.boardUrl ? `<section class="section"><h2 class="section-title">Pinterest Board</h2>${boardEmbedSrc ? `<iframe src="${escapeHtml(boardEmbedSrc)}" class="board-embed" loading="lazy"></iframe>` : ''}<a href="${escapeHtml(card.boardUrl)}" target="_blank" rel="noopener" class="board-link"><span class="board-icon">&#x1F4CC;</span><span class="board-label-text"><strong>${escapeHtml(boardLabel)}</strong><small>View on Pinterest &rarr;</small></span></a></section>` : ''
 
   const detailsHtml = (card.likes || card.dislikes || card.notes) ? `<section class="section"><h2 class="section-title">About</h2><div class="detail-grid">${card.likes ? `<div class="detail-item"><span class="detail-label">Likes</span><span>${escapeHtml(card.likes)}</span></div>` : ''}${card.dislikes ? `<div class="detail-item"><span class="detail-label">Dislikes</span><span>${escapeHtml(card.dislikes)}</span></div>` : ''}${card.notes ? `<div class="detail-item detail-wide"><span class="detail-label">Notes</span><span>${escapeHtml(card.notes)}</span></div>` : ''}</div></section>` : ''
 
