@@ -91,7 +91,7 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
       {box(562, 120)}<text x={56} y={596} fill={t.accent} fontFamily={t.font} fontSize={34}>"</text>
       {wrap(profile.quote || 'A line that captures them.', 46, 4).map((line, i) => <text key={i} x={320} y={596 + i * 24} textAnchor="middle" {...body} fontStyle="italic" fontSize={18}>{line}</text>)}
       {box(694, 56)}<circle cx={70} cy={722} r={15} fill="none" stroke={t.ink} strokeWidth={2} /><path d="M65 714l13 8-13 8z" fill={t.ink} />
-      <text x={98} y={716} {...label}>THEME SONG</text>{(() => { const songLine = (profile.song || 'Song title') + (profile.artist ? ' — ' + profile.artist : ''); return <text x={98} y={738} {...body} fontSize={fitSize(songLine, 40, 16, 11)}>{songLine.slice(0, 60)}</text> })()}
+      <text x={98} y={716} {...label}>THEME SONG</text>{(() => { const songLine = profile.song || 'Song title'; return <text x={98} y={738} {...body} fontSize={fitSize(songLine, 40, 16, 11)}>{songLine.slice(0, 60)}</text> })()}
       {Array.from({ length: 22 }, (_, i) => { const h = 6 + ((i * 7) % 11) * 2; return <rect key={i} x={460 + i * 6} y={722 - h / 2} width={3} height={h} fill={t.sub} opacity={.8} /> })}
       {box(762, 44)}<text x={60} y={789} {...label}>FAVORITE COLOR</text><rect x={430} y={772} width={150} height={24} rx={6} fill={profile.favoriteColor} stroke={t.ink} strokeOpacity={.5} />
     </> : side === 'back' ? <>
@@ -99,11 +99,11 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
       {([['THREADS', stats.total], ['YOUR TURN', stats.mine], ['THEIR TURN', stats.theirs]] as const).map(([what, value], i) => <g key={what}><text x={133 + i * 187} y={185} textAnchor="middle" fill={t.ink} fontFamily={t.font} fontSize={64}>{value}</text><text x={133 + i * 187} y={215} textAnchor="middle" {...label}>{what}</text></g>)}
       <text x={320} y={252} textAnchor="middle" {...body} fontSize={15}>{wrap(stats.rps.length ? 'Writes in ' + stats.rps.join(' / ') : 'Not in an RP section yet', 60, 1)[0]}</text>
       {box(286, 250)}<text x={60} y={316} {...label}>FUN FACTS</text>
-      {[0, 1, 2, 3, 4].map(i => { const fact = (profile.facts[i] || '—').slice(0, 60); return <g key={i}>{glyph ? symbolText(66, 358 + i * 38, 16) : <circle cx={66} cy={352 + i * 38} r={3} fill={t.accent} />}<text x={88} y={358 + i * 38} {...body} fontSize={fitSize(fact, 42, 17, 12)}>{fact}</text></g> })}
+      {[0, 1, 2, 3, 4].map(i => { const fact = (profile.facts[i] || '—').slice(0, 60); return <g key={i}>{glyph ? symbolText(66, 358 + i * 38, 16) : <circle cx={66} cy={352 + i * 38} r={3} fill={t.accent} />}<text x={88} y={358 + i * 38} {...body} fontSize={fitSize(fact, 42, 17, 13)}>{fact}</text></g> })}
       {box(552, 120, { width: 272 })}{box(552, 120, { x: 328, width: 272 })}
       <text x={60} y={580} {...label}>LIKES</text><text x={348} y={580} {...label}>DISLIKES</text>
-      {wrap(profile.likes || '—', 26, 3).map((line, i) => <text key={'l' + i} x={60} y={608 + i * 22} {...body} fontSize={16}>{line}</text>)}
-      {wrap(profile.dislikes || '—', 26, 3).map((line, i) => <text key={'d' + i} x={348} y={608 + i * 22} {...body} fontSize={16}>{line}</text>)}
+      {wrap(profile.likes || '—', 24, 3).map((line, i) => <text key={'l' + i} x={60} y={608 + i * 22} {...body} fontSize={17}>{line}</text>)}
+      {wrap(profile.dislikes || '—', 24, 3).map((line, i) => <text key={'d' + i} x={348} y={608 + i * 22} {...body} fontSize={17}>{line}</text>)}
       {box(688, 150)}<text x={60} y={718} {...label}>MISC. / NOTES</text>
       {wrap(profile.notes || '—', 54, 4).map((line, i) => <text key={i} x={60} y={748 + i * 24} {...body} fontSize={17}>{line}</text>)}
     </> : <>
