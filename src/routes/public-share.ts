@@ -48,7 +48,7 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
   const t = THEMES[card.theme] ?? THEMES.holo
 
   const frontSvg = share.style === 'card' ? renderToString(createElement(Side, { side: 'front', name, profile: card, stats, portrait: `/c/${slug}/portrait`, moodboard: [], uid: 'f' })) : ''
-  const backSvg = share.style === 'card' ? renderToString(createElement(Side, { side: 'back', name, profile: card, stats: share.showStats ? stats : { total: 0, mine: 0, theirs: 0, rps: [] }, portrait: null, moodboard: [], uid: 'b' })) : ''
+  const backSvg = share.style === 'card' ? renderToString(createElement(Side, { side: 'back', name, profile: card, stats, portrait: null, moodboard: [], uid: 'b' })) : ''
 
   const songLine = (card.song || '') + (card.artist ? ' — ' + card.artist : '')
   const facts = (card.facts || []).filter(Boolean)
@@ -69,11 +69,11 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
     const parsed = parsePlaylist(card.playlistUrl)
     if (parsed) {
       const label = parsed.provider === 'spotify' ? 'Spotify' : parsed.provider === 'apple' ? 'Apple Music' : 'YouTube'
-      const embedHeight = parsed.provider === 'spotify' ? '500' : parsed.provider === 'apple' ? '450' : '315'
+      const embedHeight = parsed.provider === 'spotify' ? '580' : parsed.provider === 'apple' ? '450' : '315'
       const previewTracks = tracks.slice(0, 5)
       const trackPreviewHtml = previewTracks.length > 0 ? `<ol class="track-preview">${previewTracks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ol>` : ''
       const embedSrc = parsed.provider === 'spotify' ? parsed.embedUrl + (parsed.embedUrl.includes('?') ? '&' : '?') + 'theme=0' : parsed.embedUrl
-      playlistHtml = `<section class="section"><h2 class="section-title">Playlist</h2>${trackPreviewHtml}<div class="playlist-embed"><iframe src="${escapeHtml(embedSrc)}" width="100%" height="${embedHeight}" style="border-radius:12px" frameborder="0" allowfullscreen allow="autoplay;clipboard-write;encrypted-media;fullscreen;picture-in-picture" loading="lazy"></iframe></div><a href="${escapeHtml(parsed.openUrl)}" target="_blank" rel="noopener" class="link">Open in ${escapeHtml(label)} &rarr;</a></section>`
+      playlistHtml = `<section class="section"><h2 class="section-title">Playlist</h2>${trackPreviewHtml}<div class="playlist-embed"><iframe src="${escapeHtml(embedSrc)}" width="100%" height="${embedHeight}" style="border-radius:12px" frameborder="0" allowfullscreen allow="autoplay;clipboard-write;encrypted-media;fullscreen;picture-in-picture" loading="lazy"></iframe></div></section>`
     }
   }
 
@@ -83,9 +83,8 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
   }
 
   const boardPath = card.boardUrl ? card.boardUrl.replace(/^https?:\/\/(www\.)?pinterest\.[a-z.]+\//, '').replace(/\/$/, '') : ''
-  const boardLabel = boardPath ? boardPath.split('/').pop()?.replace(/-/g, ' ') || 'Pinterest board' : ''
   const boardEmbedSrc = boardPath ? `https://petracoding.github.io/pinterest/board.html?link=${encodeURIComponent(boardPath + '/')}&hideHeader=0&hideFooter=1&transparent=1` : ''
-  const boardHtml = card.boardUrl ? `<section class="section"><h2 class="section-title">Pinterest Board</h2>${boardEmbedSrc ? `<iframe src="${escapeHtml(boardEmbedSrc)}" class="board-embed" loading="lazy"></iframe>` : ''}<a href="${escapeHtml(card.boardUrl)}" target="_blank" rel="noopener" class="board-link"><span class="board-icon">&#x1F4CC;</span><span class="board-label-text"><strong>${escapeHtml(boardLabel)}</strong><small>View on Pinterest &rarr;</small></span></a></section>` : ''
+  const boardHtml = card.boardUrl && boardEmbedSrc ? `<section class="section"><h2 class="section-title">Moodboard</h2><iframe src="${escapeHtml(boardEmbedSrc)}" class="board-embed" loading="lazy"></iframe></section>` : ''
 
   const detailsHtml = (card.likes || card.dislikes || card.notes) ? `<section class="section"><h2 class="section-title">About</h2><div class="detail-grid">${card.likes ? `<div class="detail-item"><span class="detail-label">Likes</span><span>${escapeHtml(card.likes)}</span></div>` : ''}${card.dislikes ? `<div class="detail-item"><span class="detail-label">Dislikes</span><span>${escapeHtml(card.dislikes)}</span></div>` : ''}${card.notes ? `<div class="detail-item detail-wide"><span class="detail-label">Notes</span><span>${escapeHtml(card.notes)}</span></div>` : ''}</div></section>` : ''
 
@@ -93,11 +92,8 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
 
   const tracklistHtml = tracks.length > 0 ? `<section class="section"><h2 class="section-title">Tracklist</h2><ol class="track-list">${tracks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ol></section>` : ''
 
-  const overlayHtml = share.style === 'card' ? `<div id="card-overlay" class="overlay"><div class="overlay-inner"><div id="card-flip-area" data-flipped="false"><div class="card-face-front">${frontSvg}</div><div class="card-face-back">${backSvg}</div></div><div class="overlay-btns"><button type="button" data-card-flip="card-flip-area" aria-pressed="false" class="btn-accent">Flip</button><button type="button" data-close-overlay class="btn-muted">Close</button></div></div></div>` : ''
-
-  const cardPreviewHtml = share.style === 'card'
-    ? `<button type="button" data-open-overlay class="card-preview-btn" title="View card"><div id="card-preview">${frontSvg}</div><span class="preview-hint">Click to view</span></button>`
-    : `<div class="portrait-circle"><img src="/c/${escapeHtml(slug)}/portrait" alt="" onerror="this.style.display='none'"></div>`
+  const portraitHtml = `<img class="hero-portrait" src="/c/${escapeHtml(slug)}/portrait" alt="" onerror="this.style.display='none'">`
+  const cardDisplayHtml = share.style === 'card' ? `<div class="card-display">${frontSvg}${backSvg}</div>` : ''
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -119,12 +115,10 @@ a{color:var(--accent)}
 .page{max-width:860px;margin:0 auto;padding:2rem 1.25rem 3rem}
 
 /* Hero: card + name + quote */
-.hero{display:grid;grid-template-columns:240px minmax(0,1fr);gap:2.5rem;align-items:start;padding-bottom:2rem;border-bottom:1px solid var(--stroke)}
-.card-preview-btn{background:none;border:none;padding:0;cursor:pointer;position:relative;display:block;width:100%}
-#card-preview svg{width:100%;height:auto;filter:drop-shadow(0 8px 24px rgba(0,0,0,.35))}
-.preview-hint{display:block;margin-top:.5rem;text-align:center;font:600 .8rem var(--sans);color:var(--sub);letter-spacing:.06em;text-transform:uppercase;opacity:.7}
-.portrait-circle{width:120px;height:120px;border-radius:50%;overflow:hidden;border:3px solid var(--stroke);margin:0 auto}
-.portrait-circle img{width:100%;height:100%;object-fit:cover}
+.hero{padding-bottom:2rem;border-bottom:1px solid var(--stroke);overflow:hidden}
+.hero-portrait{float:left;width:180px;height:180px;border-radius:1rem;object-fit:cover;margin:0 2rem 1rem 0;border:3px solid var(--stroke)}
+.card-display{display:flex;gap:1.5rem;justify-content:center;margin-top:2rem;padding:2rem 0;border-top:1px solid color-mix(in srgb,var(--stroke) 40%,transparent)}
+.card-display svg{width:220px;height:auto;filter:drop-shadow(0 4px 12px rgba(0,0,0,.2))}
 .hero-text{display:grid;gap:.75rem;align-content:start;padding-top:.5rem}
 .hero-name{font:600 clamp(2rem,5vw,3.2rem)/1.1 var(--font);letter-spacing:-.03em;color:var(--ink)}
 .hero-nickname{font:italic 500 1.1rem/1.3 var(--font);color:var(--sub)}
@@ -173,28 +167,13 @@ a{color:var(--accent)}
 .track-preview{counter-reset:tp}
 
 /* Board link */
-.board-link{display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;border-radius:var(--corner);background:color-mix(in srgb,var(--panel0) 60%,transparent);border:1px solid color-mix(in srgb,var(--stroke) 30%,transparent);color:var(--ink);text-decoration:none;font-size:.9rem;word-break:break-all}
-.board-embed{width:100%;height:520px;border:none;border-radius:var(--corner);margin-bottom:.75rem;background:transparent;overflow:hidden}
-.board-link:hover{border-color:var(--accent)}
-.board-icon{font-size:1.4rem}
-.board-label-text{display:flex;flex-direction:column;gap:.15rem}
-.board-label-text strong{font:600 1rem var(--font);color:var(--ink);text-transform:capitalize}
-.board-label-text small{font-size:.78rem;color:var(--sub);word-break:break-all}
+.board-embed{width:100%;height:520px;border:none;border-radius:var(--corner);background:transparent;overflow:hidden}
 
 /* Buttons */
 .btn-accent{padding:.6rem 1.4rem;background:var(--accent);color:var(--panel1);border:none;border-radius:calc(var(--corner) + 2px);cursor:pointer;font:700 .9rem var(--sans);min-height:44px}
 .btn-accent:hover{filter:brightness(1.1)}
 .btn-muted{padding:.6rem 1.4rem;background:var(--panel0);color:var(--ink);border:1px solid var(--stroke);border-radius:calc(var(--corner) + 2px);cursor:pointer;font:700 .9rem var(--sans);min-height:44px}
-.link{color:var(--accent);display:inline-block;font-size:.9rem;margin-top:.5rem}
 .playlist-embed{border-radius:12px;overflow:hidden}
-
-/* Overlay */
-.overlay{display:none;position:fixed;inset:0;z-index:900;place-items:center;padding:1rem;background:rgba(0,0,0,.7);backdrop-filter:blur(6px)}
-.overlay-inner{max-width:360px;width:100%}
-.overlay-btns{display:flex;gap:.75rem;justify-content:center;margin-top:.75rem}
-[data-flipped="false"] .card-face-front{display:block}[data-flipped="false"] .card-face-back{display:none}
-[data-flipped="true"] .card-face-front{display:none}[data-flipped="true"] .card-face-back{display:block}
-.card-face-front svg,.card-face-back svg{width:100%;height:auto}
 
 /* Footer */
 .footer{margin-top:3rem;padding-top:1.25rem;border-top:1px solid color-mix(in srgb,var(--stroke) 40%,transparent);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem}
@@ -209,10 +188,11 @@ a{color:var(--accent)}
 .report-form textarea{width:100%;height:70px;background:color-mix(in srgb,var(--panel0) 80%,transparent);color:var(--ink);border:1px solid var(--stroke);border-radius:var(--corner);padding:.5rem;font:inherit;resize:vertical}
 
 @media(max-width:600px){
-  .hero{grid-template-columns:1fr;gap:1.25rem;text-align:center}
-  #card-preview{max-width:220px;margin:0 auto}
+  .hero{text-align:center}
+  .hero-portrait{float:none;display:block;width:140px;height:140px;margin:0 auto 1rem;border-radius:50%}
   .hero-quote{text-align:left}
   .hero-meta{justify-content:center}
+  .card-display{flex-wrap:wrap}.card-display svg{width:180px}
   .detail-grid{grid-template-columns:1fr}
   .stat-row{grid-template-columns:repeat(3,1fr);gap:.5rem}
   .stat-num{font-size:1.4rem}
@@ -224,11 +204,11 @@ a{color:var(--accent)}
 <body>
 <div class="page">
 <div class="hero">
-${cardPreviewHtml}
+${portraitHtml}
 <div class="hero-text">
 <h1 class="hero-name">${escapeHtml(name)}</h1>
 ${card.nickname && card.nickname !== name ? `<p class="hero-nickname">${escapeHtml(card.nickname)}</p>` : ''}
-${card.quote ? `<blockquote class="hero-quote">&ldquo;${escapeHtml(card.quote)}&rdquo;</blockquote>` : ''}
+${card.quote ? (() => { const ql = card.quote.length; const qs = ql < 30 ? '1.6rem' : ql < 50 ? '1.35rem' : ql < 80 ? '1.15rem' : '1rem'; return `<blockquote class="hero-quote" style="font-size:${qs}">&ldquo;${escapeHtml(card.quote)}&rdquo;</blockquote>` })() : ''}
 <div class="hero-meta">
 ${card.age ? `<span><strong>${escapeHtml(card.age)}</strong> years old</span>` : ''}
 ${card.birthdate ? `<span>Born <strong>${escapeHtml(card.birthdate)}</strong></span>` : ''}
@@ -238,7 +218,7 @@ ${songLine ? `<p class="hero-song">${escapeHtml(songLine)}</p>` : ''}
 </div>
 </div>
 ${factsHtml}${detailsHtml}${moodboardHtml}${boardHtml}${playlistHtml}${tracklistHtml}${statsHtml}
-${overlayHtml}
+${cardDisplayHtml}
 <footer class="footer">
 <a href="https://puffinpost.app" class="footer-brand"><span class="footer-mark">P</span>Puffin Post</a>
 <div class="footer-right"><a href="https://puffinpost.app">Make your own</a><span> &middot; </span><details style="display:inline"><summary class="report-toggle">Report</summary><form method="POST" action="/c/${escapeHtml(slug)}/report" class="report-form"><textarea name="reason" maxlength="1000" required placeholder="Why are you reporting this page?"></textarea><button type="submit" class="btn-accent" style="margin-top:.35rem;padding:.4rem 1rem;font-size:.82rem">Send report</button></form></details></div>
@@ -276,7 +256,7 @@ export function publicShareRoutes() {
     if (!data) return c.html(notFoundPage(), 404, { 'Content-Security-Policy': PAGE_CSP, 'Cache-Control': 'public, max-age=60' })
     const { share, char } = data
     const card: CardProfile = char.cardJson ? JSON.parse(char.cardJson) : { theme: 'holo', nickname: '', age: '', birthdate: '', quote: '', song: '', artist: '', favoriteColor: '#b07a9e', facts: [], likes: '', dislikes: '', notes: '', playlistUrl: '', boardUrl: '', tracklist: [], symbol: 'none' }
-    const stats = share.showStats ? await getStats(c.env.DB, share.workspaceId, share.characterId) : { total: 0, mine: 0, theirs: 0, rps: [] }
+    const stats = await getStats(c.env.DB, share.workspaceId, share.characterId)
     const moodItems = share.showMoodboard ? (await c.env.DB.prepare('SELECT id,kind,pin_id AS pinId FROM character_moodboard_items WHERE workspace_id=? AND character_id=? ORDER BY position').bind(share.workspaceId, share.characterId).all<{ id: string; kind: string; pinId: string | null }>()).results : []
     const headers: Record<string, string> = { 'Content-Security-Policy': PAGE_CSP, 'Cache-Control': 'public, max-age=60' }
     if (!share.indexable) headers['X-Robots-Tag'] = 'noindex, nofollow'
@@ -288,7 +268,7 @@ export function publicShareRoutes() {
     if (!data) return c.html(notFoundPage(), 404)
     const { share, char } = data
     const card: CardProfile = char.cardJson ? JSON.parse(char.cardJson) : { theme: 'holo', nickname: '', age: '', birthdate: '', quote: '', song: '', artist: '', favoriteColor: '#b07a9e', facts: [], likes: '', dislikes: '', notes: '', playlistUrl: '', boardUrl: '', tracklist: [], symbol: 'none' }
-    const stats = share.showStats ? await getStats(c.env.DB, share.workspaceId, share.characterId) : { total: 0, mine: 0, theirs: 0, rps: [] }
+    const stats = await getStats(c.env.DB, share.workspaceId, share.characterId)
     return c.html(renderEmbed(share, char, card, stats, c.env.APP_ORIGIN), 200, { 'Content-Security-Policy': EMBED_CSP, 'X-Robots-Tag': 'noindex, nofollow', 'Cache-Control': 'public, max-age=60' })
   })
 

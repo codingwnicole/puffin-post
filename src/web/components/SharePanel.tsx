@@ -29,15 +29,12 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
   const [copied, setCopied] = useState('')
 
   const [style, setStyle] = useState<'card' | 'stats'>('card')
-  const [showMoodboard, setShowMoodboard] = useState(false)
-  const [showPlaylist, setShowPlaylist] = useState(false)
-  const [showStats, setShowStats] = useState(false)
   const [indexable, setIndexable] = useState(false)
 
   useEffect(() => {
     api<ShareSettings>(`/characters/${character.id}/share`).then(data => {
       setShare(data)
-      if (data) { setStyle(data.style); setShowMoodboard(data.showMoodboard); setShowPlaylist(data.showPlaylist); setShowStats(data.showStats); setIndexable(data.indexable) }
+      if (data) { setStyle(data.style); setIndexable(data.indexable) }
     }).catch(problem => setError((problem as Error).message)).finally(() => setLoading(false))
   }, [character.id])
 
@@ -58,10 +55,10 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
   const save = async () => {
     setSaving(true); setError('')
     try {
-      const body = { style, showMoodboard, showPlaylist, showStats, indexable }
+      const body = { style, showMoodboard: true, showPlaylist: true, showStats: true, indexable }
       const result = await api<NonNullable<ShareSettings>>(`/characters/${character.id}/share`, 'PUT', body)
       setShare(result)
-      await renderAndUploadPreview(style, showStats)
+      await renderAndUploadPreview(style, true)
       onChanged?.()
     } catch (problem) { setError((problem as Error).message) }
     finally { setSaving(false) }
@@ -126,11 +123,8 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
 
           <fieldset className="share-options">
             <legend>Options</legend>
-            <label><input type="checkbox" checked={showMoodboard} onChange={e => setShowMoodboard(e.target.checked)} /> Show moodboard</label>
-            <label><input type="checkbox" checked={showPlaylist} onChange={e => setShowPlaylist(e.target.checked)} /> Show playlist</label>
-            <label><input type="checkbox" checked={showStats} onChange={e => setShowStats(e.target.checked)} /> Show thread stats</label>
             <label><input type="checkbox" checked={indexable} onChange={e => setIndexable(e.target.checked)} /> Let search engines show this page</label>
-            <p className="share-hint">Off keeps the page out of Google and other search results. Anyone with the link can still open it.</p>
+            <p className="share-hint">Off keeps the page out of Google and other search results. Anyone with the link can still open it. Playlist, moodboard and stats show automatically when you've filled them in on the card.</p>
           </fieldset>
 
           <div className="share-actions">
