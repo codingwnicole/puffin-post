@@ -44,3 +44,10 @@ it('undo keeps a planner idea that existed before the move, and restores a hiatu
   expect((await state())?.state).toBe('hiatus')
   expect(await plan()).toBeTruthy()
 })
+
+it('adding one planner idea to the cast twice at once creates one character', async () => {
+  const { id } = await (await fixture.request('/api/character-planner', 'POST', { name: 'Twin Click' })).json() as { id: string }
+  const responses = await Promise.all([1, 2].map(() => fixture.request(`/api/character-planner/${id}/add-to-cast`, 'POST')))
+  expect(responses.map(r => r.status).sort()).toEqual([201, 404])
+  expect(await fixture.env.DB.prepare("SELECT COUNT(*) AS n FROM characters WHERE workspace_id='a' AND name='Twin Click'").first()).toEqual({ n: 1 })
+})
