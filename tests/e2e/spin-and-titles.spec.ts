@@ -17,7 +17,9 @@ async function signedIn(browser: Browser) {
 test('spin the wheel picks a your-turn thread, highlights it, and is disabled when nothing is your turn', async ({ browser }) => {
   const { context, page } = await signedIn(browser)
   await page.goto('/#inbox')
-  await expect(page.getByRole('button', { name: 'Spin the wheel' })).toBeDisabled()
+  // An empty inbox shows onboarding, not the reply-run card, so there is no wheel yet.
+  await expect(page.getByRole('heading', { name: 'Build a space that keeps up with your stories.' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Spin the wheel' })).toHaveCount(0)
   const { id: characterId } = await (await page.request.post('/api/characters', { data: { name: 'Wren' } })).json() as { id: string }
   const titles = ['Harbor at dusk', 'Library heist', 'Snowed-in inn']
   for (const title of titles) expect((await page.request.post('/api/starters', { data: { characterId, title, partnerName: 'Ash' } })).status()).toBe(201)

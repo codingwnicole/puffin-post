@@ -192,11 +192,15 @@ test('dark depth: three surface steps are distinct and ordered page < card < pop
   await signIn(page)
   await page.getByLabel('Theme').selectOption('dark')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  // The popover surface is the phone More sheet, which only exists while open.
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.locator('.mobile-more-toggle').click()
+  await expect(page.locator('.mobile-more-menu')).toBeVisible()
   const tones = await page.evaluate((src: string) => {
     const h = (0, eval)(src)
     const page = h.lum(getComputedStyle(document.querySelector('.primary-nav') as HTMLElement).backgroundColor)
     const card = h.lum(getComputedStyle(document.querySelector('.tracking-card') as HTMLElement).backgroundColor)
-    const pop = h.lum(getComputedStyle(document.querySelector('.mobile-more div') as HTMLElement).backgroundColor)
+    const pop = h.lum(getComputedStyle(document.querySelector('.mobile-more-menu') as HTMLElement).backgroundColor)
     return { page, card, pop }
   }, HELPERS_SRC)
   expect(tones.card).toBeGreaterThan(tones.page)

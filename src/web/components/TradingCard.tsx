@@ -1,4 +1,5 @@
 import { useId, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { downloadBlob, fileSlug } from '../lib/stats-card'
 import { CARD_SYMBOLS, SYMBOL_FONT, type CardSymbol } from '../../shared/card-symbols'
 
 // A collectible card for a character, drawn as plain SVG so the same markup is shown on the page
@@ -197,11 +198,7 @@ async function drawSide(context: CanvasRenderingContext2D, svg: SVGSVGElement, p
 /** Fetches moodboard URLs and returns a data URL for each (GIFs reduced to their first frame). */
 const moodDataFor = async (urls: string[]) => Promise.all(urls.map(async href => { const blob = await (await fetch(href)).blob(); return blob.type === 'image/gif' && 'ImageDecoder' in window ? await firstGifFrame(blob) : blobToData(blob) }))
 
-function save(blob: Blob, name: string, ext: string) {
-  const url = URL.createObjectURL(blob), link = document.createElement('a')
-  link.href = url; link.download = (name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'character') + '-puffin-card.' + ext; link.click()
-  window.setTimeout(() => URL.revokeObjectURL(url), 4000)
-}
+const save = (blob: Blob, name: string, ext: string) => downloadBlob(blob, fileSlug(name, 'character') + '-rp-thread-buddy-card.' + ext)
 
 /** Downloads the canonical front and character-details back side by side. The moodboard is a third,
  * on-screen face only; it must never replace the printable back after a user flips their card.
@@ -263,40 +260,50 @@ async function animatedCard(svgs: SVGSVGElement[], moodUrls: string[], gif: Blob
   const still = document.createElement('canvas'), stillContext = still.getContext('2d')
   if (!context || !stillContext) throw new Error('Could not prepare the card')
   canvas.width = W; canvas.height = H
-  const encoder = GIFEncoder()
-  let colorPalette: number[][] | null = null
-  let transparentIndex = 0
+  // 1. Decode the portrait frames (grouped down to MAX_FRAMES) as PNG data URLs.
+  const frames: { data: string; delay: number }[] = []
   try {
     for (let start = 0; start < count; start += step) {
-      let delay = 0, frameData = ''
+      let delay = 0, data = ''
       for (let i = start; i < Math.min(count, start + step); i++) {
         const { image } = await decoder.decode({ frameIndex: i })
         delay += (image.duration ?? 100_000) / 1000
-        if (i === start) { still.width = image.displayWidth; still.height = image.displayHeight; stillContext.drawImage(image, 0, 0); frameData = still.toDataURL('image/png') }
+        if (i === start) { still.width = image.displayWidth; still.height = image.displayHeight; stillContext.drawImage(image, 0, 0); data = still.toDataURL('image/png') }
         image.close()
       }
-      // Paint every panel on every frame. This makes each frame independently correct at loop points.
-      context.clearRect(0, 0, W, H)
-      await drawSide(context, svgs[0], frameData, null, 0, SIDE, H)
-      for (const [i, svg] of svgs.entries()) { if (i === 0) continue; await drawSide(context, svg, null, svg.dataset.side === 'mood' ? moodData : null, i * (SIDE + GAP), SIDE, H) }
-      const rgba = context.getImageData(0, 0, W, H).data
-      // Keep the gap and rounded outside corners truly transparent, but give visible pixels all
-      // 255 available colors. This is a complete frame, not a brittle transparent delta.
-      const opaqueOffsets: number[] = []
-      for (let p = 0; p < rgba.length; p += 4) if (rgba[p + 3] >= 128) opaqueOffsets.push(p)
-      const opaque = new Uint8ClampedArray(Math.max(1, opaqueOffsets.length) * 4)
-      opaqueOffsets.forEach((p, i) => opaque.set(rgba.subarray(p, p + 4), i * 4))
-      if (!colorPalette) {
-        colorPalette = quantize(opaque, 255)
-        transparentIndex = colorPalette.length
-      }
-      const index = new Uint8Array(W * H).fill(transparentIndex)
-      const mapped = applyPalette(opaque, colorPalette)
-      opaqueOffsets.forEach((p, i) => { index[p / 4] = mapped[i] })
-      const palette = start === 0 ? [...colorPalette, [0, 0, 0]] : undefined
-      encoder.writeFrame(index, W, H, { palette, delay: Math.max(20, delay), dispose: 1, transparent: true, transparentIndex, ...(start ? {} : { repeat: 0 }) })
+      frames.push({ data, delay })
     }
   } finally { decoder.close() }
+  // Paint every panel on every frame, so each frame is independently correct at loop points.
+  const render = async (frame: string) => {
+    context.clearRect(0, 0, W, H)
+    await drawSide(context, svgs[0], frame, null, 0, SIDE, H)
+    for (const [i, svg] of svgs.entries()) { if (i === 0) continue; await drawSide(context, svg, null, svg.dataset.side === 'mood' ? moodData : null, i * (SIDE + GAP), SIDE, H) }
+    return context.getImageData(0, 0, W, H).data
+  }
+  // 2. One palette for the whole GIF (a per-frame palette made the card shimmer), built from samples
+  //    of EVERY frame. Building it from frame 1 alone painted later frames in the wrong colors.
+  const stride = 4 * frames.length, samples: number[] = []
+  for (const frame of frames) {
+    const rgba = await render(frame.data)
+    for (let p = 0; p < rgba.length; p += 4 * stride) if (rgba[p + 3] >= 128) samples.push(rgba[p], rgba[p + 1], rgba[p + 2], rgba[p + 3])
+  }
+  const colorPalette = quantize(new Uint8ClampedArray(samples.length ? samples : [0, 0, 0, 255]), 255)
+  const transparentIndex = colorPalette.length
+  // 3. Encode. Keep the gap and rounded outside corners truly transparent; visible pixels get all
+  //    255 palette colors. Every frame is complete, not a brittle transparent delta.
+  const encoder = GIFEncoder()
+  for (const [n, frame] of frames.entries()) {
+    const rgba = await render(frame.data)
+    const opaqueOffsets: number[] = []
+    for (let p = 0; p < rgba.length; p += 4) if (rgba[p + 3] >= 128) opaqueOffsets.push(p)
+    const opaque = new Uint8ClampedArray(Math.max(1, opaqueOffsets.length) * 4)
+    opaqueOffsets.forEach((p, i) => opaque.set(rgba.subarray(p, p + 4), i * 4))
+    const index = new Uint8Array(W * H).fill(transparentIndex)
+    const mapped = applyPalette(opaque, colorPalette)
+    opaqueOffsets.forEach((p, i) => { index[p / 4] = mapped[i] })
+    encoder.writeFrame(index, W, H, { palette: n === 0 ? [...colorPalette, [0, 0, 0]] : undefined, delay: Math.max(20, frame.delay), dispose: 1, transparent: true, transparentIndex, ...(n ? {} : { repeat: 0 }) })
+  }
   encoder.finish()
   return new Blob([encoder.bytes()], { type: 'image/gif' })
 }

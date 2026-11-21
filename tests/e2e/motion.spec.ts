@@ -31,34 +31,11 @@ async function signedIn(page: Page, branches: unknown[] = inbox.branches) {
   await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
 }
 
-test('More filters panel enters from its trigger with a real transition', async ({ page }) => {
-  await signedIn(page)
-  const trigger = page.locator('.filter-more summary')
-  await trigger.click()
-  await expect(page.locator('.filter-more')).toHaveAttribute('open', '')
+// (The "More filters" disclosure this file used to test was removed from FilterBar; its test went with it.)
 
-  const panel = await page.locator('.filter-more-grid').evaluate(el => {
-    const cs = getComputedStyle(el)
-    return { origin: cs.transformOrigin, duration: cs.transitionDuration }
-  })
-  // Top-left corner (the trigger side), not the 50% 50% default.
-  expect(panel.origin).toBe('0px 0px')
-  const durations = panel.duration.split(',').map(part => parseFloat(part.trim()) * 1000)
-  expect(durations.every(d => d > 0)).toBe(true)
-})
-
-test('reduced motion: no transforms and short (<=100ms) fades on panel and branch card', async ({ page }) => {
+test('reduced motion: no transforms and short (<=100ms) fades on the branch card', async ({ page }) => {
   await signedIn(page)
   await page.emulateMedia({ reducedMotion: 'reduce' })
-
-  await page.locator('.filter-more summary').click()
-  const panel = await page.locator('.filter-more-grid').evaluate(el => {
-    const cs = getComputedStyle(el)
-    return { transform: cs.transform, transition: cs.transitionDuration, animation: cs.animationDuration }
-  })
-  expect(panel.transform).toBe('none')
-  const panelMs = Math.max(...panel.transition.split(',').map(part => parseFloat(part.trim()) * 1000))
-  expect(panelMs).toBeLessThanOrEqual(0.1)
 
   const card = await page.locator('.branch-card').first().evaluate(el => {
     const cs = getComputedStyle(el)

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useDialogFocus } from '../lib/focus'
 import { createPortal } from 'react-dom'
-import { api } from '../lib/api'
+import { api, apiUpload } from '../lib/api'
 import { cardPreviewBlob, type CardStats } from './TradingCard'
-import { statsCardBlob } from '../pages/CharactersPage'
+import { statsCardBlob } from '../lib/stats-card'
 
 type ShareSettings = { slug: string; style: 'card' | 'stats'; showMoodboard: boolean; showPlaylist: boolean; showStats: boolean; indexable: boolean; hasPreview: boolean; url: string } | null
 type Character = { id: string; name: string; state: string; iconObjectKey: string | null }
@@ -11,11 +12,7 @@ type Counts = { total: number; mine: number; theirs: number }
 async function uploadPreview(characterId: string, blob: Blob) {
   const form = new FormData()
   form.append('image', new File([blob], 'preview.png', { type: 'image/png' }))
-  const response = await fetch(`/api/characters/${characterId}/share/preview`, { method: 'POST', body: form })
-  if (!response.ok) {
-    const problem = await response.json().catch(() => null) as { error?: string } | null
-    throw new Error(problem?.error ?? 'Could not refresh the share preview')
-  }
+  await apiUpload(`/characters/${characterId}/share/preview`, form)
 }
 
 export default function SharePanel({ character, counts, stats, cardRef, close, onChanged }: {
@@ -34,6 +31,8 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
 
   const [style, setStyle] = useState<'card' | 'stats'>('card')
   const [indexable, setIndexable] = useState(false)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
 
   useEffect(() => {
     api<ShareSettings>(`/characters/${character.id}/share`).then(data => {
@@ -45,15 +44,10 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
   useEffect(() => { const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey) }, [close])
 
   const renderAndUploadPreview = async (currentStyle: 'card' | 'stats', currentShowStats: boolean) => {
-    try {
-      let blob: Blob
-      if (currentStyle === 'card' && cardRef.current) {
-        blob = await cardPreviewBlob(cardRef.current)
-      } else {
-        blob = await statsCardBlob(character, currentShowStats ? counts : { total: 0, mine: 0, theirs: 0 })
-      }
-      await uploadPreview(character.id, blob)
-    } catch (problem) { throw problem }
+    const blob = currentStyle === 'card' && cardRef.current
+      ? await cardPreviewBlob(cardRef.current)
+      : await statsCardBlob(character, currentShowStats ? counts : { total: 0, mine: 0, theirs: 0 })
+    await uploadPreview(character.id, blob)
   }
 
   // Card edits deliberately clear an old social-preview PNG. Rebuild it from the live card when
@@ -120,7 +114,7 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
   ] : []
 
   return createPortal(<div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="share-panel-title" onClick={e => { if (e.target === e.currentTarget) close() }}>
-    <div className="modal-card share-panel">
+    <div ref={dialogRef} className="modal-card share-panel">
       <h2 id="share-panel-title">Share {character.name}</h2>
       {loading ? <p>Loading…</p> : <>
         <label className="share-toggle">

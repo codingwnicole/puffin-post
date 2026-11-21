@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { IMAGE_ACCEPT, IMAGE_HINT } from '../lib/uploads'
-import { api } from '../lib/api'
+import { api, apiUpload } from '../lib/api'
 import { initialsFor } from '../components/InitialsAvatar'
 
 type Resource = { id: string; label: string; url: string }
@@ -27,7 +27,7 @@ function PlanCard({ plan, reload, reportError }: { plan: Plan; reload: () => Pro
   }
   async function upload(file: File) {
     setBusy(true)
-    try { const form = new FormData(); form.set('icon', await squarePlannerImage(file)); const response = await fetch('/api/character-planner/' + plan.id + '/icon', { method: 'POST', body: form }); if (!response.ok) { const problem = await response.json().catch(() => null) as { error?: string } | null; throw new Error(problem?.error ?? 'Image upload failed') }; await reload() }
+    try { const form = new FormData(); form.set('icon', await squarePlannerImage(file)); await apiUpload('/character-planner/' + plan.id + '/icon', form); await reload() }
     catch (problem) { reportError((problem as Error).message) } finally { setBusy(false) }
   }
   return <article className="planner-card tracking-card">

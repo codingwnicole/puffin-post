@@ -1,6 +1,14 @@
 export async function api<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
-  const response = await fetch(`/api${path}`, { method, headers: { 'content-type':'application/json' },
-    ...(body !== undefined ? { body:JSON.stringify(body) } : {}) })
+  return parse<T>(await fetch(`/api${path}`, { method, headers: { 'content-type':'application/json' },
+    ...(body !== undefined ? { body:JSON.stringify(body) } : {}) }))
+}
+
+// Multipart uploads (icons, portraits, moodboard images, share previews). Same errors as api().
+export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  return parse<T>(await fetch(`/api${path}`, { method: 'POST', body: form }))
+}
+
+async function parse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     if (response.status === 401) throw new Error("You've been signed out. Your text is kept; sign in again.")
     const text = await response.text()

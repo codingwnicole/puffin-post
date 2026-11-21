@@ -60,7 +60,7 @@ test('390px layout uses bottom navigation without horizontal scrolling', async (
   expect(box!.y).toBeGreaterThan(700)
   expect(box!.width).toBe(390)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
-  await navigation.locator('summary', { hasText: 'More' }).click()
+  await navigation.getByRole('button', { name: 'More' }).click()
   await expect(navigation.getByRole('link', { name: 'Settings' })).toBeVisible()
   await page.evaluate(() => {
     const a = document.querySelector<HTMLAnchorElement>('a[href="#settings"]')!

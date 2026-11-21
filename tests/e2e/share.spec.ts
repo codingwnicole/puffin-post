@@ -52,8 +52,7 @@ test('share lifecycle: enable, public page, snippets, rotate, disable', async ({
   expect(response!.headers()['x-robots-tag']).toContain('noindex')
   // Name visible
   await expect(publicPage.locator('h1')).toContainText('Sage Blackthorn')
-  // No stats when showStats is off
-  await expect(publicPage.locator('body')).not.toContainText('Thread Stats')
+  // Stats are no longer a share option: they show whenever the card has them (SharePanel always saves showStats).
   // Screenshot at 1280
   await publicPage.screenshot({ path: 'test-results/share-public-1280.png' })
   // Screenshot at 375
@@ -61,10 +60,7 @@ test('share lifecycle: enable, public page, snippets, rotate, disable', async ({
   await publicPage.screenshot({ path: 'test-results/share-public-375.png', fullPage: true })
   await publicCtx.close()
 
-  // Turn stats on → stats visible on public page
-  await dialog.getByLabel('Show thread stats').check()
-  await dialog.getByRole('button', { name: 'Save settings' }).click()
-  await page.waitForTimeout(500)
+  // Stats show on the public page (there is no longer a toggle for them)
   const publicCtx2 = await browser.newContext({ viewport: { width: 1280, height: 900 } })
   const publicPage2 = await publicCtx2.newPage()
   await publicPage2.goto(`${APP}/c/${slug}`)

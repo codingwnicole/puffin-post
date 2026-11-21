@@ -92,7 +92,7 @@ test('profile page: moodboard, pin, reorder, remove, board link, click-to-load p
   await page.getByRole('button', { name: 'Edit card' }).click()
   const editor = page.getByRole('dialog')
   await editor.getByLabel('Playlist link').fill('https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M')
-  await editor.getByLabel('Pinterest board link').fill('https://www.pinterest.com/wren/moodboard-pins/')
+  await editor.getByLabel('Pinterest board', { exact: true }).fill('https://www.pinterest.com/wren/moodboard-pins/')
   await editor.getByLabel('Track list').fill('Nightcall\nMidnight City')
   await editor.getByRole('button', { name: 'Save card' }).click()
   await expect(editor).toBeHidden()

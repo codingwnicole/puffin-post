@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import AppShell, { type AppPage } from './components/AppShell'
 import InboxPage from './pages/InboxPage'
@@ -21,19 +21,34 @@ function legalRouteFor(route: string): LegalRoute | null {
   return (LEGAL_ROUTES as readonly string[]).includes(route) ? (route as LegalRoute) : null
 }
 
-function pageForRoute(route: string): AppPage {
-  if (route.startsWith('character-shortcut/')) return 'inbox'
-  if (route.startsWith('character/')) return 'characters'
-  return route.startsWith('starter/') ? 'starter' : route === 'characters' || route === 'planner' || route === 'settings' || route === 'parking-lot' || route === 'connections' || route === 'tools' || route === 'activity' || route === 'support' ? route : 'inbox'
+// Every app route lives here: the page highlighted in the nav, and what to render.
+// Parameterised routes (`starter/<id>`) are keyed so changing the id remounts the page.
+const PAGES: Partial<Record<AppPage, () => ReactNode>> = {
+  'parking-lot': () => <ReplyParkingLotPage />,
+  connections: () => <ConnectionsPage />,
+  characters: () => <CharactersPage />,
+  planner: () => <CharacterPlannerPage />,
+  tools: () => <WritingToolsPage />,
+  activity: () => <TumblrActivityPage />,
+  support: () => <SupportPage />,
+  settings: () => <SettingsPage />,
+}
+
+function routeFor(hash: string): { page: AppPage; render: () => ReactNode } {
+  const [path] = hash.split('?')
+  const param = (prefix: string) => path.startsWith(prefix) ? path.slice(prefix.length) : null
+  const shortcutId = param('character-shortcut/'), profileId = param('character/'), starterId = param('starter/')
+  if (shortcutId !== null) return { page: 'inbox', render: () => <CharacterShortcutPage key={shortcutId} id={shortcutId} /> }
+  if (profileId !== null) return { page: 'characters', render: () => <CharacterProfilePage key={profileId} id={profileId} /> }
+  if (starterId !== null) return { page: 'starter', render: () => <StarterPage key={starterId} id={starterId} /> }
+  const page = path as AppPage
+  const render = PAGES[page]
+  // Unknown routes (including '', 'inbox', and in-page anchors such as 'quick-add') show the Inbox.
+  return render ? { page, render } : { page: 'inbox', render: () => <InboxPage /> }
 }
 
 export default function App() {
   const [route, setRoute] = useState(() => window.location.hash.slice(1))
-  const legalRoute = legalRouteFor(route)
-  const page = pageForRoute(route)
-  const starterId = route.slice('starter/'.length)
-  const shortcutId = route.startsWith('character-shortcut/') ? route.slice('character-shortcut/'.length) : null
-  const profileId = route.startsWith('character/') ? route.slice('character/'.length) : null
   useEffect(() => {
     const navigate = () => {
       const next = window.location.hash.slice(1)
@@ -48,17 +63,8 @@ export default function App() {
   }, [])
 
   // Legal routes are full-page documents, not app navigation: render them standalone, outside AppShell.
+  const legalRoute = legalRouteFor(route)
   if (legalRoute) return <LegalPage doc={legalRoute} />
-  return (
-    <AppShell page={page}>
-      {shortcutId ? <CharacterShortcutPage key={shortcutId} id={shortcutId} /> : profileId ? <CharacterProfilePage key={profileId} id={profileId} /> : page === 'inbox' ? <InboxPage /> : page === 'parking-lot' ? <ReplyParkingLotPage /> : page === 'connections' ? <ConnectionsPage /> : page === 'characters' ? <CharactersPage /> : page === 'planner' ? <CharacterPlannerPage /> : page === 'tools' ? <WritingToolsPage /> : page === 'activity' ? <TumblrActivityPage /> : page === 'support' ? <SupportPage /> : page === 'settings' ? <SettingsPage /> : page === 'starter' ? <StarterPage key={starterId} id={starterId} /> : (
-        <section aria-labelledby="page-title">
-          <h2 id="page-title" className="page-heading">{page === 'settings' ? 'Settings' : 'Characters'}</h2>
-          <p className="page-description">{page === 'settings'
-            ? 'Choose the appearance that feels like you.'
-            : 'Your cast of characters will live here. Character setup is coming soon.'}</p>
-        </section>
-      )}
-    </AppShell>
-  )
+  const { page, render } = routeFor(route)
+  return <AppShell page={page}>{render()}</AppShell>
 }

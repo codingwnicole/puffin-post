@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { staleGet, peekCache, clearApiCache } from '../../src/web/lib/api'
+import { staleGet, peekCache, clearApiCache, apiUpload } from '../../src/web/lib/api'
 
 // Minimal Response-like object that api() understands (.ok/.status/.json/.text).
 function jsonResponse(body: unknown) {
@@ -49,5 +49,17 @@ describe('stale-while-revalidate cache', () => {
     clearApiCache()
     expect(sessionStorage.getItem('puffin-draft:branch-1')).toBeNull()
     expect(sessionStorage.getItem('theme')).toBe('dark')
+  })
+})
+
+describe('apiUpload', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('posts the form as-is and surfaces the server error instead of looking like success', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: false, status: 413, json: async () => ({}), text: async () => JSON.stringify({ error: 'Images can be up to 4 MB' }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    const form = new FormData()
+    await expect(apiUpload('/characters/c1/moodboard', form)).rejects.toThrow('Images can be up to 4 MB')
+    expect(fetchMock).toHaveBeenCalledWith('/api/characters/c1/moodboard', { method: 'POST', body: form })
   })
 })

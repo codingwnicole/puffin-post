@@ -23,7 +23,7 @@ export default function SpinWheel({ items, empty }: { items: SpinItem[]; empty: 
     }, reduce ? 0 : 750)
   }
   return <div className="spin-wheel" data-spinning={spinning || undefined}>
-    <button type="button" className="secondary-button" title="Can’t decide where to start? Let Puffin pick one." onClick={spin} disabled={!items.length || spinning}>{spinning ? 'Spinning…' : pick ? 'Spin again' : 'Spin the wheel'}</button>
+    <button type="button" className="secondary-button" title="Can’t decide where to start? Let Thread Buddy pick one." onClick={spin} disabled={!items.length || spinning}>{spinning ? 'Spinning…' : pick ? 'Spin again' : 'Spin the wheel'}</button>
     <p aria-live="polite">{!items.length ? empty : pick ? <>Reply to this one? <strong>{pick.label}</strong>{pick.href && <> · <a href={pick.href}>Open</a></>}</> : null}</p>
   </div>
 }

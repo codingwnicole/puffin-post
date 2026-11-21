@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
-import { api, staleGet } from '../lib/api'
+import { api, apiUpload, staleGet } from '../lib/api'
+import { useDialogFocus } from '../lib/focus'
 import TradingCard, { downloadCard, emptyCard, normalizeCard, THEMES, type CardProfile, type CardStats } from '../components/TradingCard'
 import CardEditor from '../components/CardEditor'
 import SharePanel from '../components/SharePanel'
@@ -31,6 +32,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   const cardAreaRef = useRef<HTMLDivElement>(null)
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  useDialogFocus(overlayRef, showCard)
 
   // One reload re-reads everything the page owns: the cast (to find this character), its RP
   // sections, the inbox threads behind the card stats, the card, and the moodboard tiles.
@@ -81,7 +83,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
       for (const file of files) {
         const form = new FormData()
         form.append('image', await fitImage(file, 1200))
-        await fetch(`/api/characters/${id}/moodboard`, { method: 'POST', body: form })
+        await apiUpload(`/characters/${id}/moodboard`, form)
       }
       setError(null); await reload()
     } catch (problem) { setError(problem instanceof Error ? problem.message : 'Something went wrong') }
@@ -121,14 +123,11 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   const portraitKey = row.portraitObjectKey ?? row.iconObjectKey
   const portrait = portraitKey ? `/api/characters/${id}/portrait?v=${portraitVersion ?? portraitKey}` : null
 
-  const uploadIcon = async (file: File) => {
+  // CardEditor's "Upload portrait": the card art, separate from the character's icon.
+  const uploadPortrait = async (file: File) => {
     const form = new FormData()
-    form.set('icon', file)
-    const response = await fetch(`/api/characters/${id}/icon`, { method: 'POST', body: form })
-    if (!response.ok) {
-      const problem = await response.json().catch(() => null) as { error?: string } | null
-      throw new Error(problem?.error ?? 'Icon upload failed')
-    }
+    form.set('image', file)
+    await apiUpload(`/characters/${id}/portrait`, form)
     setPortraitVersion(Date.now())
   }
 
@@ -159,7 +158,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
         <div className="profile-overlay-card">
           <TradingCard name={row.name} profile={profile} stats={stats} portrait={portrait} moodboard={moodUrls} />
           <div className="profile-overlay-actions">
-            <button type="button" disabled={downloading} onClick={async () => { try { setDownloading(true); await downloadCard(overlayRef.current!, row.name) } catch { /* download helper throws its own error */ } finally { setDownloading(false) } }}>{downloading ? 'Preparing…' : 'Download'}</button>
+            <button type="button" disabled={downloading} onClick={async () => { try { setDownloading(true); await downloadCard(overlayRef.current!, row.name) } catch (problem) { setError(problem instanceof Error ? problem.message : 'Could not download the card') } finally { setDownloading(false) } }}>{downloading ? 'Preparing…' : 'Download'}</button>
             <button type="button" onClick={() => setShowCard(false)}>Close</button>
           </div>
         </div>
@@ -228,7 +227,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
           row={row}
           stats={stats}
           portrait={portrait}
-          upload={file => uploadIcon(file).then(() => reload())}
+          upload={file => uploadPortrait(file).then(() => reload())}
           close={() => setEditingCard(false)}
           saved={reload}
         />

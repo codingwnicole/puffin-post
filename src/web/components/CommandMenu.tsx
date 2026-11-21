@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDialogFocus } from '../lib/focus'
 
 // Command menu (Ctrl/⌘K). A filter box plus a list of destinations/actions.
 // Navigates via hash routes so the existing router picks them up.
@@ -11,6 +12,8 @@ export default function CommandMenu({ open, onClose }:{ open: boolean; onClose: 
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef, open)
 
   const commands: Command[] = useMemo(() => [
     { kind: 'route', id: 'add-thread', label: 'Add thread', route: 'quick-add' },
@@ -53,7 +56,7 @@ export default function CommandMenu({ open, onClose }:{ open: boolean; onClose: 
 
   return (
     <div className="modal-overlay command-overlay" role="presentation" onClick={() => onClose()}>
-      <div className="modal-card command-card" role="dialog" aria-modal="true" aria-label="Command menu" onClick={e => e.stopPropagation()}>
+      <div ref={dialogRef} className="modal-card command-card" role="dialog" aria-modal="true" aria-label="Command menu" onClick={e => e.stopPropagation()}>
         <input
           ref={inputRef}
           className="command-input"

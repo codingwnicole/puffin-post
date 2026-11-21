@@ -43,7 +43,7 @@ test('signed-out: cookie notice names the session cookie and states essential-on
   await page.goto('/#cookies')
   await expect(page.getByRole('heading', { name: 'Cookie Notice', exact: true })).toBeVisible({ timeout: 10000 })
   await expect(page.getByText(/__Host-threadums_session/)).toBeVisible()
-  await expect(page.getByText(/no cookie consent banner/i)).toBeVisible()
+  await expect(page.getByText(/does not use advertising cookies, analytics cookies/i)).toBeVisible()
   await expect(page.getByText(/essential storage/i)).toBeVisible()
 })
 

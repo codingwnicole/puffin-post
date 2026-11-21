@@ -26,21 +26,21 @@ test('make a trading card, see it in the Cards view, flip it, and download it as
   await page.goto('/#characters'); await page.reload()
   await page.getByRole('button', { name: '✦ Cards' }).click()
   const tile = page.locator('.tcard-tile').first()
-  await tile.getByRole('button', { name: 'Make this card' }).click()
+  await tile.getByRole('button', { name: 'Make a card' }).click()
   const editor = page.getByRole('dialog')
   await editor.getByText('Vamp Romantic').click()
   // No sparkle by default; the symbol picker puts the chosen glyph by the name.
   await expect(editor.locator('[data-side=front] [data-symbol]')).toHaveCount(0)
   await editor.getByRole('radio', { name: 'Moon' }).check()
   await expect(editor.locator('[data-side=front] [data-symbol]').first()).toHaveText('☾')
-  await editor.getByLabel('Nickname / alias').fill('Little Fox')
+  await editor.getByLabel('Name on card').fill('Little Fox')
   // A GIF portrait goes up untouched (animation kept) and shows on the card; the size hint is visible.
   await expect(editor.locator('#portrait-hint')).toContainText('600 × 600')
-  const uploaded = page.waitForResponse(r => r.url().endsWith('/icon') && r.request().method() === 'POST')
-  await editor.locator('input[type=file]').setInputFiles({ name: 'wren.gif', mimeType: 'image/gif', buffer: animatedGif() })
+  const uploaded = page.waitForResponse(r => r.url().endsWith('/portrait') && r.request().method() === 'POST')
+  await editor.locator('input[type=file]').first().setInputFiles({ name: 'wren.gif', mimeType: 'image/gif', buffer: animatedGif() })
   expect((await uploaded).status()).toBe(201)
   await expect(editor.locator('[data-side=front] image')).toHaveCount(1)
-  expect((await page.request.get(`/api/characters/${id}/icon`)).headers()['content-type']).toBe('image/gif')
+  expect((await page.request.get(`/api/characters/${id}/portrait`)).headers()['content-type']).toBe('image/gif')
   await editor.getByLabel('Quote').fill('I keep my promises, even the bad ones.')
   await editor.getByLabel('Fun fact 1').fill('Hates the rain')
   await expect(editor.locator('.tcard')).toHaveAttribute('data-theme-id', 'vamp')
@@ -56,29 +56,29 @@ test('make a trading card, see it in the Cards view, flip it, and download it as
   await flip.click(); await expect(flip).toHaveAttribute('aria-pressed', 'true')
   await page.waitForTimeout(800); await page.screenshot({ path: 'test-results/cards-view-back-1280.png' })
   await flip.press('Enter'); await expect(flip).toHaveAttribute('aria-pressed', 'false')
-  // GIF portrait → animated GIF download (both sides, 1320 × 900, every frame kept).
+  // GIF portrait → animated GIF download (both sides, 1320 × 860, every frame kept).
   const gifOut = await download(page, tile.getByRole('button', { name: 'Download' }))
-  expect(gifOut.name).toBe('wren-marlowe-puffin-card.gif')
+  expect(gifOut.name).toBe('wren-marlowe-rp-thread-buddy-card.gif')
   expect(gifOut.bytes.subarray(0, 6).toString()).toBe('GIF89a')
-  expect(gifOut.bytes.readUInt16LE(6)).toBe(1320); expect(gifOut.bytes.readUInt16LE(8)).toBe(900)
+  expect(gifOut.bytes.readUInt16LE(6)).toBe(1320); expect(gifOut.bytes.readUInt16LE(8)).toBe(860)
   expect(frameCount(gifOut.bytes)).toBe(3)
   expect(gifOut.bytes.length).toBeLessThan(3_000_000)
   await gifOut.file.saveAs('test-results/cards-download.gif')
   // Decode the downloaded GIF in the browser: frame 3 shows the blue portrait and the card around it is intact.
   const pixels = await page.evaluate(async b64 => {
     const data = Uint8Array.from(atob(b64), c => c.charCodeAt(0)), decoder = new ImageDecoder({ data, type: 'image/gif' })
-    const { image } = await decoder.decode({ frameIndex: 2 }), canvas = new OffscreenCanvas(1320, 900), context = canvas.getContext('2d')!
+    const { image } = await decoder.decode({ frameIndex: 2 }), canvas = new OffscreenCanvas(1320, 860), context = canvas.getContext('2d')!
     context.drawImage(image, 0, 0); const at = (x: number, y: number) => Array.from(context.getImageData(x, y, 1, 1).data.slice(0, 3))
     return { portrait: at(320, 235), name: at(300, 455), back: at(1000, 160) }
   }, gifOut.bytes.toString('base64'))
   expect(pixels.portrait[2]).toBeGreaterThan(200); expect(pixels.portrait[0]).toBeLessThan(40)
   expect(pixels.back.some(v => v > 0)).toBe(true)
   await expect(tile.getByRole('status')).toHaveText('Saved as an animated GIF.')
-  // No portrait (or a still one) → PNG at 2640 × 1800.
-  await page.request.delete(`/api/characters/${id}/icon`); await page.reload()
+  // No portrait (or a still one) → PNG at 2640 × 1720.
+  await page.request.delete(`/api/characters/${id}/portrait`); await page.reload()
   const pngOut = await download(page, page.locator('.tcard-tile').first().getByRole('button', { name: 'Download' }))
-  expect(pngOut.name).toBe('wren-marlowe-puffin-card.png')
-  expect(pngOut.bytes.subarray(1, 4).toString()).toBe('PNG'); expect(pngOut.bytes.readUInt32BE(16)).toBe(2640); expect(pngOut.bytes.readUInt32BE(20)).toBe(1800)
+  expect(pngOut.name).toBe('wren-marlowe-rp-thread-buddy-card.png')
+  expect(pngOut.bytes.subarray(1, 4).toString()).toBe('PNG'); expect(pngOut.bytes.readUInt32BE(16)).toBe(2640); expect(pngOut.bytes.readUInt32BE(20)).toBe(1720)
   await pngOut.file.saveAs('test-results/cards-download.png')
   // The choice of view is remembered.
   await page.reload(); await expect(page.locator('.tcard-tile')).toHaveCount(1)

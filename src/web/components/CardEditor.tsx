@@ -1,6 +1,7 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useDialogFocus } from '../lib/focus'
 import { createPortal } from 'react-dom'
-import { api } from '../lib/api'
+import { api, apiUpload } from '../lib/api'
 import { IMAGE_ACCEPT, PORTRAIT_HINT } from '../lib/uploads'
 import { CARD_SYMBOLS, SYMBOL_FONT, type CardSymbol } from '../../shared/card-symbols'
 import TradingCard, { THEMES, normalizeCard, type CardProfile, type CardStats, type ThemeId } from './TradingCard'
@@ -14,16 +15,23 @@ function CardEditor({ row, stats, portrait, upload, close, saved }: { row: Chara
   const [moodItems, setMoodItems] = useState<MoodItem[]>([])
   const [moodBusy, setMoodBusy] = useState(false)
   const set = <K extends keyof CardProfile>(key: K, value: CardProfile[K]) => setDraft(current => ({ ...current, [key]: value }))
-  useEffect(() => { const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey) }, [close])
+  // Escape and Cancel used to drop every unsaved edit silently. Ask first when the card changed.
+  const [initial] = useState(() => JSON.stringify(draft))
+  const dirty = JSON.stringify(draft) !== initial
+  const requestClose = () => { if (!dirty || window.confirm('Discard your unsaved changes to this card?')) close() }
+  const requestCloseRef = useRef(requestClose); requestCloseRef.current = requestClose
+  useEffect(() => { const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.preventDefault(); requestCloseRef.current() } }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey) }, [])
+  const dialogRef = useRef<HTMLFormElement>(null)
+  useDialogFocus(dialogRef)
   useEffect(() => { void api<MoodItem[]>('/characters/' + row.id + '/moodboard').then(setMoodItems).catch(() => {}) }, [row.id])
   const moodUrls = moodItems.filter(i => i.kind === 'image').map(i => '/api/characters/' + row.id + '/moodboard/' + i.id + '/image')
-  const addMoodImage = async (file: File) => { try { setMoodBusy(true); const form = new FormData(); form.set('image', file); const item = await fetch('/api/characters/' + row.id + '/moodboard', { method: 'POST', body: form }).then(r => { if (!r.ok) throw new Error('Upload failed'); return r.json() }) as MoodItem; setMoodItems(prev => [...prev, item]) } catch (problem) { setError((problem as Error).message) } finally { setMoodBusy(false) } }
+  const addMoodImage = async (file: File) => { try { setMoodBusy(true); const form = new FormData(); form.set('image', file); const item = await apiUpload<MoodItem>('/characters/' + row.id + '/moodboard', form); setMoodItems(prev => [...prev, item]) } catch (problem) { setError((problem as Error).message) } finally { setMoodBusy(false) } }
   const addMoodPin = async (url: string) => { try { setMoodBusy(true); const item = await api<MoodItem>('/characters/' + row.id + '/moodboard/pin', 'POST', { url }); setMoodItems(prev => [...prev, item]) } catch (problem) { setError((problem as Error).message) } finally { setMoodBusy(false) } }
   const removeMoodItem = async (itemId: string) => { try { await api('/characters/' + row.id + '/moodboard/' + itemId, 'DELETE'); setMoodItems(prev => prev.filter(i => i.id !== itemId)) } catch (problem) { setError((problem as Error).message) } }
   const lookupSong = async (url: string) => { try { const r = await api<{song:string;artist:string}>('/characters/song-lookup?url=' + encodeURIComponent(url)); if (r.song) { set('song', r.song); set('artist', r.artist || '') } } catch { /* keep whatever the user pasted */ } }
   const field = (key: 'nickname' | 'age' | 'birthdate' | 'song', label: string, max: number) => <label>{label}<input value={draft[key]} maxLength={max} onChange={event => set(key, event.target.value)} {...(key === 'song' ? { onPaste: (event: React.ClipboardEvent) => { const text = event.clipboardData.getData('text').trim(); if (/^https?:\/\//.test(text)) { event.preventDefault(); void lookupSong(text) } } } : {})} /></label>
   return createPortal(<div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="card-editor-title">
-    <form className="modal-card card-editor" onSubmit={async event => { event.preventDefault(); try { setSaving(true); setError(''); await api('/characters/' + row.id + '/card', 'PUT', { ...draft, facts: draft.facts.map(fact => fact.trim()).filter(Boolean), tracklist: draft.tracklist.map(song => song.trim()).filter(Boolean).slice(0, 10) }); await saved(); close() } catch (problem) { setError((problem as Error).message) } finally { setSaving(false) } }}>
+    <form ref={dialogRef} className="modal-card card-editor" onSubmit={async event => { event.preventDefault(); try { setSaving(true); setError(''); await api('/characters/' + row.id + '/card', 'PUT', { ...draft, facts: draft.facts.map(fact => fact.trim()).filter(Boolean), tracklist: draft.tracklist.map(song => song.trim()).filter(Boolean).slice(0, 10) }); await saved(); close() } catch (problem) { setError((problem as Error).message) } finally { setSaving(false) } }}>
       <div className="card-editor-fields">
         <h2 id="card-editor-title">{row.name}'s trading card</h2>
         <fieldset className="card-theme-picker"><legend>Style</legend>{(Object.keys(THEMES) as ThemeId[]).map(id => <label key={id} style={{ '--swatch': `linear-gradient(135deg, ${THEMES[id].bg[0]}, ${THEMES[id].foil[1]})` } as CSSProperties}><input type="radio" name="theme" value={id} checked={draft.theme === id} onChange={() => set('theme', id)} /><span>{THEMES[id].label}<small>{THEMES[id].group}</small></span></label>)}</fieldset>
@@ -46,7 +54,7 @@ function CardEditor({ row, stats, portrait, upload, close, saved }: { row: Chara
           <p className="field-help">Upload images or add Pinterest pins to build a visual moodboard.</p>
         </fieldset>
         {error && <p role="alert">{error}</p>}
-        <div className="modal-actions"><button disabled={saving}>{saving ? 'Saving…' : 'Save card'}</button><button type="button" className="text-button" onClick={close}>Cancel</button><button type="button" className="text-button danger-text" disabled={saving} onClick={async () => { if (!confirm('Delete this card? The character stays, only the card is removed.')) return; try { setSaving(true); await api('/characters/' + row.id + '/card', 'DELETE'); await saved(); close() } catch (problem) { setError((problem as Error).message) } finally { setSaving(false) } }}>Delete card</button></div>
+        <div className="modal-actions"><button disabled={saving}>{saving ? 'Saving…' : 'Save card'}</button><button type="button" className="text-button" onClick={requestClose}>Cancel</button><button type="button" className="text-button danger-text" disabled={saving} onClick={async () => { if (!confirm('Delete this card? The character stays, only the card is removed.')) return; try { setSaving(true); await api('/characters/' + row.id + '/card', 'DELETE'); await saved(); close() } catch (problem) { setError((problem as Error).message) } finally { setSaving(false) } }}>Delete card</button></div>
       </div>
       <div className="card-editor-preview"><TradingCard name={row.name} profile={draft} stats={stats} portrait={portrait} moodboard={moodUrls} initialSide="back" /><p className="field-help">Tap the card to flip it. Thread stats fill in on their own.</p></div>
     </form>

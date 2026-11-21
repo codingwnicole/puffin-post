@@ -1,5 +1,5 @@
 // The moodboard side of a trading card: a third face with the uploaded images, and a
-// three-panel download (PNG 3960 × 1800, or a 1980-wide animated GIF when the portrait is a GIF).
+// download that stays front + back (the mood side is on-screen only; the export never swaps the printable back).
 import { expect, test } from '@playwright/test'
 import { createSignedInUser } from './auth-fixture'
 import gifenc from 'gifenc' // CommonJS in Node
@@ -43,7 +43,7 @@ async function seedMoodboard(page: import('@playwright/test').Page, id: string) 
   }) as unknown as Promise<number>)).toBe(3)
 }
 
-test('a card with a moodboard gains a third side and a three-panel download', async ({ browser }) => {
+test('a card with a moodboard keeps a hidden mood side and a front + back download', async ({ browser }) => {
   const ctx = await browser.newContext({ baseURL: APP, viewport: { width: 1280, height: 900 }, extraHTTPHeaders: { 'cf-connecting-ip': '10.3.' + Math.floor(Math.random() * 250) + '.' + Math.floor(Math.random() * 250), origin: APP } })
   const page = await ctx.newPage()
   await createSignedInUser(page)
@@ -51,6 +51,9 @@ test('a card with a moodboard gains a third side and a three-panel download', as
   await page.goto('/#characters'); await page.reload()
   await page.evaluate(cid => { (window as unknown as { __cardId?: string }).__cardId = cid }, id)
   await seedMoodboard(page, id)
+  // Cards view only draws card art (portrait, mood side) once the character has a card.
+  expect((await page.request.put('/api/characters/' + id + '/card', { data: {}, headers: ORIGIN })).ok()).toBe(true)
+  await page.reload()
   await page.getByRole('button', { name: '✦ Cards' }).click()
   const tile = page.locator('.tcard-tile').first()
   const card = tile.locator('.tcard')
@@ -59,48 +62,37 @@ test('a card with a moodboard gains a third side and a three-panel download', as
   // Wait for the moodboard data to load (the hidden mood face appears).
   await expect(card.locator('.tcard-mood')).toBeAttached({ timeout: 10000 })
 
-  // Starts on the front; the hidden side is the back.
-  await expect(card).toHaveAttribute('data-visible', 'front')
+  // The card flips between two physical faces; the mood side is a hidden raster-only copy
+  // that the download draws (a third flip face flashed mid-turn, so it was taken out of the flip).
+  await expect(flip).toHaveAttribute('aria-pressed', 'false')
   await expect(flip).toHaveAttribute('aria-label', /to the back/i)
-
-  // Click once → the back side shows.
-  await flip.click(); await page.waitForTimeout(700)
-  await expect(card).toHaveAttribute('data-visible', 'back')
-  await expect(flip).toHaveAttribute('aria-label', /to the moodboard/i)
-
-  // Click twice → the moodboard side shows: the header and the three uploaded tiles.
-  await flip.click(); await page.waitForTimeout(700)
-  await expect(card).toHaveAttribute('data-visible', 'mood')
-  const moodSvg = card.locator('.tcard-flip > .tcard-face:not([hidden]) [data-side=mood]')
-  await expect(moodSvg).toContainText('MOODBOARD ///')
-  await expect(moodSvg).toContainText('PUFFIN POST')
+  const moodSvg = card.locator('.tcard-mood [data-side=mood]')
+  await expect(moodSvg).toContainText('MOODBOARD')
   await expect(moodSvg.locator('image')).toHaveCount(3)
+  await flip.click(); await expect(flip).toHaveAttribute('aria-pressed', 'true')
   await expect(flip).toHaveAttribute('aria-label', /to the front/i)
-
-  // Click again → back to the front (the cycle closes).
-  await flip.click(); await page.waitForTimeout(700)
-  await expect(card).toHaveAttribute('data-visible', 'front')
+  await flip.click(); await expect(flip).toHaveAttribute('aria-pressed', 'false')
   await page.screenshot({ path: 'test-results/mood-cards-view-1280.png' })
 
-  // No portrait (or a still one) + moodboard → a three-panel PNG at 3960 × 1800.
+  // No portrait (or a still one) + moodboard → the same two-panel PNG as any card.
   const pngOut = await download(page, tile.getByRole('button', { name: 'Download' }))
-  expect(pngOut.name).toBe('sable-vane-puffin-card.png')
-  expect(pngOut.bytes.subarray(1, 4).toString()).toBe('PNG'); expect(pngOut.bytes.readUInt32BE(16)).toBe(3960); expect(pngOut.bytes.readUInt32BE(20)).toBe(1800)
+  expect(pngOut.name).toBe('sable-vane-rp-thread-buddy-card.png')
+  expect(pngOut.bytes.subarray(1, 4).toString()).toBe('PNG'); expect(pngOut.bytes.readUInt32BE(16)).toBe(2640); expect(pngOut.bytes.readUInt32BE(20)).toBe(1720)
   await pngOut.file.saveAs('test-results/mood-card-download.png')
   await expect(tile.getByRole('status')).toContainText('Saved as a PNG.')
 
-  // A GIF portrait + moodboard → a three-panel animated GIF, 1980 wide, keeping the portrait's 3 frames.
-  await tile.getByRole('button', { name: 'Make this card' }).click()
+  // A GIF portrait + moodboard → a two-panel animated GIF, 1320 wide, keeping the portrait's 3 frames.
+  await tile.getByRole('button', { name: 'Edit card' }).click()
   const dialog = page.getByRole('dialog')
-  const uploaded = page.waitForResponse(r => r.url().endsWith('/icon') && r.request().method() === 'POST')
-  await dialog.locator('input[type=file]').setInputFiles({ name: 'sable.gif', mimeType: 'image/gif', buffer: animatedGif() })
+  const uploaded = page.waitForResponse(r => r.url().endsWith('/portrait') && r.request().method() === 'POST')
+  await dialog.locator('input[type=file]').first().setInputFiles({ name: 'sable.gif', mimeType: 'image/gif', buffer: animatedGif() })
   expect((await uploaded).status()).toBe(201)
   await dialog.getByRole('button', { name: 'Save card' }).click()
   await expect(dialog).toBeHidden()
   const gifOut = await download(page, tile.getByRole('button', { name: 'Download' }))
-  expect(gifOut.name).toBe('sable-vane-puffin-card.gif')
+  expect(gifOut.name).toBe('sable-vane-rp-thread-buddy-card.gif')
   expect(gifOut.bytes.subarray(0, 6).toString()).toBe('GIF89a')
-  expect(gifOut.bytes.readUInt16LE(6)).toBe(1980); expect(gifOut.bytes.readUInt16LE(8)).toBe(900)
+  expect(gifOut.bytes.readUInt16LE(6)).toBe(1320); expect(gifOut.bytes.readUInt16LE(8)).toBe(860)
   expect(frameCount(gifOut.bytes)).toBe(3)
   await gifOut.file.saveAs('test-results/mood-card-download.gif')
   await expect(tile.getByRole('status')).toContainText('Saved as an animated GIF.')

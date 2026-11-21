@@ -46,7 +46,12 @@ export default function BranchRow({ branch, options, onChange }: { branch: Inbox
     }
   }
 
+  // Autosave runs on every blur; only write (and reload the inbox) when a field actually changed.
+  const savedSnapshot = useRef<string | null>(null)
+  const snapshot = (form: HTMLFormElement) => new URLSearchParams(new FormData(form) as unknown as Record<string, string>).toString()
   async function save(form: HTMLFormElement) {
+    const current = snapshot(form)
+    if (current === savedSnapshot.current) return
     const data = new FormData(form)
     setBusy(true)
     setError('')
@@ -55,6 +60,7 @@ export default function BranchRow({ branch, options, onChange }: { branch: Inbox
         api(`/branches/${branch.id}`, 'PATCH', { status: data.get('status'), partnerId: data.get('partnerId') || null, notes: data.get('notes'), nextCheckAt: data.get('nextCheckAt') ? new Date(`${data.get('nextCheckAt')}T09:00:00.000Z`).toISOString() : null }),
         api(`/starters/${branch.starterId}`, 'PATCH', { title: data.get('title'), description: data.get('description') }),
       ])
+      savedSnapshot.current = current
       await onChange()
     } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) }
   }
@@ -80,13 +86,13 @@ export default function BranchRow({ branch, options, onChange }: { branch: Inbox
       </div>
       <div className="thread-tags">{tags.map(tag => <span key={tag.id}>{tag.displayLabel}<button type="button" aria-label={`Remove ${tag.displayLabel}`} onClick={() => void api(`/tags/${tag.id}/starters/${branch.starterId}`, 'DELETE').then(loadTags)}>×</button></span>)}<button type="button" className="text-button" onClick={async () => { const label = window.prompt('Add a label, such as important, event, or past'); if (!label?.trim()) return; try { const tag = await api<{ id: string }>('/tags', 'POST', { label }); await api(`/tags/${tag.id}/starters/${branch.starterId}`, 'POST'); await loadTags() } catch (problem) { setError((problem as Error).message) } }}>+ Add label</button></div>
       {branch.refreshError && <p className="refresh-warning" role="status"><strong>Refresh needs attention:</strong> {branch.refreshError}</p>}
-      <div className="branch-manage"><p className="field-help">Edits save automatically when you leave a field.</p><form className="tracking-form branch-editor" onSubmit={event => event.preventDefault()} onBlur={event => void save(event.currentTarget)}>
+      <div className="branch-manage"><p className="field-help">Edits save automatically when you leave a field.</p><form className="tracking-form branch-editor" onSubmit={event => event.preventDefault()} onFocus={event => { savedSnapshot.current ??= snapshot(event.currentTarget) }} onBlur={event => void save(event.currentTarget)}>
         <label className="branch-notes">Scene label<input name="title" maxLength={300} defaultValue={branch.title}/><span className="field-help">Try {branch.characterName.toLowerCase()} × partner #1 — premise.</span></label>
         <label className="branch-notes">Premise<input name="description" maxLength={20000} defaultValue={branch.description ?? ''} placeholder="A short summary of the scene"/></label>
         <label>Status<select name="status" defaultValue={branch.status}>{REPLY_STATUSES.map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>
         <label>Partner<select name="partnerId" defaultValue={branch.partnerId ?? ''}><option value="">No partner</option>{options.partners.map(partnerOption => <option key={partnerOption.id} value={partnerOption.id}>{partnerOption.name}</option>)}</select></label>
         <label className="branch-notes">Thread notes<textarea name="notes" maxLength={20000} defaultValue={branch.notes}/></label>
-        <label>Reminder to check back<input name="nextCheckAt" type="date" defaultValue={branch.nextCheckAt?.slice(0, 10) ?? ''}/><span className="field-help">Puffin includes this in browser reminders on or after the date.</span></label>
+        <label>Reminder to check back<input name="nextCheckAt" type="date" defaultValue={branch.nextCheckAt?.slice(0, 10) ?? ''}/><span className="field-help">Thread Buddy includes this in browser reminders on or after the date.</span></label>
         <span className="autosave-note"><span className="save-state" aria-hidden={!busy} style={{opacity:busy?1:0}}>Saving…</span><span className="save-state" aria-hidden={busy} style={{opacity:busy?0:1}}>{error ? 'Not saved' : 'Saved automatically'}</span></span>{branch.starterArchived === 1 && <button type="button" className="secondary-button" disabled={busy} onClick={async () => { try { setBusy(true); setError(''); await api(`/starters/${branch.starterId}/restore`, 'POST'); await onChange() } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) } }}>Restore thread</button>}<button type="button" className="danger-button" disabled={busy} onClick={async () => { if (!window.confirm('Delete this entire thread and every reply branch?')) return; try { setBusy(true); await api(`/starters/${branch.starterId}`, 'DELETE'); await onChange() } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) } }}>Delete thread</button>{error && <p role="alert">{error}</p>}
       </form></div>
     </div>}

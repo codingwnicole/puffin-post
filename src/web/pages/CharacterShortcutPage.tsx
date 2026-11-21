@@ -3,7 +3,7 @@ import { api } from '../lib/api'
 import { initialsFor } from '../components/InitialsAvatar'
 
 type ArchivedCharacter = { id: string; name: string; color: string | null; notes: string | null; iconObjectKey: string | null; createdAt: string; rpGroupNames: string[]; threadCount: number }
-type InboxBranch = { id: string; title: string; description: string | null; status: string; characterId: string; lastActivityAt: string | null; notes: string | null }
+type InboxBranch = { id: string; starterId: string; title: string; description: string | null; status: string; characterId: string; lastActivityAt: string | null; notes: string | null }
 type Quicklink = { id: string; label: string; url: string }
 
 export default function CharacterShortcutPage({ id }: { id: string }) {
@@ -61,7 +61,7 @@ export default function CharacterShortcutPage({ id }: { id: string }) {
         <ul className="shortcut-branches">
           {branches.map(b => (
             <li key={b.id}>
-              <a href={'#starter/' + b.id}>{b.title}</a>
+              <a href={'#starter/' + b.starterId}>{b.title}</a>
               {b.description && <span className="shortcut-branch-desc"> — {b.description.slice(0, 80)}{b.description.length > 80 ? '…' : ''}</span>}
               <span className={'shortcut-branch-status shortcut-branch-' + b.status.replace('turn', '')}>{b.status.replace('_turn', ' turn')}</span>
             </li>

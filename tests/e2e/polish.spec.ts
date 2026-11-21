@@ -8,6 +8,8 @@ import { expect, test, type Page } from '@playwright/test'
  */
 
 const user = { user: { id: 'u1', name: 'Test User', email: 'test@example.com' } }
+// The inbox summary (Do-next, reminders, reply-run donut) only shows once there is a thread; an empty inbox shows onboarding.
+const oneBranch = { id: 'b1', workspaceId: 'w1', starterId: 's1', partnerId: null, status: 'your_turn', notes: '', latestPostId: null, lastPoster: null, lastActivityAt: null, latestReplyExcerpt: null, lastRefreshAt: null, refreshError: null, statusManualOverrideAt: null, archivedAt: null, createdAt: '2026-11-16T00:00:00Z', nextCheckAt: null, title: 'First branch', description: '', characterId: 'c1', characterName: 'Remy', groupId: null, groupName: null, rpUnsortedReason: 'no_rps', iconObjectKey: null, source: 'tumblr', rootPostId: '1', rootBlogId: 'x.tumblr.com', starterArchived: 0, partnerLabel: null }
 
 const baseRoute = (page: Page, overrides: { inbox?: unknown; delayInboxMs?: number }) => {
   const delay = overrides.delayInboxMs ?? 0
@@ -34,7 +36,7 @@ test.describe('T7c polish', () => {
   test('hit areas: listed elements are >=44 px tall at 390 px with touch', async ({ page }) => {
     // Inbox with an overdue draft so the "1 overdue note" link is rendered.
     // Also include a character so the Characters page shows "assign Tumblr" and "Add link".
-    baseRoute(page, { inbox: { branches: [], yourTurnCount: 0, overdueDraftCount: 1, dueSoonCount: 0 } })
+    baseRoute(page, { inbox: { branches: [oneBranch], yourTurnCount: 1, overdueDraftCount: 1, dueSoonCount: 0 } })
     // Override /api/characters and /api/connections to return test data.
     page.route('**/api/characters', route => route.fulfill({
       status: 200,
@@ -67,11 +69,7 @@ test.describe('T7c polish', () => {
     const parkingBox = await parking.boundingBox()
     expect(parkingBox?.height ?? 0).toBeGreaterThanOrEqual(43.5)
 
-    // "More filters" summary (.filter-more summary)
-    const moreFilters = page.locator('.filter-more summary')
-    await expect(moreFilters).toBeVisible()
-    const mfBox = await moreFilters.boundingBox()
-    expect(mfBox?.height ?? 0).toBeGreaterThanOrEqual(43.5)
+    // (The "More filters" disclosure was removed from FilterBar; its selects are plain fields now.)
 
     // .text-button "Add link" and "assign Tumblr" (.field-help a) are on the character list.
     await page.goto('/#characters')
@@ -92,7 +90,7 @@ test.describe('T7c polish', () => {
   })
 
   test('tabular numbers: count/stat elements have font-variant-numeric: tabular-nums', async ({ page }) => {
-    baseRoute(page, { inbox: { branches: [], yourTurnCount: 0, overdueDraftCount: 0, dueSoonCount: 0 } })
+    baseRoute(page, { inbox: { branches: [oneBranch], yourTurnCount: 1, overdueDraftCount: 0, dueSoonCount: 0 } })
     await page.goto('/#inbox')
     await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
 
@@ -130,12 +128,12 @@ test.describe('T7c polish', () => {
     // Skeleton should be visible while loading
     await expect(page.locator('.skeletons')).toBeVisible({ timeout: 500 })
     // Empty-state text should NOT be visible yet
-    await expect(page.locator('.do-next')).toHaveCount(0, { timeout: 500 })
+    await expect(page.locator('.onboarding')).toHaveCount(0, { timeout: 500 })
 
     // After resolution with no branches, skeleton should be gone
     await expect(page.locator('.skeletons')).toBeHidden({ timeout: 5000 })
     // The inbox renders with an empty branch list; empty-state summary should be visible
-    await expect(page.locator('.do-next')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('.onboarding')).toBeVisible({ timeout: 5000 })
   })
 
   test('skeleton vs empty: resolved inbox with no branches shows empty state, no skeleton', async ({ page }) => {
@@ -148,7 +146,7 @@ test.describe('T7c polish', () => {
     const skeletonCount = await page.locator('.skeletons').count()
     expect(skeletonCount).toBe(0)
     // Empty-state text should be visible
-    await expect(page.locator('.do-next')).toBeVisible()
+    await expect(page.locator('.onboarding')).toBeVisible()
   })
 
   test('avatar 404: broken icon shows initials in the same box size', async ({ page }) => {

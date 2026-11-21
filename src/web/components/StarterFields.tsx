@@ -28,9 +28,9 @@ export default function StarterFields({options,title='',characterId=''}:{options
     } catch(error) { setMessage((error as Error).message) }
   }
   return <>
-    <label>Scene label <span className="field-help">(Puffin suggests one from a link; edit it freely.)</span><input name="title" required maxLength={300} value={titleValue} onChange={event=>{setTitleTouched(true);setTitleValue(event.target.value)}} placeholder="your character × their character #1"/></label>
+    <label>Scene label <span className="field-help">(Thread Buddy suggests one from a link; edit it freely.)</span><input name="title" required maxLength={300} value={titleValue} onChange={event=>{setTitleTouched(true);setTitleValue(event.target.value)}} placeholder="your character × their character #1"/></label>
     <label>Post or message link <span className="field-help">(optional)</span><input name="postUrl" type="url" maxLength={2000} value={postUrl} onChange={event=>setPostUrl(event.target.value)} onBlur={()=>void resolve()} placeholder="Paste a Tumblr link when you have one"/></label>
-    <p className="field-help">A link lets Puffin suggest names and a premise. No link? Track a Discord or manual scene anyway.</p>
+    <p className="field-help">A link lets Thread Buddy suggest names and a premise. No link? Track a Discord or manual scene anyway.</p>
     {message&&<p role="status">{message}</p>}
     <label>Scene premise<textarea name="description" maxLength={20000} value={description} onChange={event=>{setDescriptionTouched(true);setDescription(event.target.value)}} placeholder="Optional: what is happening in this scene?"/></label>
     <label>RP section<select name="groupId" defaultValue=""><option value="">Unsorted</option>{options.groups?.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>

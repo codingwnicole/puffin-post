@@ -164,7 +164,7 @@ test.describe('T7d swipe-to-close sheet', () => {
   async function openSheet(page: Page) {
     await lightSignedIn(page)
     await page.goto('/#support', { waitUntil: 'networkidle' })
-    const summary = page.locator('.mobile-more summary')
+    const summary = page.locator('.mobile-more-toggle')
     await expect(summary).toBeVisible()
     await summary.click()
     await expect(page.locator('.mobile-more-menu')).toBeVisible()
@@ -203,13 +203,13 @@ test.describe('T7d swipe-to-close sheet', () => {
     await expect(menu).not.toBeVisible()
 
     // Reopen; 60% drag closes the sheet.
-    await page.locator('.mobile-more summary').click()
+    await page.locator('.mobile-more-toggle').click()
     await expect(menu).toBeVisible()
     await dragGrabber(page, height * 0.60)
     await expect(menu).not.toBeVisible()
 
     // Reopen; type into the sheet's note field, then drag past 30%.
-    await page.locator('.mobile-more summary').click()
+    await page.locator('.mobile-more-toggle').click()
     await expect(menu).toBeVisible()
     const note = page.locator('.mobile-more-menu .sheet-note')
     await expect(note).toBeVisible()

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
-import { createPortal } from 'react-dom'
-import { api, peekCache, staleGet } from '../lib/api'
+import { api, apiUpload, peekCache, staleGet } from '../lib/api'
+import { useDialogFocus } from '../lib/focus'
+import { downloadBlob, fileSlug, statsCardBlob, type Counts } from '../lib/stats-card'
 import { IMAGE_ACCEPT, IMAGE_HINT, PORTRAIT_HINT, squareIcon } from '../lib/uploads'
 import { toast, undoCharacterArchive, undoReturnToPlanner } from '../lib/toast'
 import { initialsFor } from '../components/InitialsAvatar'
@@ -16,32 +17,10 @@ type ArchivedCharacter = { id: string; name: string; color: string | null; notes
 type Connection = { assignments: { characterId: string; blogIdentifier: string; characterTag: string | null }[] }
 type Group = { id: string; name: string; characterIds: string[] }
 type InboxBranch = { characterId: string; status: string }
-type Counts = { total: number; mine: number; theirs: number }
 const blogLabel = (value: string) => value.replace(/\.tumblr\.com$/i, '')
 
-export async function statsCardBlob(character: { id: string; name: string; state: string; iconObjectKey: string | null }, counts: Counts): Promise<Blob> {
-  const canvas = document.createElement('canvas'), context = canvas.getContext('2d')
-  if (!context) throw new Error('Could not make a stats card')
-  canvas.width = 1200; canvas.height = 630
-  context.fillStyle = '#182126'; context.fillRect(0, 0, 1200, 630); context.fillStyle = '#234e61'; context.fillRect(0, 0, 1200, 170)
-  context.fillStyle = '#f8f3e9'; context.font = '700 34px system-ui'; context.fillText('RP THREAD BUDDY  /  WRITING STATS', 70, 93)
-  context.font = '600 74px Georgia'; context.fillText(character.name.slice(0, 24), 330, 270)
-  context.fillStyle = '#a9d4dc'; context.font = '700 24px system-ui'; context.fillText(character.state.toUpperCase(), 332, 320)
-  ;[['TOTAL THREADS', counts.total], ['YOUR TURN', counts.mine], ['THEIR TURN', counts.theirs]].forEach(([label, value], index) => { const x = 70 + index * 365; context.fillStyle = '#2d3a40'; context.fillRect(x, 410, 325, 145); context.fillStyle = '#a9d4dc'; context.font = '700 20px system-ui'; context.fillText(String(label), x + 24, 450); context.fillStyle = '#f8f3e9'; context.font = '600 64px Georgia'; context.fillText(String(value), x + 24, 525) })
-  context.save(); context.beginPath(); context.arc(195, 275, 105, 0, Math.PI * 2); context.clip()
-  if (character.iconObjectKey) {
-    const blob = await fetch('/api/characters/' + character.id + '/icon').then(response => response.ok ? response.blob() : null)
-    if (blob) { const url = URL.createObjectURL(blob), image = new Image(); await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error('Could not load icon')); image.src = url }); context.drawImage(image, 90, 170, 210, 210); URL.revokeObjectURL(url) }
-  } else { context.fillStyle = '#a9d4dc'; context.fillRect(90, 170, 210, 210); context.fillStyle = '#182126'; context.font = '600 92px Georgia'; context.fillText(character.name.slice(0, 1).toUpperCase(), 160, 310) }
-  context.restore(); context.strokeStyle = '#f8f3e9'; context.lineWidth = 7; context.beginPath(); context.arc(195, 275, 105, 0, Math.PI * 2); context.stroke()
-  const result = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
-  if (!result) throw new Error('Could not export stats card')
-  return result
-}
-
 async function exportCharacterCard(character: Character, counts: Counts) {
-  const blob = await statsCardBlob(character, counts)
-  const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = (character.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'character') + '-puffin-post-stats.png'; link.click(); URL.revokeObjectURL(url)
+  downloadBlob(await statsCardBlob(character, counts), fileSlug(character.name, 'character') + '-rp-thread-buddy-stats.png')
 }
 
 async function exportRpStats(group: Group, characters: Character[], counts: Record<string, Counts>) {
@@ -68,7 +47,7 @@ async function exportRpStats(group: Group, characters: Character[], counts: Reco
   }
   const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'))
   if (!blob) throw new Error('Could not export RP stats')
-  const url = URL.createObjectURL(blob), link = document.createElement('a'); link.href = url; link.download = (group.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'rp') + '-puffin-post-stats.png'; link.click(); URL.revokeObjectURL(url)
+  downloadBlob(blob, fileSlug(group.name, 'rp') + '-rp-thread-buddy-stats.png')
 }
 
 function Quicklinks({ characterId }: { characterId: string }) {
@@ -122,6 +101,9 @@ export default function CharactersPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; threads: number } | null>(null)
   const [deleteStep, setDeleteStep] = useState<'choose' | 'confirm'>('choose')
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const deleteDialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(deleteDialogRef, Boolean(deleteTarget))
+  useEffect(() => { if (!deleteTarget || deleteBusy) return; const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { setDeleteTarget(null); setDeleteStep('choose') } }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey) }, [deleteTarget, deleteBusy])
   const [view, setViewState] = useState<'details' | 'cards'>(() => { try { return localStorage.getItem(VIEW_KEY) === 'cards' ? 'cards' : 'details' } catch { return 'details' } })
   const setView = (next: 'details' | 'cards') => { setViewState(next); try { localStorage.setItem(VIEW_KEY, next) } catch { /* per-viewer convenience only */ } }
   // Moodboard image URLs per character — fetched only in the Cards view (the card's mood side
@@ -129,13 +111,12 @@ export default function CharactersPage() {
   useEffect(() => { if (view !== 'cards') return; let cancelled = false; void Promise.all(rows.map(async character => { try { const board = await api<MoodboardItem[] | { items: MoodboardItem[] }>('/characters/' + character.id + '/moodboard'); const items = Array.isArray(board) ? board : board.items ?? []; return [character.id, items.filter(item => item.kind === 'image').map(item => '/api/characters/' + character.id + '/moodboard/' + item.id + '/image')] as const } catch { return [character.id, [] as string[]] as const } })).then(entries => { if (!cancelled) setMoodboards(Object.fromEntries(entries)) }); return () => { cancelled = true } }, [view, rows])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [loaded, setLoaded] = useState(() => ['/characters', '/connections', '/rp-groups', '/inbox'].every(path => peekCache(path) !== undefined))
-  useEffect(() => { const t = window.setTimeout(() => { document.querySelector('.character-grid')?.setAttribute('data-entered', '') }, 700); return () => window.clearTimeout(t) }, [])
   const load = () => Promise.all([staleGet<Character[]>('/characters'), staleGet<Connection[]>('/connections'), staleGet<Group[]>('/rp-groups'), staleGet<{ branches: InboxBranch[] }>('/inbox')]).then(([characters, connections, nextGroups, inbox]) => { setRows(characters); setAssignments(connections.flatMap(connection => connection.assignments)); setGroups(nextGroups); setBranches(inbox.branches); setLoaded(true) }).catch(problem => { setError(problem.message); setLoaded(true) })
   useEffect(() => { void load() }, [])
   const counts = useMemo(() => Object.fromEntries(rows.map(character => { const current = branches.filter(branch => branch.characterId === character.id); return [character.id, { total: current.length, mine: current.filter(branch => branch.status === 'your_turn').length, theirs: current.filter(branch => branch.status === 'their_turn').length }] })), [rows, branches]) as Record<string, Counts>
   const groupedCharacters = useMemo(() => groups.map(group => ({ group, characters: rows.filter(row => group.characterIds.includes(row.id)) })).filter(section => section.characters.length > 0), [groups, rows])
   const unassignedCharacters = useMemo(() => rows.filter(row => !groups.some(group => group.characterIds.includes(row.id))), [groups, rows])
-  async function upload(id: string, file: File) { try { setError(''); const form = new FormData(); form.set('icon', await squareIcon(file)); const response = await fetch('/api/characters/' + id + '/icon', { method: 'POST', body: form }); if (!response.ok) { const problem = await response.json().catch(() => null) as { error?: string } | null; throw new Error(problem?.error ?? 'Icon upload failed') } setIconVersions(current => ({ ...current, [id]: Date.now() })); await load() } catch (problem) { setError((problem as Error).message) } }
+  async function upload(id: string, file: File) { try { setError(''); const form = new FormData(); form.set('icon', await squareIcon(file)); await apiUpload('/characters/' + id + '/icon', form); setIconVersions(current => ({ ...current, [id]: Date.now() })); await load() } catch (problem) { setError((problem as Error).message) } }
   async function addToGroup(groupId: string, characterId: string) { try { setBusy(true); setError(''); await api('/rp-groups/' + groupId + '/characters', 'POST', { characterId }); await load() } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) } }
   async function remove(id: string) { const row = rows.find(r => r.id === id); if (!row) return; setDeleteTarget({ id, name: row.name, threads: counts[id]?.total ?? 0 }); setDeleteStep('choose') }
   async function archiveCharacter(id: string) { const row = rows.find(r => r.id === id); if (!row) return; try { setError(''); setDeleteBusy(true); await api('/characters/' + id + '/archive', 'POST'); setDeleteTarget(null); setDeleteStep('choose'); await load(); toast(`Archived ${row.name}.`, undoCharacterArchive(id)) } catch (problem) { setError((problem as Error).message) } finally { setDeleteBusy(false) } }
@@ -161,10 +142,10 @@ export default function CharactersPage() {
     {!rows.length && <p>No characters yet. Add your first one above.</p>}
     </>
     )}
-    {editing && <CardEditor row={editing} stats={cardStats(editing)} portrait={portraitFor(editing, iconVersions[editing.id])} upload={async file => { const form = new FormData(); form.set('image', file); const r = await fetch('/api/characters/' + editing.id + '/portrait', { method: 'POST', body: form }); if (!r.ok) throw new Error('Portrait upload failed'); setIconVersions(v => ({ ...v, [editing.id]: Date.now() })); await load() }} close={() => setEditingId(null)} saved={load} />}
+    {editing && <CardEditor row={editing} stats={cardStats(editing)} portrait={portraitFor(editing, iconVersions[editing.id])} upload={async file => { const form = new FormData(); form.set('image', file); await apiUpload('/characters/' + editing.id + '/portrait', form); setIconVersions(v => ({ ...v, [editing.id]: Date.now() })); await load() }} close={() => setEditingId(null)} saved={load} />}
     {deleteTarget && (
       <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
-        <div className="modal-card">
+        <div className="modal-card" ref={deleteDialogRef}>
           {deleteStep === 'choose' ? (
             <>
               <h3 id="delete-dialog-title">What would you like to do with {deleteTarget.name}?</h3>
