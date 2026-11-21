@@ -78,6 +78,7 @@ describe('public magic-link sign-up and invites against local D1', () => {
     expect(page.status).toBe(200)
     expect(page.headers.get('content-security-policy')).toContain("frame-ancestors 'none'")
     expect(page.headers.get('content-security-policy')).toContain("default-src 'none'")
+    expect(page.headers.get('content-security-policy')).toContain("style-src 'unsafe-inline'")
     expect(page.headers.get('content-security-policy')).toContain(`form-action ${env.APP_ORIGIN}`)
     const html = await page.text()
     expect(html).toContain('owner@example.com')

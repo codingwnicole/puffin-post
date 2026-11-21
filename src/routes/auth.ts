@@ -42,11 +42,18 @@ export function authRoutes(env: Env, sender: MailSender) {
       throw new HTTPException(400, { message: 'invalid magic link' })
     }
     const confirmationUrl = new URL('/api/auth/verify', env.APP_ORIGIN).toString()
-    c.header('Content-Security-Policy', `default-src 'none'; form-action ${env.APP_ORIGIN}; frame-ancestors 'none'; base-uri 'none'`)
-    return c.html(html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Confirm Puffin Post sign-in</title></head><body><main>
-      <h1>Sign in to Puffin Post</h1><p>Continue as <strong>${identity.email}</strong>?</p>
-      <p>Continuing will sign this browser in to this account and replace any current sign-in.</p>
-      <form method="post" action="${confirmationUrl}"><input type="hidden" name="token" value="${token}"><button type="submit">Continue as ${identity.email}</button></form>
+    // This confirmation intentionally stays script-free. Inline CSS is the only
+    // exception to the otherwise locked-down document CSP, so it can match Puffin.
+    c.header('Content-Security-Policy', `default-src 'none'; style-src 'unsafe-inline'; form-action ${env.APP_ORIGIN}; frame-ancestors 'none'; base-uri 'none'`)
+    return c.html(html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Confirm Puffin Post sign-in</title><style>
+      :root{color-scheme:dark}*{box-sizing:border-box}body{min-width:320px;margin:0;background:#142027;color:#f8f3e9;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{width:min(100% - 2rem,35rem);min-height:100dvh;margin:auto;display:grid;align-content:center;padding:2rem 0 4rem}.brand{display:flex;align-items:center;gap:.7rem;margin-bottom:2.4rem;color:#f8f3e9;font:600 1.4rem/1 Georgia,"Times New Roman",serif}.mark{display:grid;place-items:center;width:2.5rem;height:2.5rem;border-radius:50%;background:#dce8e9;color:#263d45;font:italic 700 1.5rem Georgia,"Times New Roman",serif}.card{padding:clamp(1.5rem,5vw,2.5rem);border:1px solid #4c6670;border-radius:1.25rem;background:#213138;box-shadow:0 1.25rem 3rem rgba(0,0,0,.18)}.eyebrow{margin:0 0 .7rem;color:#a9d4dc;font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}h1{margin:0;font:600 clamp(2rem,7vw,3rem)/1 Georgia,"Times New Roman",serif;letter-spacing:-.04em}p{margin:1.25rem 0 0;color:#d9e1dd;line-height:1.65}.identity{margin-top:1.5rem;padding:1rem 1.1rem;border-left:.25rem solid #a9d4dc;border-radius:.5rem;background:#2a3e45;color:#f8f3e9;overflow-wrap:anywhere}.identity strong{display:block;margin-top:.2rem;font-size:1rem}.button{width:100%;min-height:3.25rem;margin-top:1.75rem;padding:.85rem 1rem;border:1px solid #a9d4dc;border-radius:.7rem;background:#a9d4dc;color:#17242a;font:800 1rem/1 ui-sans-serif,system-ui;cursor:pointer}.button:hover{filter:brightness(1.06)}.fine-print{margin-top:1.15rem;color:#b9c8c7;font-size:.84rem}.footer{margin:1.3rem 0 0;color:#9badad;font-size:.78rem;line-height:1.55;text-align:center}@media (max-width:430px){main{width:min(100% - 1.5rem,35rem);padding-top:1.25rem}.brand{margin-bottom:1.6rem}.card{border-radius:1rem}}
+    </style></head><body><main>
+      <div class="brand" aria-label="Puffin Post"><span class="mark" aria-hidden="true">P</span><span>Puffin Post</span></div>
+      <section class="card" aria-labelledby="confirm-title"><p class="eyebrow">One last step</p><h1 id="confirm-title">Open your writing space.</h1>
+      <p>Confirm the account below to continue to Puffin Post.</p><p class="identity">Signing in as<strong>${identity.email}</strong></p>
+      <form method="post" action="${confirmationUrl}"><input type="hidden" name="token" value="${token}"><button class="button" type="submit">Continue to Puffin Post</button></form>
+      <p class="fine-print">This will sign this browser in to this account and replace any current sign-in.</p></section>
+      <p class="footer">Only continue if you requested this private sign-in link.</p>
       </main></body></html>`)
   })
   app.post('/verify', async (c) => {
