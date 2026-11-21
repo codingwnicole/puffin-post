@@ -1,6 +1,6 @@
 import type { WorkspaceScope } from '../client'
 import { requireMembership } from './workspaces'
-import { getStarter, type Starter } from './starters'
+import { findTrackedThread, getStarter, type Starter } from './starters'
 import { listInboxBranches, type ReplyBranch } from './branches'
 import type { ReplyStatus } from '../../shared/domain'
 
@@ -77,19 +77,25 @@ export async function convertReplyDraft(scope: WorkspaceScope, id: string, input
   if (draft.state === 'archived') throw new Error('Draft is archived')
   if (draft.state !== 'converted') {
     await references(scope,{ characterId: input.starter.characterId, partnerId: input.branch?.partnerId === undefined ? draft.partnerId : input.branch.partnerId })
-    const starterId = crypto.randomUUID(), branchId = crypto.randomUUID(), now = new Date().toISOString()
+    // A link to a thread that is already tracked joins it (and its open branch for this partner)
+    // instead of forking a duplicate starter.
+    const partnerId = input.branch?.partnerId === undefined ? draft.partnerId : input.branch.partnerId
+    const trackedId = input.starter.rootBlogId === 'manual' ? null : await findTrackedThread(scope.db, scope.workspaceId, [input.starter.rootPostId])
+    const trackedBranch = trackedId ? await scope.db.prepare(`SELECT id FROM reply_branches WHERE workspace_id=? AND starter_id=? AND archived_at IS NULL
+      AND ((? IS NULL AND partner_id IS NULL) OR partner_id=?) ORDER BY created_at DESC LIMIT 1`).bind(scope.workspaceId, trackedId, partnerId ?? null, partnerId ?? null).first<{ id: string }>() : null
+    const starterId = trackedId ?? crypto.randomUUID(), branchId = trackedBranch?.id ?? crypto.randomUUID(), now = new Date().toISOString()
     const status = input.branch?.status ?? 'your_turn'
     // D1 batch is one transaction; conditional inserts make competing conversions harmless.
     await scope.db.batch([
-      scope.db.prepare(`INSERT INTO starters (id,workspace_id,character_id,title,source,root_post_id,root_blog_id,description,created_at)
+      ...(trackedId ? [] : [scope.db.prepare(`INSERT INTO starters (id,workspace_id,character_id,title,source,root_post_id,root_blog_id,description,created_at)
         SELECT ?,workspace_id,?,?,'tumblr',?,?,?,? FROM reply_drafts WHERE workspace_id=? AND id=? AND state='open'`)
-        .bind(starterId,input.starter.characterId,input.starter.title,input.starter.rootPostId,input.starter.rootBlogId,input.starter.description ?? '',now,scope.workspaceId,id),
-      scope.db.prepare(`INSERT INTO reply_branches (id,workspace_id,starter_id,partner_id,status,notes,archived_at,created_at)
+        .bind(starterId,input.starter.characterId,input.starter.title,input.starter.rootPostId,input.starter.rootBlogId,input.starter.description ?? '',now,scope.workspaceId,id)]),
+      ...(trackedBranch ? [] : [scope.db.prepare(`INSERT INTO reply_branches (id,workspace_id,starter_id,partner_id,status,notes,archived_at,created_at)
         SELECT ?,workspace_id,?,CASE WHEN ? THEN ? ELSE partner_id END,?,CASE WHEN ? THEN ? ELSE notes END,?,?
         FROM reply_drafts WHERE workspace_id=? AND id=? AND state='open'
           AND EXISTS (SELECT 1 FROM starters WHERE workspace_id=? AND id=?)`)
         .bind(branchId,starterId,input.branch?.partnerId !== undefined,input.branch?.partnerId ?? null,status,
-          input.branch?.notes !== undefined,input.branch?.notes ?? null,status === 'archived' ? now : null,now,scope.workspaceId,id,scope.workspaceId,starterId),
+          input.branch?.notes !== undefined,input.branch?.notes ?? null,status === 'archived' ? now : null,now,scope.workspaceId,id,scope.workspaceId,starterId)]),
       scope.db.prepare(`UPDATE reply_drafts SET state='converted',converted_starter_id=?,converted_branch_id=?,updated_at=?
         WHERE workspace_id=? AND id=? AND state='open' AND EXISTS (SELECT 1 FROM reply_branches WHERE workspace_id=? AND id=?)`)
         .bind(starterId,branchId,now,scope.workspaceId,id,scope.workspaceId,branchId),
