@@ -187,3 +187,18 @@ it('deleting a dismissal un-hides the post and is workspace-scoped (B25)', async
   expect((await fixture.request('/api/tumblr-activity/dismissals', 'DELETE', body)).status).toBe(204)
   expect((await fetchActivity('/api/tumblr-activity', stub)).mentions).toHaveLength(1)
 })
+
+it('dismissing a possible thread by its root keeps later reblogs in that thread hidden', async () => {
+  const post = (id: string, timestamp: number) => ({ blog_name: 'a', id_string: id, timestamp, reblogged_root_id: '500', reblogged_root_name: 'partner' })
+  let posts = [post('501', 100)]
+  const stub = (url: RequestInfo | URL) => String(url).includes('/posts?limit')
+    ? new Response(JSON.stringify({ response: { posts } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    : notificationsResponse('a.tumblr.com', [])
+  const before = await fetchActivity('/api/tumblr-activity', stub) as unknown as { threadCandidates: Array<{ threadKey: string }> }
+  expect(before.threadCandidates).toHaveLength(1)
+  const [blogIdentifier, postId] = before.threadCandidates[0].threadKey.split(':')
+  expect((await fixture.request('/api/tumblr-activity/dismissals', 'POST', { blogIdentifier, postId })).status).toBeLessThan(300)
+  // The user reblogs the same thread again: a new post id, same root. It must stay dismissed.
+  posts = [post('502', 200)]
+  expect((await fetchActivity('/api/tumblr-activity', stub)).threadCandidates).toHaveLength(0)
+})
