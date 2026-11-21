@@ -198,7 +198,7 @@ export function starterRoutes() {
   app.get('/options', async c => {
     const scope = await requireWorkspace(c)
     const [characters, partners, groups] = await Promise.all([
-      scope.db.prepare('SELECT id,name FROM characters WHERE workspace_id=? ORDER BY name').bind(scope.workspaceId).all(),
+      scope.db.prepare("SELECT id,name FROM characters WHERE workspace_id=? AND state != 'archived' ORDER BY name").bind(scope.workspaceId).all(),
       scope.db.prepare('SELECT id,display_label AS name FROM partners WHERE workspace_id=? ORDER BY display_label').bind(scope.workspaceId).all(),
       scope.db.prepare('SELECT id,name FROM rp_groups WHERE workspace_id=? ORDER BY name COLLATE NOCASE').bind(scope.workspaceId).all(),
     ])
