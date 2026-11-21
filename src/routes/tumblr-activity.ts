@@ -74,7 +74,9 @@ export function tumblrActivityRoutes() {
           } catch { return notification }
         }))
         // Tumblr's default notifications page is 20 items; a short page means no older items exist.
-        return { blogIdentifier: row.blogIdentifier, status: 'ok' as const, error: null as string | null, notifications: enriched, recentPosts: await client.getRecentPosts(row.blogIdentifier), oldestTimestamp: enriched.length > 0 ? new Date(Math.min(...enriched.map(notification => new Date(notification.timestamp).getTime()))).toISOString() : null, exhausted: enriched.length === 0 }
+        const recentPosts = await client.getRecentPosts(row.blogIdentifier, before)
+        const timestamps = [...enriched.map(notification => notification.timestamp), ...recentPosts.map(post => post.timestamp)].map(timestamp => new Date(timestamp).getTime()).filter(Number.isFinite)
+        return { blogIdentifier: row.blogIdentifier, status: 'ok' as const, error: null as string | null, notifications: enriched, recentPosts, oldestTimestamp: timestamps.length ? new Date(Math.min(...timestamps)).toISOString() : null, exhausted: enriched.length === 0 && recentPosts.length === 0 }
       } catch (error) {
         return { blogIdentifier: row.blogIdentifier, status: 'error' as const, error: `${row.blogIdentifier}: ${error instanceof Error ? error.message : 'Tumblr activity request failed'}`, notifications: [] as TumblrNotification[], recentPosts: [] as TumblrPost[], oldestTimestamp: null, exhausted: true }
       }
@@ -89,9 +91,12 @@ export function tumblrActivityRoutes() {
     const mentionTypes = MENTION_TYPES
     const threadCandidates = [...new Map(responses.flatMap(response => response.recentPosts)
       .filter(post => !isTracked(post) && !dismissedPosts.has(`${post.blogIdentifier.toLowerCase()}:${post.id}`))
-      // Recent posts arrive newest-first. Keep the current reblog, not an earlier copy of the same scene.
+      // Sort before de-duplicating so a reblog chain keeps its newest copy even
+      // when Tumblr returned the source blogs in a different order.
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
       .map(post => [threadKey(post.rootBlogIdentifier, post.rootPostId), post] as const)).values()]
-      .map(post => ({ id: `post:${post.blogIdentifier}:${post.id}`, blogIdentifier: post.blogIdentifier, actor: post.blogIdentifier, timestamp: new Date().toISOString(), postId: post.id, preview: post.preview ?? post.title ?? null, sourceUrl: post.postUrl ?? `https://www.tumblr.com/${post.blogIdentifier.replace(/\.tumblr\.com$/i, '')}/${post.id}`, threadKey: threadKey(post.rootBlogIdentifier, post.rootPostId) }))
+      .map(post => ({ id: `post:${post.blogIdentifier}:${post.id}`, blogIdentifier: post.blogIdentifier, actor: post.blogIdentifier, timestamp: post.timestamp, postId: post.id, preview: post.preview ?? post.title ?? null, sourceUrl: post.postUrl ?? `https://www.tumblr.com/${post.blogIdentifier.replace(/\.tumblr\.com$/i, '')}/${post.id}`, threadKey: threadKey(post.rootBlogIdentifier, post.rootPostId) }))
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
       .slice(0, 12)
     return c.json({ asks: notifications.filter(notification => notification.type === 'ask'), mentions: notifications.filter(notification => mentionTypes.has(notification.type)), threadCandidates, blogs: responses.map(response => ({ blogIdentifier: response.blogIdentifier, status: response.status, error: response.error, oldestTimestamp: response.oldestTimestamp, exhausted: response.exhausted })), diagnostics })
   })

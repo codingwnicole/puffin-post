@@ -11,7 +11,7 @@ function postText(content?: Array<{ text?: string }>, trail?: Array<{ content?: 
   return (text || fallback)?.slice(0, 6000)
 }
 
-export interface TumblrPost { blogIdentifier: string; id: string; rootPostId: string; rootBlogIdentifier: string; tags: string[]; title?: string; preview?: string; parserText?: string; postUrl?: string; /** Who wrote which text: the post's own content, then each trail entry. */ voices?: { blogIdentifier: string; text: string }[] }
+export interface TumblrPost { blogIdentifier: string; id: string; rootPostId: string; rootBlogIdentifier: string; timestamp: string; tags: string[]; title?: string; preview?: string; parserText?: string; postUrl?: string; /** Who wrote which text: the post's own content, then each trail entry. */ voices?: { blogIdentifier: string; text: string }[] }
 /** Inputs for thread-root resolution; TumblrPost satisfies it (so getPost and
  * getRecentPosts share this one resolver without raw reblog fields leaking
  * into the public post shape). */
@@ -31,7 +31,7 @@ export function resolvePostThreadRoot(post: PostRootInput): { blogIdentifier: st
   return { blogIdentifier: blogNameToIdentifier(rootName), postId: String(rootId) }
 }
 export interface TumblrClient { getPost(blogIdentifier: string, postId: string): Promise<TumblrPost> }
-export interface TumblrClient { getRecentPosts(blogIdentifier: string): Promise<TumblrPost[]> }
+export interface TumblrClient { getRecentPosts(blogIdentifier: string, before?: number | null): Promise<TumblrPost[]> }
 export interface TumblrBlog { identifier: string; uuid: string | null }
 export interface TumblrClient { getBlogs(): Promise<TumblrBlog[]> }
 /** Stored as tumblr_connections.account_metadata_json. `uuids` maps Tumblr's permanent blog id to
@@ -77,7 +77,7 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
   // back to the trail, and RPers trim trails, so trail[0] is just the partner's last reply and every
   // reply looked like a new thread. The single-post endpoint (/posts/{id}) is replaced by the list
   // endpoint filtered by id, which returns the same NPF post plus the reblog info.
-  type RawPost = { blog_name?: string; id_string?: string; id?: string | number; reblogged_root_id?: string | number; reblogged_root_name?: string; tags?: string[]; summary?: string; title?: string; post_url?: string; content?: Array<{ text?: string }>; trail?: Array<{ content?: Array<{ text?: string }>; blog?: { name?: string }; post?: { id?: string | number } }> }
+  type RawPost = { blog_name?: string; id_string?: string; id?: string | number; timestamp?: number; reblogged_root_id?: string | number; reblogged_root_name?: string; tags?: string[]; summary?: string; title?: string; post_url?: string; content?: Array<{ text?: string }>; trail?: Array<{ content?: Array<{ text?: string }>; blog?: { name?: string }; post?: { id?: string | number } }> }
   const toPost = (post: RawPost): TumblrPost | null => {
     if (!post.blog_name || (post.id_string ?? post.id) == null) return null
     const title = (post.title ?? post.summary)?.trim().replace(/\s+/g, ' ').slice(0, 300)
@@ -85,7 +85,7 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
     const blogIdentifier = `${post.blog_name}.tumblr.com`.toLowerCase(), id = String(post.id_string ?? post.id)
     const root = resolvePostThreadRoot({ blogIdentifier, id, rebloggedRootId: post.reblogged_root_id == null ? undefined : String(post.reblogged_root_id), rebloggedRootName: post.reblogged_root_name, trail: post.trail?.filter(item => Boolean(item.post?.id && item.blog?.name)).map(item => ({ blog: { name: (item.blog as { name: string }).name }, post: { id: String((item.post as { id: string | number }).id) } })) })
     const voices = [{ blogIdentifier, text: postText(post.content) ?? '' }, ...(post.trail ?? []).map(item => ({ blogIdentifier: `${item.blog?.name ?? ''}.tumblr.com`.toLowerCase(), text: postText(item.content) ?? '' }))].filter(voice => voice.text && voice.blogIdentifier !== '.tumblr.com')
-    return { blogIdentifier, id, rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, tags: post.tags ?? [], title, preview: parserText?.slice(0, 700), parserText, postUrl: post.post_url, voices }
+    return { blogIdentifier, id, rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, timestamp: new Date((post.timestamp ?? 0) * 1000).toISOString(), tags: post.tags ?? [], title, preview: parserText?.slice(0, 700), parserText, postUrl: post.post_url, voices }
   }
   const getPosts = async (url: string, failure: (status: number) => string) => {
     const response = await safeRun(url, { headers: { Authorization: await oauthAuthorizationHeader('GET', url, config.consumerKey, config.consumerSecret, config.token, config.tokenSecret) } })
@@ -97,8 +97,10 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
     const post = posts[0] && toPost(posts[0])
     if (!post) throw new Error('Tumblr post not found')
     return post
-  }, async getRecentPosts(blogIdentifier) {
-    return (await getPosts(`https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/posts?limit=20&npf=true&reblog_info=true`, status => `Tumblr recent posts failed (${status})`)).flatMap(post => toPost(post) ?? [])
+  }, async getRecentPosts(blogIdentifier, before) {
+    const params = new URLSearchParams({ limit: '20', npf: 'true', reblog_info: 'true' })
+    if (before !== null && before !== undefined) params.set('before', String(before))
+    return (await getPosts(`https://api.tumblr.com/v2/blog/${encodeURIComponent(blogIdentifier)}/posts?${params}`, status => `Tumblr recent posts failed (${status})`)).flatMap(post => toPost(post) ?? [])
   }, async getThreadActivity(blogIdentifier, postId) {
     // reblogs_with_tags: reblogs only (newest first), so a burst of likes can't push the latest reply
     // off the page. ponytail: one page; page 2 via before_timestamp if busy group threads ever need it.

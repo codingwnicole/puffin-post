@@ -29,6 +29,7 @@ export default function TumblrActivityPage() {
   const [threadCandidates, setThreadCandidates] = useState<Activity[]>([])
   const [diagnostics, setDiagnostics] = useState<string[]>([])
   const [blogs, setBlogs] = useState<BlogState[]>([])
+  const [availableBlogs, setAvailableBlogs] = useState<BlogState[]>([])
   const [blogFilter, setBlogFilter] = useState('')
   const [characters, setCharacters] = useState<Character[]>([])
   const [selectedCharacters, setSelectedCharacters] = useState<Record<string, string>>({})
@@ -43,6 +44,11 @@ export default function TumblrActivityPage() {
 
   function applyResponse(response: ActivityResponse, replace: boolean) {
     setBlogs(response.blogs)
+    setAvailableBlogs(current => {
+      const next = new Map(current.map(blog => [blog.blogIdentifier, blog]))
+      response.blogs.forEach(blog => next.set(blog.blogIdentifier, blog))
+      return [...next.values()].sort((a, b) => a.blogIdentifier.localeCompare(b.blogIdentifier))
+    })
     setDiagnostics(response.diagnostics)
     if (replace) {
       setAsks(response.asks); setMentions(response.mentions); setThreadCandidates(response.threadCandidates)
@@ -80,7 +86,7 @@ export default function TumblrActivityPage() {
       .then(response => {
         const count = response.asks.length + response.mentions.length + response.threadCandidates.length
         if (count === 0) { setHasMore(false); setMessage('That was the oldest activity.') }
-        else { applyResponse(response, false); setHasMore(false) }
+        else { applyResponse(response, false) }
       })
       .catch(problem => setError(problem.message))
       .finally(() => setBusy(''))
@@ -135,7 +141,7 @@ export default function TumblrActivityPage() {
     {failedBlogs.length > 0 && <p role="alert" className="refresh-warning">Could not load: {failedBlogs.map(blog => blogLabel(blog.blogIdentifier)).join(', ')}. Items from those blogs are missing from this list.</p>}
     {diagnostics.length > 0 && <p role="alert" className="refresh-warning">Could not check {diagnostics.join('; ')}</p>}
     <div className="activity-controls">
-      <label className="activity-blog-filter">Blog<select value={blogFilter} onChange={event => setBlogFilter(event.target.value)}><option value="">All blogs</option>{blogs.map(blog => <option key={blog.blogIdentifier} value={blog.blogIdentifier}>{blogLabel(blog.blogIdentifier)}</option>)}</select></label>
+      <label className="activity-blog-filter">Blog<select value={blogFilter} onChange={event => setBlogFilter(event.target.value)}><option value="">All blogs</option>{availableBlogs.map(blog => <option key={blog.blogIdentifier} value={blog.blogIdentifier}>{blogLabel(blog.blogIdentifier)}</option>)}</select></label>
       {hasMore && <button className="secondary-button" disabled={busy === 'older'} onClick={loadOlder}>{busy === 'older' ? 'Loading...' : 'Load older'}</button>}
     </div>
     {!loaded ? (
@@ -153,7 +159,7 @@ export default function TumblrActivityPage() {
     </section>
     <section className="tracking-card">
       <h3>Tagged starters</h3>
-      {mentions.length ? mentions.map(item => <article className="activity-row activity-mention" key={item.id}><div><strong>{item.actor === 'anonymous' ? 'Tumblr member' : blogLabel(item.actor)}</strong><p>tagged {blogLabel(item.blogIdentifier)} &middot; {new Date(item.timestamp).toLocaleString()}</p>{item.preview && <p className="activity-preview">{item.preview}</p>}{postUrl(item) && <p><a href={postUrl(item) ?? ''} target="_blank" rel="noopener noreferrer">Open Tumblr post</a></p>}</div><div className="activity-actions"><label>Track for<select value={selectedCharacters[item.id] ?? ''} onChange={event => setSelectedCharacters(current => ({ ...current, [item.id]: event.target.value }))}><option value="">Choose a character</option>{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select></label><button disabled={busy === item.id || !postUrl(item)} onClick={() => void addMention(item)}>{busy === item.id ? 'Adding...' : 'Add to tracker'}</button>{!postUrl(item) && <span className="field-help">No post link to track.</span>}{itemErrors[item.id] && <span role="alert">{itemErrors[item.id]}{needsBlog[item.id] && <> <a href="#connections">Assign a blog</a></>}</span>}</div></article>) : <p>{incomplete ? 'Tagged posts from the failed blogs are missing.' : 'No new tagged posts found for your connected blogs.'}</p>}
+      {mentions.length ? mentions.map(item => <article className="activity-row activity-mention" key={item.id}><div><strong>{item.actor === 'anonymous' ? 'Tumblr member' : blogLabel(item.actor)}</strong><p>tagged {blogLabel(item.blogIdentifier)} &middot; {new Date(item.timestamp).toLocaleString()}</p>{item.preview && <p className="activity-preview">{item.preview}</p>}{postUrl(item) && <p><a href={postUrl(item) ?? ''} target="_blank" rel="noopener noreferrer">Open Tumblr post</a></p>}</div><div className="activity-actions"><label>Track for<select value={selectedCharacters[item.id] ?? ''} onChange={event => setSelectedCharacters(current => ({ ...current, [item.id]: event.target.value }))}><option value="">Choose a character</option>{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select></label><button disabled={busy === item.id || !postUrl(item)} onClick={() => void addMention(item)}>{busy === item.id ? 'Adding...' : 'Add to tracker'}</button><button className="secondary-button" disabled={busy === item.id} onClick={() => void dismissCandidate(item)}>{busy === item.id ? 'Saving...' : 'Dismiss this'}</button>{!postUrl(item) && <span className="field-help">No post link to track.</span>}{itemErrors[item.id] && <span role="alert">{itemErrors[item.id]}{needsBlog[item.id] && <> <a href="#connections">Assign a blog</a></>}</span>}</div></article>) : <p>{incomplete ? 'Tagged posts from the failed blogs are missing.' : 'No new tagged posts found for your connected blogs.'}</p>}
     </section>
     <section className="tracking-card">
       <h3>Asks</h3>

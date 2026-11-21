@@ -1,7 +1,6 @@
-// B08: a tagged starter added from the Activity page. No character blog must
-// surface an actionable 409 (code character_needs_blog) instead of a plain
-// 400; with a blog the add succeeds; re-adding the same tagged post returns
-// the same starter and never a duplicate row.
+// B08: a tagged starter added from the Activity page. The scene can be tracked
+// before a character has a blog assignment; re-adding it returns the same
+// starter and never a duplicate row.
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { trackingFixture, starterInput } from './tracking-fixture'
 
@@ -9,7 +8,7 @@ let fixture: Awaited<ReturnType<typeof trackingFixture>>
 beforeEach(async () => { fixture = await trackingFixture() }, 30_000)
 afterEach(async () => { await fixture?.dispose() })
 
-it('a character without a Tumblr blog gets 409 + character_needs_blog', async () => {
+it('a character without a Tumblr blog can still track a linked scene', async () => {
   // The fixture gives both seeded characters a blog; add a bare one with none.
   await fixture.env.DB
     .prepare('INSERT INTO characters (id,workspace_id,name) VALUES (?,?,?)')
@@ -17,17 +16,12 @@ it('a character without a Tumblr blog gets 409 + character_needs_blog', async ()
     .run()
 
   const res = await fixture.request('/api/starters', 'POST', { ...starterInput, characterId: 'character-noblog' })
-  expect(res.status).toBe(409)
-  const body = await res.json() as { error: string; code: string }
-  expect(body.code).toBe('character_needs_blog')
-  expect(body.error).toMatch(/Assign a Tumblr blog/i)
-
-  // Nothing was created.
+  expect(res.status).toBe(201)
   const count = await fixture.env.DB
     .prepare('SELECT COUNT(*) AS n FROM starters WHERE workspace_id=?')
     .bind('a')
     .first<{ n: number }>()
-  expect(count?.n).toBe(0)
+  expect(count?.n).toBe(1)
 })
 
 it('a character with a blog can add the tagged post', async () => {

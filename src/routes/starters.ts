@@ -125,13 +125,20 @@ export function starterRoutes() {
     const tags = new Set([...clickedPost.tags, ...post.tags].map(normalizeTumblrTag))
     const candidates = rules.results.filter(rule => !rule.characterTag || tags.has(rule.characterTag)).map(rule => ({ characterId:rule.characterId, characterName:rule.characterName, characterTag:rule.characterTag }))
     const ownBlogs = characterId ? await scope.db.prepare('SELECT blog_identifier AS blogIdentifier FROM character_blogs WHERE workspace_id=? AND character_id=?').bind(scope.workspaceId,characterId).all<{blogIdentifier:string}>() : { results:[] as {blogIdentifier:string}[] }
-    const ownBlogIdentifiers = new Set(ownBlogs.results.map(blog => canonicalBlogIdentifier(blog.blogIdentifier)))
+    const connectedAccounts = await scope.db.prepare("SELECT account_metadata_json AS metadata FROM tumblr_connections WHERE workspace_id=? AND status='active'").bind(scope.workspaceId).all<{metadata:string}>()
+    const connectedBlogs = new Set(connectedAccounts.results.flatMap(account => {
+      try { return (JSON.parse(account.metadata).blogs ?? []).map(canonicalBlogIdentifier) as string[] } catch { return [] as string[] }
+    }))
+    // A newly created character and Tumblr's primary blog can legitimately be
+    // absent from character_blogs for a moment. Connected account metadata is
+    // still authoritative about which side of a reblog chain belongs to us.
+    const ownBlogIdentifiers = new Set(ownBlogs.results.length ? ownBlogs.results.map(blog => canonicalBlogIdentifier(blog.blogIdentifier)) : connectedBlogs)
     const activities = await client.getThreadActivity(clickedPost.rootBlogIdentifier, clickedPost.rootPostId)
     const participants = new Set(activities.map(activity => activity.blogIdentifier).filter(blog => !ownBlogIdentifiers.has(blog)))
     if (!ownBlogIdentifiers.has(clickedPost.rootBlogIdentifier)) participants.add(clickedPost.rootBlogIdentifier)
     // The user's other blogs (sideblogs, other muses) stay choosable — own characters can RP together —
     // but are never picked automatically as the writing partner.
-    const workspaceBlogs = new Set((await scope.db.prepare('SELECT blog_identifier AS b FROM character_blogs WHERE workspace_id=?').bind(scope.workspaceId).all<{b:string}>()).results.map(row => canonicalBlogIdentifier(row.b)))
+    const workspaceBlogs = new Set([...connectedBlogs, ...(await scope.db.prepare('SELECT blog_identifier AS b FROM character_blogs WHERE workspace_id=?').bind(scope.workspaceId).all<{b:string}>()).results.map(row => canonicalBlogIdentifier(row.b))])
     const outside = [...participants].filter(blog => !workspaceBlogs.has(blog))
     const suggestedPartner = outside.length === 1 ? outside[0] : null
     const selectedCharacter = characterId ? await scope.db.prepare('SELECT name FROM characters WHERE workspace_id=? AND id=?').bind(scope.workspaceId, characterId).first<{name:string}>() : null
@@ -203,12 +210,10 @@ export function starterRoutes() {
     const input = starterSchema.parse(await c.req.json())
     const character = await scope.db.prepare('SELECT id FROM characters WHERE workspace_id=? AND id=?').bind(scope.workspaceId,input.characterId).first()
     if (!character) throw new HTTPException(404, { message:'Character not found' })
-    // A post link needs the character's Tumblr blog to verify the post. A
-    // link-less (manual) scene never touches Tumblr, so it is allowed through.
-    if (input.postUrl) {
-      const hasBlog = await scope.db.prepare('SELECT 1 FROM character_blogs WHERE workspace_id=? AND character_id=?').bind(scope.workspaceId,input.characterId).first()
-      if (!hasBlog) return c.json({ error: input.characterId ? 'Assign a Tumblr blog to this character before tracking a thread' : 'Connect a Tumblr account before tracking posts', code: 'character_needs_blog' }, 409)
-    }
+    // A character may be brand new, use the account's primary blog, or simply
+    // be tracking a partner's starter. The linked post is verified through the
+    // workspace connection below; a per-character blog assignment is useful
+    // for automation, but must not block a writer from tracking a scene.
     const found = input.postUrl ? await findPost(scope, c.env, input.postUrl, input.characterId) : null
     if (!found && !input.title?.trim()) throw new HTTPException(400, { message:'Give this manual thread a scene label' })
     const memberships=await scope.db.prepare('SELECT group_id AS groupId FROM rp_group_characters WHERE workspace_id=? AND character_id=?').bind(scope.workspaceId,input.characterId).all<{groupId:string}>()
