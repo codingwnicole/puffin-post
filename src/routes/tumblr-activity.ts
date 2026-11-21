@@ -57,8 +57,8 @@ export function tumblrActivityRoutes() {
       ).bind(scope.workspaceId, scope.workspaceId, scope.workspaceId).all<{ v: string }>()
     ).results.map(row => String(row.v)))
     // Archived threads count as tracked too: they must not be re-suggested.
-    const isTracked = (post: { id?: string | null; rootPostId?: string | null }) =>
-      Boolean((post.rootPostId && trackedPostIds.has(String(post.rootPostId))) || (post.id && trackedPostIds.has(String(post.id))))
+    const isTracked = (post: { id?: string | null; rootPostId?: string | null; threadPostIds?: string[] }) =>
+      Boolean((post.rootPostId && trackedPostIds.has(String(post.rootPostId))) || (post.id && trackedPostIds.has(String(post.id))) || post.threadPostIds?.some(id => trackedPostIds.has(String(id))))
     const threadKey = (blogIdentifier: string, postId: string) => `${blogIdentifier.toLowerCase()}:${postId}`
     const responses = await Promise.all(rows.results.map(async row => {
       const client = createTumblrClient({ consumerKey: c.env.TUMBLR_CONSUMER_KEY, consumerSecret: c.env.TUMBLR_CONSUMER_SECRET, token: await decryptToken(row.tokenEncrypted, c.env.TOKEN_ENCRYPTION_KEY), tokenSecret: await decryptToken(row.tokenSecretEncrypted, c.env.TOKEN_ENCRYPTION_KEY) })

@@ -126,6 +126,34 @@ it('a starter from a reblog of a tracked thread attaches, never duplicates', asy
   expect(count?.n).toBe(1)
 })
 
+// Tumblr can return a shortened trail on one request and a different
+// reblogged_root_* on another. Any shared post id in the trail is enough to
+// prove this is the same scene; tags must not participate in that decision.
+it('a reblog with a different reported root still attaches through its trail', async () => {
+  await seedTrackedThread()
+  stubPost('c:7010', {
+    reblogged_root_id: 9001,
+    reblogged_root_name: 'middle',
+    trail: [{ blog: { name: 'a' }, post: { id: '1000' } }],
+  })
+  const res = await fixture.request('/api/starters', 'POST', { ...starterInput, postUrl: 'https://c.tumblr.com/post/7010', characterId: 'character-a' })
+  expect(res.status).toBe(201)
+  expect((await res.json() as { id: string }).id).toBe('starter-ilyas')
+})
+
+it('a candidate with a mismatched reported root is hidden when its trail is tracked', async () => {
+  await seedTrackedThread()
+  const result = await fetchActivity('/api/tumblr-activity', url => {
+    if (url.includes('/posts?')) return new Response(JSON.stringify({ response: { posts: [{
+      blog_name: 'a', id_string: '7011', reblogged_root_id: 9001, reblogged_root_name: 'middle',
+      trail: [{ blog: { name: 'a' }, post: { id: '1000' } }],
+    }] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    if (url.includes('/notifications')) return new Response(JSON.stringify({ response: { notifications: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    return new Response('{}', { status: 404 })
+  })
+  expect(result.threadCandidates).toHaveLength(0)
+})
+
 // 6. Main blog + 2 sideblogs on ONE connection: a thread tracked on the main
 //    blog is recognized when it surfaces via either sideblog (reblog or
 //    mention), and is never suggested again or duplicated.

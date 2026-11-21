@@ -19,6 +19,7 @@ describe('thread roots with trimmed trails', () => {
     expect(urls[0]).toContain('reblog_info=true')
     expect(post.rootPostId).toBe('100')
     expect(post.rootBlogIdentifier).toBe('partner.tumblr.com')
+    expect(post.threadPostIds).toEqual(['300', '100', '250'])
   })
   it('a single post is read through the list endpoint with reblog info and gets the true root', async () => {
     const urls: string[] = []
