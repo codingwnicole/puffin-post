@@ -37,4 +37,4 @@ npm.cmd run build
 npm.cmd run test:e2e
 ```
 
-Known failures as of 2026-11-21: five backend integration tests (blog assignment, tenant-scoping allowlist, three tracking-refresh cases) and two visual e2e checks (`layout.spec.ts` 390px first card, `visual-system.spec.ts` dark depth) that wait on the redesign. Don't count them as regressions, and don't "fix" them by loosening the assertions.
+Known failures as of 2026-11-21: two visual e2e checks (`layout.spec.ts` 390px first card, `visual-system.spec.ts` dark depth) that wait on the redesign. Don't count them as regressions, and don't "fix" them by loosening the assertions.

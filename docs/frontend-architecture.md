@@ -56,7 +56,7 @@ No router, state, styling, or animation library is installed. Dependencies the b
 - **Duplicated local types.** `Character`, `ArchivedCharacter` and `blogLabel` are redeclared in several pages.
 - **`settings` uses `any`** for its API data.
 - **Two visual checks fail on purpose:** `layout.spec.ts` "first branch card on screen at 390px" (the always-expanded filter bar is 304px tall on phones, so the first card sits at ~1040px against a 1000px budget) and `visual-system.spec.ts` "dark depth" (the phone More sheet uses the same surface tone as cards in dark mode). Both are layout and color decisions for the redesign.
-- **Backend tests.** Five integration tests fail independent of the frontend (blog reassignment unique constraint, tenant-scoping allowlist, three tracking-refresh cases). They're in Tumblr refresh and assignment logic and need their own investigation.
+- **Backend tests (fixed 2026-11-21).** Three were stale after the security pass (the magic-link allowlist entry, test push endpoints outside the push-host allowlist, and a blog-assignment setup that broke a unique index). Two were a real bug: `toPost` in `src/tumblr/client.ts` threw on a non-numeric timestamp and discarded the post, losing its reply excerpt. Now handled by `tumblrTime()`.
 
 ## Implementing the redesign
 

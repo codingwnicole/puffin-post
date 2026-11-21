@@ -59,7 +59,6 @@ function walk(dir: string): string[] {
 // scoped by workspace_id, each with a one-line reason. Keep this minimal — fix
 // real gaps in the code instead of allowlisting them.
 const ALLOWLIST: { file: string; sql: string; reason: string }[] = [
-  { file: 'src/routes/auth.ts', sql: 'SELECT COUNT(*) AS n FROM magic_links WHERE email = ?', reason: 'magic-link rate limit is keyed by email, not workspace' },
   { file: 'src/routes/settings.ts', sql: 'DELETE FROM sessions WHERE user_id=?', reason: 'sign-out revokes all sessions of the authed user by user_id' },
   { file: 'src/routes/settings.ts', sql: 'DELETE FROM magic_links WHERE email=?', reason: 'account deletion clears pending magic links by email' },
   { file: 'src/routes/tumblr.ts', sql: 'SELECT * FROM tumblr_oauth_states WHERE state_hash=?', reason: 'ephemeral OAuth state token, not workspace data' },

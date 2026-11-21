@@ -68,7 +68,7 @@ function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot
   const pushBodies: string[] = []
   fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
-    if (url.includes('push.example')) {
+    if (url.startsWith('https://fcm.googleapis.com/')) {
       if (typeof init?.body === 'string') pushBodies.push(init.body)
       return new Response('ok', { status: 201 })
     }
@@ -126,8 +126,8 @@ describe('tracking refresh runner', () => {
       addPartner(db, ws, 'p' + i, 'partner' + i + '.tumblr.com')
       addBranch(db, ws, 's' + i, 'p' + i, 'partner' + i + '.tumblr.com')
     }
-    await db.prepare('INSERT INTO push_subscriptions (id, workspace_id, user_id, endpoint) VALUES (?,?,?,?)').bind('sub1', ws, 'u-' + ws, 'https://push.example/1').run()
-    await db.prepare('INSERT INTO push_subscriptions (id, workspace_id, user_id, endpoint) VALUES (?,?,?,?)').bind('sub2', ws, 'u-' + ws, 'https://push.example/2').run()
+    await db.prepare('INSERT INTO push_subscriptions (id, workspace_id, user_id, endpoint) VALUES (?,?,?,?)').bind('sub1', ws, 'u-' + ws, 'https://fcm.googleapis.com/fcm/send/1').run()
+    await db.prepare('INSERT INTO push_subscriptions (id, workspace_id, user_id, endpoint) VALUES (?,?,?,?)').bind('sub2', ws, 'u-' + ws, 'https://fcm.googleapis.com/fcm/send/2').run()
     const fetchSpy = vi.spyOn(globalThis, 'fetch')
     const mock = mockTumblr(fetchSpy, { mentionsPerBlog: 5, notesByRoot: { root1: [{ id: 'np1', blog: 'partner1', parentBlog: 'main' }] } })
     const result = await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100)
@@ -456,7 +456,7 @@ describe('tracking refresh runner', () => {
     // Now stop failing: run at 13:45 (past the retry time) — blogFa succeeds and clears.
     fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      if (url.includes('push.example')) return new Response('ok', { status: 201 })
+      if (url.startsWith('https://fcm.googleapis.com/')) return new Response('ok', { status: 201 })
       if (url.startsWith('https://api.tumblr.com/v2/')) {
         const path = url.replace('https://api.tumblr.com/v2', '')
         if (path.includes('/notifications')) return new Response(JSON.stringify({ response: { notifications: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
@@ -507,7 +507,7 @@ describe('tracking refresh runner', () => {
     // A run after the window proceeds normally (no more 429 — swap the mock).
     fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
-      if (url.includes('push.example')) return new Response('ok', { status: 201 })
+      if (url.startsWith('https://fcm.googleapis.com/')) return new Response('ok', { status: 201 })
       if (url.startsWith('https://api.tumblr.com/v2/')) {
         const path = url.replace('https://api.tumblr.com/v2', '')
         if (path.includes('/notifications')) return new Response(JSON.stringify({ response: { notifications: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })

@@ -30,6 +30,14 @@ export function resolvePostThreadRoot(post: PostRootInput): { blogIdentifier: st
   const rootName = post.rebloggedRootName || (trail && trail.length ? trail[0].blog.name : post.blogIdentifier)
   return { blogIdentifier: blogNameToIdentifier(rootName), postId: String(rootId) }
 }
+// Tumblr sends unix seconds. Anything else (missing, a string, garbage) must not throw: a RangeError
+// here used to discard the whole post, so its reply excerpt was silently lost.
+export function tumblrTime(value: unknown): string {
+  const seconds = typeof value === 'number' ? value : typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : NaN
+  if (Number.isFinite(seconds) && seconds > 0) return new Date(seconds * 1000).toISOString()
+  const parsed = typeof value === 'string' ? Date.parse(value) : NaN
+  return new Date(Number.isFinite(parsed) ? parsed : 0).toISOString()
+}
 export interface TumblrClient { getPost(blogIdentifier: string, postId: string): Promise<TumblrPost> }
 export interface TumblrClient { getRecentPosts(blogIdentifier: string, before?: number | null): Promise<TumblrPost[]> }
 export interface TumblrBlog { identifier: string; uuid: string | null }
@@ -77,7 +85,7 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
   // back to the trail, and RPers trim trails, so trail[0] is just the partner's last reply and every
   // reply looked like a new thread. The single-post endpoint (/posts/{id}) is replaced by the list
   // endpoint filtered by id, which returns the same NPF post plus the reblog info.
-  type RawPost = { blog_name?: string; id_string?: string; id?: string | number; timestamp?: number; reblogged_root_id?: string | number; reblogged_root_name?: string; tags?: string[]; summary?: string; title?: string; post_url?: string; content?: Array<{ text?: string }>; trail?: Array<{ content?: Array<{ text?: string }>; blog?: { name?: string }; post?: { id?: string | number } }> }
+  type RawPost = { blog_name?: string; id_string?: string; id?: string | number; timestamp?: number | string; reblogged_root_id?: string | number; reblogged_root_name?: string; tags?: string[]; summary?: string; title?: string; post_url?: string; content?: Array<{ text?: string }>; trail?: Array<{ content?: Array<{ text?: string }>; blog?: { name?: string }; post?: { id?: string | number } }> }
   const toPost = (post: RawPost): TumblrPost | null => {
     if (!post.blog_name || (post.id_string ?? post.id) == null) return null
     const title = (post.title ?? post.summary)?.trim().replace(/\s+/g, ' ').slice(0, 300)
@@ -86,7 +94,7 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
     const root = resolvePostThreadRoot({ blogIdentifier, id, rebloggedRootId: post.reblogged_root_id == null ? undefined : String(post.reblogged_root_id), rebloggedRootName: post.reblogged_root_name, trail: post.trail?.filter(item => Boolean(item.post?.id && item.blog?.name)).map(item => ({ blog: { name: (item.blog as { name: string }).name }, post: { id: String((item.post as { id: string | number }).id) } })) })
     const voices = [{ blogIdentifier, text: postText(post.content) ?? '' }, ...(post.trail ?? []).map(item => ({ blogIdentifier: `${item.blog?.name ?? ''}.tumblr.com`.toLowerCase(), text: postText(item.content) ?? '' }))].filter(voice => voice.text && voice.blogIdentifier !== '.tumblr.com')
     const threadPostIds = [...new Set([id, root.postId, ...(post.trail ?? []).flatMap(item => item.post?.id == null ? [] : [String(item.post.id)])])]
-    return { blogIdentifier, id, rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, threadPostIds, timestamp: new Date((post.timestamp ?? 0) * 1000).toISOString(), tags: post.tags ?? [], title, preview: parserText?.slice(0, 700), parserText, postUrl: post.post_url, voices }
+    return { blogIdentifier, id, rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, threadPostIds, timestamp: tumblrTime(post.timestamp), tags: post.tags ?? [], title, preview: parserText?.slice(0, 700), parserText, postUrl: post.post_url, voices }
   }
   const getPosts = async (url: string, failure: (status: number) => string) => {
     const response = await safeRun(url, { headers: { Authorization: await oauthAuthorizationHeader('GET', url, config.consumerKey, config.consumerSecret, config.token, config.tokenSecret) } })

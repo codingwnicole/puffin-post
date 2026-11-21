@@ -52,8 +52,9 @@ describe('B04: idempotent blog assignment', () => {
 
   it('reclaims a blog from an archived duplicate without touching its history', async () => {
     await fixture.env.DB.prepare("INSERT INTO characters (id,workspace_id,name,state) VALUES (?,?,?,?)").bind('character-archived', 'a', 'Retired character', 'archived').run()
-    await fixture.env.DB.prepare("INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label) VALUES (?,?,?,?,?,?)").bind('blog-archived', 'a', 'character-archived', 'connection-a', 'a.tumblr.com', 'a').run()
+    // Free the blog first: two whole-blog rules on one blog violate character_blogs_one_whole_blog_rule.
     await fixture.env.DB.prepare("DELETE FROM character_blogs WHERE workspace_id=? AND character_id=? AND blog_identifier=?").bind('a', 'character-a', 'a.tumblr.com').run()
+    await fixture.env.DB.prepare("INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label) VALUES (?,?,?,?,?,?)").bind('blog-archived', 'a', 'character-archived', 'connection-a', 'a.tumblr.com', 'a').run()
 
     const reassigned = await fixture.request('/api/connections/connection-a/blogs', 'POST', { characterId: 'character-a', blogIdentifier: 'a.tumblr.com' })
     expect(reassigned.status).toBe(201)
