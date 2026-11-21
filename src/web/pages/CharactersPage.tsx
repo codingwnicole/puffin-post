@@ -12,11 +12,10 @@ import SharePanel from '../components/SharePanel'
 // A single moodboard entry as GET /characters/:id/moodboard returns it (kind, not the stored file).
 type MoodboardItem = { id: string; kind: 'image' | 'pin' }
 
-type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; portraitObjectKey: string | null; card?: CardProfile | null }
+type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; portraitObjectKey: string | null; card?: CardProfile | null; threadCounts?: Counts }
 type ArchivedCharacter = { id: string; name: string; color: string | null; notes: string | null; iconObjectKey: string | null; createdAt: string; rpGroupNames: string[]; threadCount: number }
 type Connection = { assignments: { characterId: string; blogIdentifier: string; characterTag: string | null }[] }
 type Group = { id: string; name: string; characterIds: string[] }
-type InboxBranch = { characterId: string; status: string }
 const blogLabel = (value: string) => value.replace(/\.tumblr\.com$/i, '')
 
 async function exportCharacterCard(character: Character, counts: Counts) {
@@ -95,7 +94,7 @@ function CardTile({ row, stats, portrait, moodUrls, edit, reportError }: { row: 
 }
 
 export default function CharactersPage() {
-  const [rows, setRows] = useState<Character[]>(() => peekCache<Character[]>('/characters') ?? []), [assignments, setAssignments] = useState<Connection['assignments']>(() => (peekCache<Connection[]>('/connections') ?? []).flatMap(connection => connection.assignments)), [groups, setGroups] = useState<Group[]>(() => peekCache<Group[]>('/rp-groups') ?? []), [branches, setBranches] = useState<InboxBranch[]>(() => peekCache<{ branches: InboxBranch[] }>('/inbox')?.branches ?? [])
+  const [rows, setRows] = useState<Character[]>(() => peekCache<Character[]>('/characters') ?? []), [assignments, setAssignments] = useState<Connection['assignments']>(() => (peekCache<Connection[]>('/connections') ?? []).flatMap(connection => connection.assignments)), [groups, setGroups] = useState<Group[]>(() => peekCache<Group[]>('/rp-groups') ?? [])
   const [moodboards, setMoodboards] = useState<Record<string, string[]>>({})
   const [error, setError] = useState(''), [adding, setAdding] = useState(false), [addingGroup, setAddingGroup] = useState(false), [busy, setBusy] = useState(false), [iconVersions, setIconVersions] = useState<Record<string, number>>({})
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; threads: number } | null>(null)
@@ -110,10 +109,10 @@ export default function CharactersPage() {
   // needs them) so the Details view never pays for boards it will not draw.
   useEffect(() => { if (view !== 'cards') return; let cancelled = false; void Promise.all(rows.map(async character => { try { const board = await api<MoodboardItem[] | { items: MoodboardItem[] }>('/characters/' + character.id + '/moodboard'); const items = Array.isArray(board) ? board : board.items ?? []; return [character.id, items.filter(item => item.kind === 'image').map(item => '/api/characters/' + character.id + '/moodboard/' + item.id + '/image')] as const } catch { return [character.id, [] as string[]] as const } })).then(entries => { if (!cancelled) setMoodboards(Object.fromEntries(entries)) }); return () => { cancelled = true } }, [view, rows])
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [loaded, setLoaded] = useState(() => ['/characters', '/connections', '/rp-groups', '/inbox'].every(path => peekCache(path) !== undefined))
-  const load = () => Promise.all([staleGet<Character[]>('/characters'), staleGet<Connection[]>('/connections'), staleGet<Group[]>('/rp-groups'), staleGet<{ branches: InboxBranch[] }>('/inbox')]).then(([characters, connections, nextGroups, inbox]) => { setRows(characters); setAssignments(connections.flatMap(connection => connection.assignments)); setGroups(nextGroups); setBranches(inbox.branches); setLoaded(true) }).catch(problem => { setError(problem.message); setLoaded(true) })
+  const [loaded, setLoaded] = useState(() => ['/characters', '/connections', '/rp-groups'].every(path => peekCache(path) !== undefined))
+  const load = () => Promise.all([staleGet<Character[]>('/characters'), staleGet<Connection[]>('/connections'), staleGet<Group[]>('/rp-groups')]).then(([characters, connections, nextGroups]) => { setRows(characters); setAssignments(connections.flatMap(connection => connection.assignments)); setGroups(nextGroups); setLoaded(true) }).catch(problem => { setError(problem.message); setLoaded(true) })
   useEffect(() => { void load() }, [])
-  const counts = useMemo(() => Object.fromEntries(rows.map(character => { const current = branches.filter(branch => branch.characterId === character.id); return [character.id, { total: current.length, mine: current.filter(branch => branch.status === 'your_turn').length, theirs: current.filter(branch => branch.status === 'their_turn').length }] })), [rows, branches]) as Record<string, Counts>
+  const counts = useMemo(() => Object.fromEntries(rows.map(character => [character.id, character.threadCounts ?? { total: 0, mine: 0, theirs: 0 }])), [rows]) as Record<string, Counts>
   const groupedCharacters = useMemo(() => groups.map(group => ({ group, characters: rows.filter(row => group.characterIds.includes(row.id)) })).filter(section => section.characters.length > 0), [groups, rows])
   const unassignedCharacters = useMemo(() => rows.filter(row => !groups.some(group => group.characterIds.includes(row.id))), [groups, rows])
   async function upload(id: string, file: File) { try { setError(''); const form = new FormData(); form.set('icon', await squareIcon(file)); await apiUpload('/characters/' + id + '/icon', form); setIconVersions(current => ({ ...current, [id]: Date.now() })); await load() } catch (problem) { setError((problem as Error).message) } }

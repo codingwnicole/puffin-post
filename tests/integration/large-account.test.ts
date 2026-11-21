@@ -74,3 +74,21 @@ it('answers main list routes with bounded pages on a 2000-starter account', asyn
   expect(t3 - t2).toBeLessThan(5000)
   expect(t5 - t4).toBeLessThan(5000)
 }, 60_000)
+
+it('character thread counts cover every active thread, not just the first inbox page', async () => {
+  const db = fixture.env.DB
+  const stmts: D1PreparedStatement[] = []
+  for (let i = 0; i < 230; i++) {
+    const archived = i >= 220
+    stmts.push(db.prepare("INSERT INTO starters (id,workspace_id,character_id,title,source,root_post_id,root_blog_id) VALUES (?,'a','character-a','T','tumblr',?,'a.tumblr.com')").bind(`cnt-${i}`, `cnt-root-${i}`))
+    stmts.push(db.prepare("INSERT INTO reply_branches (id,workspace_id,starter_id,status,archived_at) VALUES (?,'a',?,?,?)").bind(`cnt-b-${i}`, `cnt-${i}`, archived ? 'archived' : i % 2 ? 'their_turn' : 'your_turn', archived ? '2026-01-01T00:00:00Z' : null))
+  }
+  await batchInChunks(db, stmts)
+  const characters = await (await fixture.request('/api/characters')).json() as Array<{ id: string; threadCounts: { total: number; mine: number; theirs: number } }>
+  const active = await db.prepare("SELECT COUNT(*) AS n FROM reply_branches b JOIN starters s ON s.id=b.starter_id WHERE s.character_id='character-a' AND b.archived_at IS NULL AND s.archived=0").first<{ n: number }>()
+  const counts = characters.find(row => row.id === 'character-a')!.threadCounts
+  expect(counts.total).toBe(active!.n)
+  expect(counts.total).toBeGreaterThan(200)
+  expect(counts.mine).toBeGreaterThanOrEqual(110)
+  expect(counts.theirs).toBeGreaterThanOrEqual(110)
+}, 60_000)
