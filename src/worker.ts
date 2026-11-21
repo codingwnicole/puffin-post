@@ -26,11 +26,11 @@ import { featureSuggestionRoutes } from './routes/feature-suggestions'
 import { supportRoutes } from './routes/support'
 import { clientErrorRoutes } from './routes/client-errors'
 import { publicShareRoutes, shareAdminRoutes } from './routes/public-share'
-import { redact } from './shared/redact'
 
 export interface Env {
   DB: D1Database
   ICONS: R2Bucket
+  ASSETS: Fetcher
   APP_ORIGIN: string
   SESSION_SECRET: string
   TOKEN_ENCRYPTION_KEY: string
@@ -38,6 +38,7 @@ export interface Env {
   TUMBLR_CONSUMER_SECRET: string
   RESEND_API_KEY: string
   MAIL_FROM: string
+  MODERATOR_USER_ID?: string
   PUSH_VAPID_PRIVATE_KEY?: string
   BOOTSTRAP_OWNER_EMAIL?: string
   REFRESH_FETCH_BUDGET?: string
@@ -50,7 +51,34 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
     c.header('Referrer-Policy', 'no-referrer')
     c.header('X-Build-Revision', BUILD_REVISION)
     c.header('X-Frame-Options', 'DENY')
-    c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tumblr.com; connect-src 'self' https://*.tumblr.com; frame-src https://open.spotify.com https://www.youtube-nocookie.com https://embed.music.apple.com https://assets.pinterest.com; frame-ancestors 'none'")
+    c.header('X-Content-Type-Options', 'nosniff')
+    c.header('Strict-Transport-Security', 'max-age=31536000')
+    c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tumblr.com; connect-src 'self' https://*.tumblr.com; font-src 'self' data:; frame-src https://open.spotify.com https://www.youtube-nocookie.com https://embed.music.apple.com https://assets.pinterest.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+    const maxBodyBytes = 5 * 1024 * 1024
+    const contentLength = Number(c.req.header('content-length'))
+    if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
+      throw new HTTPException(413, { message: 'Request body is too large' })
+    }
+    if (c.req.raw.body && !['GET', 'HEAD'].includes(c.req.method)) {
+      const reader = c.req.raw.body.getReader()
+      const chunks: Uint8Array[] = []
+      let size = 0
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        size += value.byteLength
+        if (size > maxBodyBytes) {
+          await reader.cancel()
+          throw new HTTPException(413, { message: 'Request body is too large' })
+        }
+        chunks.push(value)
+      }
+      const body = new Uint8Array(size)
+      let offset = 0
+      for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength }
+      c.req.raw = new Request(c.req.raw, { body })
+    }
     const isMagicLinkConfirmation = c.req.method === 'POST' && c.req.path === '/api/auth/verify'
     // Magic-link confirmation is protected by the unguessable, single-use token
     // in its form. Do not depend on Origin here: mail clients and browser privacy
@@ -74,10 +102,9 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
     if (error instanceof ZodError) { const response = c.json({ error: 'Invalid request body or query' },400); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
     if (['Starter not found','Branch not found','Draft not found','Character not found','Partner not found'].includes(error.message)) { const response = c.json({ error: error.message },404); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
     if (['Draft is archived','Draft is already converted'].includes(error.message)) { const response = c.json({ error: error.message },409); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
-    // Never log the raw error message: a DB/OAuth error could carry a token or email in
-    // its text, and the 500 below already returns a safe client-facing message.
-    console.error('Unhandled request error', { path:c.req.path, method:c.req.method, name:error instanceof Error ? error.name : 'unknown', message:redact((error instanceof Error ? error.message : String(error)).slice(0,300)) })
-    const response = c.json({ error: error instanceof Error ? error.message : 'Request failed' }, 500); response.headers.set('X-Build-Revision', BUILD_REVISION); return response
+    // Never expose or log the raw error message: a DB/OAuth error could carry a token or email.
+    console.error('Unhandled request error', { path:c.req.path, method:c.req.method, name:error instanceof Error ? error.name : 'unknown' })
+    const response = c.json({ error: 'Request failed' }, 500); response.headers.set('X-Build-Revision', BUILD_REVISION); return response
   })
   const sender = options.mailSender ?? resendMailSender(env)
   app.route('/api/auth', authRoutes(env, sender))
@@ -107,10 +134,27 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
 
 export default {
   fetch(request, env, ctx) {
-    return createApp(env).fetch(request, env, ctx)
+    const url = new URL(request.url)
+    if (url.hostname === 'puffinpost.app') {
+      const canonicalOrigin = new URL(env.APP_ORIGIN)
+      url.protocol = canonicalOrigin.protocol
+      url.host = canonicalOrigin.host
+      return Response.redirect(url.toString(), 301)
+    }
+    if (url.pathname === '/api' || url.pathname.startsWith('/api/') || url.pathname === '/c' || url.pathname.startsWith('/c/')) {
+      return createApp(env).fetch(request, env, ctx)
+    }
+    return env.ASSETS.fetch(request)
   },
   scheduled(_event, env, ctx) {
     const runId = `sched-${Date.now()}-${Math.floor(Math.random()*1e6)}`
-    ctx.waitUntil(Promise.all([runRefreshBatch(env, new Date(), 60, { runId }),sendDuePushes(env)]))
+    const cleanupCutoff = new Date(Date.now() - 24 * 60 * 60_000).toISOString()
+    ctx.waitUntil(Promise.all([
+      runRefreshBatch(env, new Date(), 60, { runId }),
+      sendDuePushes(env),
+      env.DB.prepare('DELETE FROM rate_limits WHERE window_start < ?').bind(cleanupCutoff).run(),
+      env.DB.prepare('DELETE FROM magic_links WHERE expires_at < ? OR consumed_at < ?').bind(cleanupCutoff, cleanupCutoff).run(),
+      env.DB.prepare('DELETE FROM sessions WHERE expires_at < ? OR revoked_at < ?').bind(cleanupCutoff, cleanupCutoff).run(),
+    ]))
   },
 } satisfies ExportedHandler<Env>

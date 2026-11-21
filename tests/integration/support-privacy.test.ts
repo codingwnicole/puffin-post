@@ -18,3 +18,17 @@ it('support board never sends another user’s email', async () => {
   expect(text).toContain('We are on it')
   expect(text).not.toContain('@')
 })
+
+it('caps support reports and feature suggestion emails per user', async () => {
+  const support = await Promise.all(Array.from({ length: 6 }, (_, index) => fixture.request('/api/support', 'POST', {
+    kind: 'bug', title: `Report ${index}`, description: 'A sufficiently detailed report for the board.',
+  }, 'a')))
+  expect(support.slice(0, 5).every(response => response.status === 201)).toBe(true)
+  expect(support[5].status).toBe(429)
+
+  const suggestions = await Promise.all(Array.from({ length: 6 }, () => fixture.request('/api/feature-suggestions', 'POST', {
+    message: 'A sufficiently detailed suggestion for the app.',
+  }, 'a')))
+  expect(suggestions.slice(0, 5).every(response => response.status === 201)).toBe(true)
+  expect(suggestions[5].status).toBe(429)
+})

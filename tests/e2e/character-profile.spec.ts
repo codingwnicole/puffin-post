@@ -1,5 +1,6 @@
 // Character profile page: moodboard uploads, Pinterest pins, reorder, board link, click-to-load playlist.
 import { expect, test, type Page } from '@playwright/test'
+import { createSignedInUser } from './auth-fixture'
 import zlib from 'node:zlib'
 
 const APP = 'http://localhost:5173'
@@ -27,8 +28,7 @@ function png(color: [number, number, number]): Buffer {
 }
 
 async function signup(page: Page, tag: string) {
-  const response = await page.request.post('/api/auth/password-sign-up', { data: { email: `${tag}-${Date.now()}@example.test`, password: 'correct horse battery' }, headers: ORIGIN })
-  expect(response.status()).toBe(201)
+  await createSignedInUser(page, { email: `${tag}-${Date.now()}@example.test` })
 }
 
 test('profile page: moodboard, pin, reorder, remove, board link, click-to-load playlist', async ({ browser }) => {

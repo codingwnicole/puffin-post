@@ -1,18 +1,18 @@
-# Puffin Post private-beta runbook
+# RP Thread Buddy private-beta runbook
 
 This runbook gets a private Worker beta online without putting credentials, Tumblr tokens, or personal test URLs in Git. Companion documents: `recovery.md` (database and deploy recovery) and `repair-plan-2026-11-16.md` (the Tumblr import bug fixes).
 
 ## Recovery
 
-For database backups, restores, deletion re-application, partial imports, interrupted deploys, and checking the live revision: read `recovery.md` first. The short version: D1 Time Travel keeps 30 days, run a dated `wrangler d1 export` before every migration, and restore into a scratch database before touching the live one.
+For database backups, restores, deletion re-application, partial imports, interrupted deploys, and checking the live revision: read `recovery.md` first. D1 Time Travel restores the target database in place; it cannot be used to test a production restore on a scratch database. Use synthetic data in a separate non-production database to test export/import procedures. Create and securely retain a dated export before schema migrations.
 
 ## Before touching production
 
 - [ ] Run `npm.cmd test`, `npm.cmd run test:e2e`, and `npm.cmd run build` locally.
 - [ ] Verify `git status --short` contains no `.dev.vars`, `.env`, token exports, or generated database files. `debug.log` is a local diagnostic file; do not commit it.
-- [ ] Create a fresh private beta domain, for example `puffinpost.app`. Set its exact HTTPS origin aside for `APP_ORIGIN`.
+- [ ] Use `https://rpthreadbuddy.app` as `APP_ORIGIN`; keep `puffinpost.app` attached to the same Worker for its 301 forwarding response. Keep `rpthreadbuddy.com`'s existing 301 redirect to `.app` and preserve paths and query strings.
 - [ ] Create a separate Cloudflare D1 database for production and a private R2 bucket for icons. Do not reuse local resources.
-- [ ] Obtain a Tumblr OAuth 1.0a consumer key/secret with the callback URL `https://YOUR_DOMAIN/api/tumblr/callback`.
+- [ ] Register the Tumblr OAuth 1.0a callback URL `https://rpthreadbuddy.app/api/tumblr/callback` in the Tumblr app settings.
 - [ ] Verify Resend has a sending domain and exact `MAIL_FROM` address for magic links. The address must be verified before deployment; `noreply@example.com` and any local example are not valid production senders.
 
 ## Provision Cloudflare resources
@@ -28,17 +28,24 @@ Copy `wrangler.jsonc` to a private deployment-only configuration (or replace the
 
 - the production D1 `database_id` and `database_name`;
 - the production R2 `bucket_name`;
-- `APP_ORIGIN` to the exact HTTPS beta origin;
-- `MAIL_FROM` to a Resend-verified sender, for example `Puffin Post <noreply@YOUR_VERIFIED_RESEND_DOMAIN>`;
+- `APP_ORIGIN` to `https://rpthreadbuddy.app`;
+- `MAIL_FROM` to the Resend-verified sender `RP Thread Buddy <noreply@mail.rpthreadbuddy.app>`;
 - the Worker/custom-domain name chosen for the beta.
 
 `MAIL_FROM` is an ordinary non-secret Worker variable. In the private production configuration, it belongs beside `APP_ORIGIN`, never in a secret command:
 
 ```jsonc
 "vars": {
-  "APP_ORIGIN": "https://YOUR_BETA_DOMAIN",
-  "MAIL_FROM": "Puffin Post <noreply@YOUR_VERIFIED_RESEND_DOMAIN>"
+  "APP_ORIGIN": "https://rpthreadbuddy.app",
+  "MAIL_FROM": "RP Thread Buddy <noreply@mail.rpthreadbuddy.app>",
+  "MODERATOR_USER_ID": "<existing-user-id>"
 }
+```
+
+Set `MODERATOR_USER_ID` to the existing operator account's user ID. Moderator actions fail closed when it is unset; do not grant this role by email address. To look up the ID, use a read-only query in the production D1 database before deployment:
+
+```powershell
+npx wrangler d1 execute threadums-production --remote --command "SELECT id FROM users WHERE email = '<operator-email>'"
 ```
 
 Keep `remote: false` and the all-zero database ID in the committed config. This makes an accidental `wrangler deploy` from a fresh checkout fail instead of silently targeting a real database.
@@ -66,7 +73,7 @@ npx wrangler secret put BOOTSTRAP_OWNER_EMAIL --config .\wrangler.production.jso
 
 `SESSION_SECRET` and `TOKEN_ENCRYPTION_KEY` must be cryptographically random and retained safely. Rotating the latter makes previously stored Tumblr credentials unreadable unless a key-version migration is planned first.
 
-Set `BOOTSTRAP_OWNER_EMAIL` to your own email before the first beta sign-in. The first magic-link request from that exact address creates the sole initial owner workspace; after that, all users remain invite-only.
+Public magic-link sign-up is open during this beta. Anyone who can receive the email link can create a private workspace; invitations add shared-workspace memberships. `BOOTSTRAP_OWNER_EMAIL` is only the fallback recipient for support reports, not an account allowlist.
 
 Deploy only after all bindings and secrets are present:
 

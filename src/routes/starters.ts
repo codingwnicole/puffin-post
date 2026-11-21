@@ -106,7 +106,7 @@ export function starterRoutes() {
     // Without an active connection we can't read the post from Tumblr. A
     // link-less (manual) scene never calls findPost, so reaching here with no
     // connection is a programming error — fail loudly rather than casting null.
-    if (!access) throw new HTTPException(500, { message:'No active Tumblr connection' })
+    if (!access) throw new HTTPException(409, { message:'Connect a Tumblr account to this workspace before tracking a post link' })
     const connection: {tokenEncrypted:string;tokenSecretEncrypted:string} = access
 
     const rules = await scope.db.prepare(`SELECT cb.id, cb.character_id AS characterId, cb.character_tag AS characterTag, c.name AS characterName

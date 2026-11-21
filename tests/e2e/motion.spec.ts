@@ -28,7 +28,7 @@ async function signedIn(page: Page, branches: unknown[] = inbox.branches) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/#inbox')
-  await expect(page.getByRole('link', { name: 'Puffin Post', exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
 }
 
 test('More filters panel enters from its trigger with a real transition', async ({ page }) => {

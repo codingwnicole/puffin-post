@@ -113,6 +113,7 @@ describe('public share links', () => {
       const share = await (await app.request('/api/characters/character-a/share', { method: 'PUT', body: JSON.stringify({ style: 'stats', showMoodboard: false, showPlaylist: false, showStats: false, indexable: false }), headers: json('a') }, fixture.env, stubCtx)).json() as { slug: string }
 
       // Mock fetch for Resend
+      fixture.env.BOOTSTRAP_OWNER_EMAIL = 'moderator@example.com'
       const fetchSpy = vi.spyOn(globalThis, 'fetch')
       // The tracking fixture overrides fetch; keep its behavior for Tumblr and add Resend mock
       const originalFetch = globalThis.fetch

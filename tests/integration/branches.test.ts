@@ -50,7 +50,9 @@ it('verifies the selected connection before starter creation but allows a manual
   expect((await fixture.request('/api/starters','POST',{ ...starterInput, rootBlogId:'other.tumblr.com' })).status).toBe(400)
   expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(201)
   await fixture.env.DB.prepare("DELETE FROM character_blogs WHERE id='blog-a'").run()
-  // A post link still requires the character's Tumblr blog for verification…
+  // Workspace connection access verifies the post; a character blog assignment is optional here.
+  expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(201)
+  await fixture.env.DB.prepare("DELETE FROM tumblr_connections WHERE id='connection-a'").run()
   expect((await fixture.request('/api/starters','POST',starterInput)).status).toBe(409)
   // …but a link-less manual scene (Discord, etc.) tracks without any Tumblr access.
   const manual = await fixture.request('/api/starters','POST',{ characterId:'character-a', title:'Discord scene' })
@@ -116,9 +118,10 @@ it('persists RP membership and can remove a Tumblr account with its assignments'
   expect(remaining.some(c => c.id === 'connection-a' && c.status === 'disconnected')).toBe(true)
 })
 
-it('creates and signs in with an eight character password', async () => {
-  expect((await fixture.request('/api/auth/password-sign-up','POST',{email:'new@example.com',password:'eight888'})).status).toBe(201)
-  expect((await fixture.request('/api/auth/password-sign-in','POST',{email:'new@example.com',password:'eight888'})).status).toBe(200)
+it('sets a password after email authentication and signs in with it', async () => {
+  expect((await fixture.request('/api/auth/password','POST',{password:'eight888'})).status).toBe(204)
+  expect((await fixture.request('/api/auth/sign-out','POST')).status).toBe(204)
+  expect((await fixture.request('/api/auth/password-sign-in','POST',{email:'a@example.com',password:'eight888'})).status).toBe(200)
 })
 
 it('deletes user-created drafts, threads, and RP sections', async () => {

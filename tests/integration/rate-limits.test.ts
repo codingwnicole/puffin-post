@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { getPlatformProxy } from 'wrangler'
 import { createApp, type Env } from '../../src/worker'
 import { hashPassword } from '../../src/auth/passwords'
+import { checkRateLimit, opaqueRateLimitKey } from '../../src/auth/rate-limits'
 
 let env: Env, dispose: () => Promise<void>
 const IP = '203.0.113.7', PW = 'correct-horse-battery'
@@ -32,7 +33,7 @@ describe('D1-backed rate limiting for password auth', () => {
     const ok = await post('/api/auth/password-sign-in', { email: 'alice@example.com', password: PW })
     expect(ok.status).toBe(200)
     // Successful sign-in clears the limiter for that email + IP.
-    const row = await env.DB.prepare('SELECT count(*) AS n FROM rate_limits WHERE key LIKE ?',).bind('password:%').first<{ n: number }>()
+    const row = await env.DB.prepare('SELECT count(*) AS n FROM rate_limits').first<{ n: number }>()
     expect(row!.n).toBe(0)
   })
 
@@ -56,22 +57,29 @@ describe('D1-backed rate limiting for password auth', () => {
     expect(blocked.status).toBe(429)
   })
 
-  it('throttles password sign-up to 10 per email within the window', async () => {
-    for (let i = 0; i < 10; i++) {
-      const r = await post('/api/auth/password-sign-up', { email: 'newbie@example.com', password: 'newbie-pass-1' })
-      // First attempt creates the account (201); the rest are "already exists" (409).
-      expect([201, 409]).toContain(r.status)
-    }
-    const blocked = await post('/api/auth/password-sign-up', { email: 'newbie@example.com', password: 'newbie-pass-2' })
-    expect(blocked.status).toBe(429)
+  it('requires email verification before account creation and gives no account-existence signal', async () => {
+    const existing = await post('/api/auth/password-sign-up', { email: 'alice@example.com', password: 'newbie-pass-1' })
+    const newAddress = await post('/api/auth/password-sign-up', { email: 'newbie@example.com', password: 'newbie-pass-1' })
+    expect(existing.status).toBe(410)
+    expect(newAddress.status).toBe(410)
+    expect(await existing.text()).toBe(await newAddress.text())
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM users WHERE email=?').bind('newbie@example.com').first<{ n: number }>())!.n).toBe(0)
+  })
+
+  it('enforces a concurrent request budget atomically', async () => {
+    const decisions = await Promise.all(Array.from({ length: 40 }, () => checkRateLimit(env.DB, 'parallel-test', 10, 60_000)))
+    expect(decisions.filter(decision => decision.allowed)).toHaveLength(10)
+    expect(decisions.filter(decision => !decision.allowed)).toHaveLength(30)
   })
 
   it('releases the window after it expires (15 min)', async () => {
     for (let i = 0; i < 10; i++) await post('/api/auth/password-sign-in', { email: 'alice@example.com', password: 'wrong-12345' })
     expect((await post('/api/auth/password-sign-in', { email: 'alice@example.com', password: 'wrong-12345' })).status).toBe(429)
     // Age the stored window past the 15-minute limit; the next hit starts fresh.
+    const emailKey = await opaqueRateLimitKey(env.SESSION_SECRET, 'password:email:alice@example.com')
+    const ipKey = await opaqueRateLimitKey(env.SESSION_SECRET, `password:ip:${IP}`)
     await env.DB.prepare('UPDATE rate_limits SET window_start=? WHERE key IN (?,?)')
-      .bind(new Date(Date.now() - 16 * 60_000).toISOString(), 'password:email:alice@example.com', `password:ip:${IP}`).run()
+      .bind(new Date(Date.now() - 16 * 60_000).toISOString(), emailKey, ipKey).run()
     const after = await post('/api/auth/password-sign-in', { email: 'alice@example.com', password: PW })
     expect(after.status).toBe(200)
   })

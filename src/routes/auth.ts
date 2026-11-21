@@ -6,16 +6,15 @@ import { acceptInvite, normalizeEmail } from '../auth/invites'
 import { createMagicLinks, type MailSender } from '../auth/magic-links'
 import { endSession, requireWorkspace, startSession } from '../auth/sessions'
 import { hashPassword, validPassword, verifyPassword } from '../auth/passwords'
-import { checkRateLimit } from '../auth/rate-limits'
+import { checkRateLimit, opaqueRateLimitKey } from '../auth/rate-limits'
 
 async function provisionMagicLinkAccount(db: Env['DB'], email: string) {
-  const existing = await db.prepare('SELECT id FROM users WHERE email=?').bind(email).first<{id:string}>()
-  if (existing) return
   const userId=crypto.randomUUID(),workspaceId=crypto.randomUUID(),displayName=email.split('@')[0]
+  // Keep concurrent first sign-ins atomic: a losing insert must never observe a user before its workspace exists.
   await db.batch([
-    db.prepare('INSERT INTO users (id,email,display_name,auth_identity) VALUES (?,?,?,?)').bind(userId,email,displayName,`email:${email}`),
-    db.prepare('INSERT INTO workspaces (id,name,owner_user_id) VALUES (?,?,?)').bind(workspaceId,`${displayName}'s workspace`,userId),
-    db.prepare("INSERT INTO memberships (workspace_id,user_id,role) VALUES (?,?,'owner')").bind(workspaceId,userId),
+    db.prepare('INSERT INTO users (id,email,display_name,auth_identity) VALUES (?,?,?,?) ON CONFLICT(email) DO NOTHING').bind(userId,email,displayName,`email:${email}`),
+    db.prepare('INSERT INTO workspaces (id,name,owner_user_id) SELECT ?,?,? WHERE EXISTS (SELECT 1 FROM users WHERE id=? AND email=?)').bind(workspaceId,`${displayName}'s workspace`,userId,userId,email),
+    db.prepare("INSERT INTO memberships (workspace_id,user_id,role) SELECT ?,?,'owner' WHERE EXISTS (SELECT 1 FROM workspaces WHERE id=? AND owner_user_id=?)").bind(workspaceId,userId,workspaceId,userId),
   ])
 }
 
@@ -27,10 +26,12 @@ export function authRoutes(env: Env, sender: MailSender) {
     const email = normalizeEmail(body?.email)
     const intent = body.intent ?? 'sign_in'
     if (intent !== 'sign_in' && intent !== 'accept_invite') throw new HTTPException(400, { message: 'Invalid intent' })
+    const ip = c.req.header('cf-connecting-ip') || 'unknown'
+    const ipKey = await opaqueRateLimitKey(env.SESSION_SECRET, `magic_link:ip:${ip}`)
+    if (!(await checkRateLimit(env.DB, ipKey, 20, 60 * 60_000)).allowed) {
+      return c.json({ message: 'If you have access, a sign-in link is on its way.' }, 202)
+    }
     if (intent === 'sign_in') await provisionMagicLinkAccount(env.DB,email)
-    // ponytail: per-email cap via unexpired links; add per-IP limiting if abuse shows up
-    const open = await env.DB.prepare('SELECT COUNT(*) AS n FROM magic_links WHERE email = ? COLLATE NOCASE AND expires_at > ?').bind(email, new Date().toISOString()).first<{ n: number }>()
-    if (open && open.n >= 3) return c.json({ message: 'If you have access, a sign-in link is on its way.' }, 202)
     await links.sendMagicLink(email, intent, intent === 'accept_invite'
       ? { inviteToken: String(body.inviteToken ?? ''), workspaceId: String(body.workspaceId ?? '') } : undefined)
     return c.json({ message: 'If you have access, a sign-in link is on its way.' }, 202)
@@ -43,15 +44,15 @@ export function authRoutes(env: Env, sender: MailSender) {
     }
     const confirmationUrl = new URL('/api/auth/verify', env.APP_ORIGIN).toString()
     // This confirmation intentionally stays script-free. Inline CSS is the only
-    // exception to the otherwise locked-down document CSP, so it can match Puffin.
+    // exception to the otherwise locked-down document CSP, so it can match RP Thread Buddy.
     c.header('Content-Security-Policy', `default-src 'none'; style-src 'unsafe-inline'; form-action ${env.APP_ORIGIN}; frame-ancestors 'none'; base-uri 'none'`)
-    return c.html(html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Confirm Puffin Post sign-in</title><style>
-      :root{color-scheme:dark}*{box-sizing:border-box}body{min-width:320px;margin:0;background:#142027;color:#f8f3e9;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{width:min(100% - 2rem,35rem);min-height:100dvh;margin:auto;display:grid;align-content:center;padding:2rem 0 4rem}.brand{display:flex;align-items:center;gap:.7rem;margin-bottom:2.4rem;color:#f8f3e9;font:600 1.4rem/1 Georgia,"Times New Roman",serif}.mark{display:grid;place-items:center;width:2.5rem;height:2.5rem;border-radius:50%;background:#dce8e9;color:#263d45;font:italic 700 1.5rem Georgia,"Times New Roman",serif}.card{padding:clamp(1.5rem,5vw,2.5rem);border:1px solid #4c6670;border-radius:1.25rem;background:#213138;box-shadow:0 1.25rem 3rem rgba(0,0,0,.18)}.eyebrow{margin:0 0 .7rem;color:#a9d4dc;font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}h1{margin:0;font:600 clamp(2rem,7vw,3rem)/1 Georgia,"Times New Roman",serif;letter-spacing:-.04em}p{margin:1.25rem 0 0;color:#d9e1dd;line-height:1.65}.identity{margin-top:1.5rem;padding:1rem 1.1rem;border-left:.25rem solid #a9d4dc;border-radius:.5rem;background:#2a3e45;color:#f8f3e9;overflow-wrap:anywhere}.identity strong{display:block;margin-top:.2rem;font-size:1rem}.button{width:100%;min-height:3.25rem;margin-top:1.75rem;padding:.85rem 1rem;border:1px solid #a9d4dc;border-radius:.7rem;background:#a9d4dc;color:#17242a;font:800 1rem/1 ui-sans-serif,system-ui;cursor:pointer}.button:hover{filter:brightness(1.06)}.fine-print{margin-top:1.15rem;color:#b9c8c7;font-size:.84rem}.footer{margin:1.3rem 0 0;color:#9badad;font-size:.78rem;line-height:1.55;text-align:center}@media (max-width:430px){main{width:min(100% - 1.5rem,35rem);padding-top:1.25rem}.brand{margin-bottom:1.6rem}.card{border-radius:1rem}}
+    return c.html(html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Confirm RP Thread Buddy sign-in</title><style>
+      :root{color-scheme:dark}*{box-sizing:border-box}body{min-width:320px;margin:0;background:#142027;color:#f8f3e9;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}main{width:min(100% - 2rem,35rem);min-height:100dvh;margin:auto;display:grid;align-content:center;padding:2rem 0 4rem}.brand{display:flex;align-items:center;gap:.7rem;margin-bottom:2.4rem;color:#f8f3e9;font:600 1.4rem/1 Georgia,"Times New Roman",serif}.mark{display:grid;place-items:center;width:2.5rem;height:2.5rem;border-radius:50%;background:#dce8e9;color:#263d45;font:800 1rem Georgia,"Times New Roman",serif;letter-spacing:-.08em}.card{padding:clamp(1.5rem,5vw,2.5rem);border:1px solid #4c6670;border-radius:1.25rem;background:#213138;box-shadow:0 1.25rem 3rem rgba(0,0,0,.18)}.eyebrow{margin:0 0 .7rem;color:#a9d4dc;font-size:.72rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}h1{margin:0;font:600 clamp(2rem,7vw,3rem)/1 Georgia,"Times New Roman",serif;letter-spacing:-.04em}p{margin:1.25rem 0 0;color:#d9e1dd;line-height:1.65}.identity{margin-top:1.5rem;padding:1rem 1.1rem;border-left:.25rem solid #a9d4dc;border-radius:.5rem;background:#2a3e45;color:#f8f3e9;overflow-wrap:anywhere}.identity strong{display:block;margin-top:.2rem;font-size:1rem}.button{width:100%;min-height:3.25rem;margin-top:1.75rem;padding:.85rem 1rem;border:1px solid #a9d4dc;border-radius:.7rem;background:#a9d4dc;color:#17242a;font:800 1rem/1 ui-sans-serif,system-ui;cursor:pointer}.button:hover{filter:brightness(1.06)}.fine-print{margin-top:1.15rem;color:#b9c8c7;font-size:.84rem}.footer{margin:1.3rem 0 0;color:#9badad;font-size:.78rem;line-height:1.55;text-align:center}@media (max-width:430px){main{width:min(100% - 1.5rem,35rem);padding-top:1.25rem}.brand{margin-bottom:1.6rem}.card{border-radius:1rem}}
     </style></head><body><main>
-      <div class="brand" aria-label="Puffin Post"><span class="mark" aria-hidden="true">P</span><span>Puffin Post</span></div>
+      <div class="brand" aria-label="RP Thread Buddy"><span class="mark" aria-hidden="true">RP</span><span>RP Thread Buddy</span></div>
       <section class="card" aria-labelledby="confirm-title"><p class="eyebrow">One last step</p><h1 id="confirm-title">Open your writing space.</h1>
-      <p>Confirm the account below to continue to Puffin Post.</p><p class="identity">Signing in as<strong>${identity.email}</strong></p>
-      <form method="post" action="${confirmationUrl}"><input type="hidden" name="token" value="${token}"><button class="button" type="submit">Continue to Puffin Post</button></form>
+      <p>Confirm the account below to continue to RP Thread Buddy.</p><p class="identity">Signing in as<strong>${identity.email}</strong></p>
+      <form method="post" action="${confirmationUrl}"><input type="hidden" name="token" value="${token}"><button class="button" type="submit">Continue to RP Thread Buddy</button></form>
       <p class="fine-print">This will sign this browser in to this account and replace any current sign-in.</p></section>
       <p class="footer">Only continue if you requested this private sign-in link.</p>
       </main></body></html>`)
@@ -94,36 +95,23 @@ export function authRoutes(env: Env, sender: MailSender) {
     const body=await c.req.json<{email?:unknown;password?:unknown}>(), email=typeof body.email==='string' ? normalizeEmail(body.email) : ''
     const ip=c.req.header('cf-connecting-ip') || 'unknown'
     // Throttle credential guessing: 10 failed attempts per email, 10 per IP,
-    // each over 15 minutes. Successful sign-ins reset that key's window.
-    // ponytail ceiling: D1 rows are the only state; at this scale a per-IP +
-    // per-email rolling window is enough, move to a token-bucket/Redis if it ever
+    // each over a 15-minute fixed window. Successful sign-ins reset both keys.
+    // D1 rows are the only state; a coordinated attack across many IPs can still
     // has to survive a fleet of coordinated IPs behind one address.
-    const rate=(await checkRateLimit(env.DB,`password:email:${email}`,10,15*60_000)).allowed
-      &&(await checkRateLimit(env.DB,`password:ip:${ip}`,10,15*60_000)).allowed
+    const emailKey = await opaqueRateLimitKey(env.SESSION_SECRET, `password:email:${email}`)
+    const ipKey = await opaqueRateLimitKey(env.SESSION_SECRET, `password:ip:${ip}`)
+    const rate=(await checkRateLimit(env.DB,emailKey,10,15*60_000)).allowed
+      &&(await checkRateLimit(env.DB,ipKey,10,15*60_000)).allowed
     if(!rate) throw new HTTPException(429,{message:'Too many sign-in attempts, please wait'})
     if(!email || !validPassword(body.password)) throw new HTTPException(401,{message:'Email or password is incorrect'})
     const user=await env.DB.prepare('SELECT u.id,u.password_hash AS passwordHash,m.workspace_id AS workspaceId FROM users u JOIN memberships m ON m.user_id=u.id WHERE u.email=? ORDER BY m.role=' + "'owner'" + ' DESC LIMIT 1').bind(email).first<{id:string;passwordHash:string|null;workspaceId:string}>()
     const ok=!!user && await verifyPassword(body.password,user.passwordHash)
     if(!ok) throw new HTTPException(401,{message:'Email or password is incorrect'})
-    await env.DB.prepare('DELETE FROM rate_limits WHERE key IN (?,?)').bind(`password:email:${email}`,`password:ip:${ip}`).run()
+    await env.DB.prepare('DELETE FROM rate_limits WHERE key IN (?,?)').bind(emailKey,ipKey).run()
     await startSession(c,user!.id,user!.workspaceId); return c.json({message:'Signed in'})
   })
   app.post('/password-sign-up', async c => {
-    const body=await c.req.json<{email?:unknown;password?:unknown}>(),email=normalizeEmail(body.email)
-    const ip=c.req.header('cf-connecting-ip') || 'unknown'
-    const signUp=(await checkRateLimit(env.DB,`sign_up:ip:${ip}`,20,15*60_000)).allowed
-      &&(await checkRateLimit(env.DB,`sign_up:email:${email}`,10,15*60_000)).allowed
-    if(!signUp) throw new HTTPException(429,{message:'Too many sign-ups, please wait'})
-    if(!validPassword(body.password)) throw new HTTPException(400,{message:'Use a password between 8 and 200 characters'})
-    if(await env.DB.prepare('SELECT id FROM users WHERE email=?').bind(email).first()) throw new HTTPException(409,{message:'An account already exists for this email. Sign in instead.'})
-    const userId=crypto.randomUUID(),workspaceId=crypto.randomUUID(),displayName=email.split('@')[0]
-    await env.DB.batch([
-      env.DB.prepare('INSERT INTO users (id,email,display_name,auth_identity,password_hash) VALUES (?,?,?,?,?)').bind(userId,email,displayName,`email:${email}`,await hashPassword(body.password)),
-      env.DB.prepare('INSERT INTO workspaces (id,name,owner_user_id) VALUES (?,?,?)').bind(workspaceId,`${displayName}'s workspace`,userId),
-      env.DB.prepare("INSERT INTO memberships (workspace_id,user_id,role) VALUES (?,?,'owner')").bind(workspaceId,userId),
-    ])
-    await startSession(c,userId,workspaceId)
-    return c.json({message:'Account created'},201)
+    throw new HTTPException(410, { message: 'Create an account with an email sign-in link, then add a password in Settings.' })
   })
   return app
 }

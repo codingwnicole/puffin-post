@@ -1,5 +1,6 @@
 // Deleting an account lands on the signed-out homepage; the Inbox address only carries the view.
 import { expect, test } from '@playwright/test'
+import { createSignedInUser } from './auth-fixture'
 
 const APP = 'http://localhost:5173'
 test.use({ baseURL: APP })
@@ -8,7 +9,7 @@ test('Inbox address has no API paging params, and deleting the account returns t
   const ctx = await browser.newContext({ baseURL: APP, extraHTTPHeaders: { 'cf-connecting-ip': '10.4.' + Math.floor(Math.random() * 250) + '.' + Math.floor(Math.random() * 250), origin: APP } })
   const page = await ctx.newPage()
   await page.goto('/#inbox')
-  expect((await page.request.post('/api/auth/password-sign-up', { data: { email: `bye-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`, password: 'correct horse battery' } })).status()).toBe(201)
+  await createSignedInUser(page)
   await page.reload()
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   await page.waitForTimeout(300)

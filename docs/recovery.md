@@ -1,28 +1,39 @@
-# Puffin Post: recovery and rollback runbook
+# RP Thread Buddy: recovery and rollback runbook
 
-Last reviewed: 2026-11-17. This document is the recovery plan for the live Puffin Post deployment on Cloudflare. It covers database backups and restores, interrupted deploys, partial imports and duplicate records, and how to tell which build is live. It is written to be run by the operator (Nicole @ the Puffin Post team) without a second person.
+Last reviewed: 2026-11-21. This document covers D1 backups, restore limits, interrupted deploys, partial imports, and revision checks. Live D1 restores are destructive and require an approved maintenance decision.
 
 ## What we back up, and what that means
 
-- Cloudflare D1 Time Travel is the standing backup. D1 keeps a point-in-time history of the database for **up to 30 days on the Workers Paid plan (7 days on Workers Free)**; after that, restored points fall out of the window and the deleted data is gone from backups.
-- In addition, before every migration the operator runs a dated export of the database:
+- Cloudflare D1 Time Travel is available automatically. It keeps history for **up to 30 days on Workers Paid (7 days on Workers Free)**. The production plan and database backend have not been verified from this workspace.
+- Before a production migration, create a dated export with the actual database name from the uncommitted production Wrangler config:
 
   ```
-  wrangler d1 database puffin-post export ./backups/$(date +%Y-%m-%d)-pre-migration.sql
+  npx wrangler d1 export <production-db-name> --remote --output=.\backups\pre-migration.sql --config .\wrangler.production.jsonc
   ```
 
-  (Adjust the path and the `d1 database puffin-post` reference to the real binding and DB id in the live project.) The export file is kept outside the repository.
-- The D1 Time Travel window is the only safety net between two dated exports. If you skip the pre-migration export, you rely entirely on Time Travel and its 30-day horizon.
+  Store exports outside Git in encrypted, access-controlled storage; they contain user records and authentication data. Do not run the export unless that storage is ready. The current workspace does not verify that production exports are being taken or retained.
 
-## Restoring into a separate database first
+## What can be tested safely
 
-Never restore directly over the live database when the cause of the problem is unknown. The sequence is:
+Cloudflare Time Travel restores a database **in place**. It cannot restore production history into a scratch database, so the previous scratch-restore instructions were incorrect. Cloudflare documents database branching/cloning as unsupported at this time.
 
-1. Create a throwaway database: `wrangler d1 create puffin-restore-check` (or reuse an existing scratch DB).
-2. Restore into that database at the chosen time: `wrangler d1 time-travel restore --database-name <scratch-id> --timestamp <ISO-8601>`.
-3. Run `wrangler d1 time-travel list --database-name <scratch-id>` and then spot-check tables (`wrangler d1 execute <scratch-id> --remote --command "SELECT count(*) FROM users"`, etc.) to confirm the restored state is what you expect.
-4. Only after the scratch restore looks right, run the same restore against the live database.
-5. Delete the scratch database when you are done: `wrangler d1 database delete <scratch-id> --yes`.
+Use a synthetic, non-production database to test migration and export/import procedures. Do not copy real beta-user data into a test database. That validates the procedure, but does not prove production point-in-time recovery. A production Time Travel restore has not been tested from this workspace.
+
+The read-only check for a production point in time is:
+
+```
+npx wrangler d1 time-travel info <production-db-name> --timestamp "<ISO-8601>" --config .\wrangler.production.jsonc
+```
+
+## Production Time Travel restore
+
+Stop and get explicit approval before this operation. It overwrites the named database in place and cancels in-flight queries. First take and securely retain a current export and record the current Time Travel bookmark. Then use the reviewed timestamp only during an approved maintenance window:
+
+```
+npx wrangler d1 time-travel restore <production-db-name> --timestamp "<ISO-8601>" --config .\wrangler.production.jsonc
+```
+
+Wrangler requires confirmation. Save the previous bookmark returned by the command so the restore can be undone if needed. Reconcile account-deletion requests made after the target time before reopening traffic.
 
 ## Deletion requests vs restores
 
@@ -38,7 +49,7 @@ The Tumblr import can partially fail: a few threads import, a few duplicate, or 
 
 ## Interrupted deploys
 
-- Migrations are additive: every migration only adds tables or columns, and never drops or rewrites existing ones. A deploy that dies mid-migration leaves the database in a consistent state; it does not corrupt it.
+- Review each migration before applying it. Worker rollback does not undo a D1 migration or a data backfill, so only roll back to a Worker version compatible with the schema now present.
 - To roll the Worker back to the previous build without touching the database, run `wrangler rollback`. This redeploys the previous Worker version. Do not attempt to manually "down-migrate" D1 to match — the Worker does not depend on the new schema in a way that requires undoing it.
 - Confirm the rollback worked by checking the live revision (below) and then hitting a known page.
 
@@ -47,7 +58,7 @@ The Tumblr import can partially fail: a few threads import, a few duplicate, or 
 Every response from the live Worker carries an `X-Build-Revision` header. Fetch it:
 
 ```
-curl -sI https://puffinpost.app/ | grep -i x-build-revision
+curl -sI https://rpthreadbuddy.app/ | grep -i x-build-revision
 ```
 
 Compare that value to the revision of the deploy you expect to be live (the `wrangler deploy` output shows it). If they disagree, the deploy you think is live is not the one serving traffic, and the Worker is still on the previous build (or a rollback happened and nobody noticed).
@@ -55,7 +66,7 @@ Compare that value to the revision of the deploy you expect to be live (the `wra
 ## Do not
 
 - Do not run `wrangler d1 execute --remote` against the live database with any statement that is not part of a named migration.
-- Do not restore Time Travel without first checking the state into a scratch database.
+- Do not assume Time Travel can restore into a scratch database; it restores the target database in place.
 - Do not skip the pre-migration export because "the migration is small".
 - Do not store deletion-request records in D1.
 - Do not down-migrate D1 to match an older Worker.

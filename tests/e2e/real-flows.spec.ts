@@ -3,6 +3,7 @@
 // never mocked; only one save in (d) is made to fail on purpose.
 // Local D1 needs migrations: `npx wrangler d1 migrations apply threadums-local --local`.
 import { expect, test, type Browser, type Page } from '@playwright/test'
+import { createSignedInUser } from './auth-fixture'
 
 const password = 'correct horse battery'
 // The Worker only accepts writes from APP_ORIGIN (wrangler.jsonc: http://localhost:5173), so these
@@ -16,8 +17,7 @@ async function newUser(browser: Browser) {
   const context = await browser.newContext({ baseURL: APP, extraHTTPHeaders: { 'cf-connecting-ip': ip, origin: APP } })
   const page = await context.newPage()
   const email = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`
-  const signUp = await page.request.post('/api/auth/password-sign-up', { data: { email, password } })
-  expect(signUp.status()).toBe(201)
+  await createSignedInUser(page, { email, password })
   return { context, page, email }
 }
 

@@ -1,5 +1,6 @@
 // Trading cards on the Characters page: make one, flip it, download it (real Worker + local D1).
 import { expect, test } from '@playwright/test'
+import { createSignedInUser } from './auth-fixture'
 import gifenc from 'gifenc' // CommonJS in Node
 const { GIFEncoder } = gifenc
 
@@ -19,7 +20,7 @@ test('make a trading card, see it in the Cards view, flip it, and download it as
   const ctx = await browser.newContext({ baseURL: APP, viewport: { width: 1280, height: 900 }, extraHTTPHeaders: { 'cf-connecting-ip': '10.3.' + Math.floor(Math.random() * 250) + '.' + Math.floor(Math.random() * 250), origin: APP } })
   const page = await ctx.newPage()
   await page.goto('/#inbox')
-  expect((await page.request.post('/api/auth/password-sign-up', { data: { email: `cards-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`, password: 'correct horse battery' } })).status()).toBe(201)
+  await createSignedInUser(page)
   const { id } = await (await page.request.post('/api/characters', { data: { name: 'Wren Marlowe' } })).json() as { id: string }
   await page.request.post('/api/starters', { data: { characterId: id, title: 'Harbor at dusk', partnerName: 'Ash' } })
   await page.goto('/#characters'); await page.reload()

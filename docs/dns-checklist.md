@@ -1,8 +1,8 @@
-# DNS Checklist for puffinpost.app (S13)
+# DNS Checklist for RP Thread Buddy
 
-Do these in the Cloudflare dashboard for the puffinpost.app zone. Goal: every
-record points at something you still own, the Worker is the only thing serving
-the site, and the domain is signed + locked down.
+The canonical site is `rpthreadbuddy.app`. `rpthreadbuddy.com` and the legacy
+`puffinpost.app` address should both 301 to it, preserving the path and query
+string. Resend now sends from `mail.rpthreadbuddy.app`.
 
 1. **DNS records — no dangling targets.** Go to DNS → Records.
    Good: every A/AAAA/CNAME target is a service you still own (the Cloudflare
@@ -11,11 +11,12 @@ the site, and the domain is signed + locked down.
    those are subdomain-takeover holes. Delete any record you don't recognize
    (export/CSV first if unsure).
 
-2. **Only the Worker serves the apex and www.** Go to Workers & Pages → your
+2. **Check the Worker and redirects.** Go to Workers & Pages → your
    worker → Triggers → Custom Domains (and check Domains → Public Subdomains
-   / "Domains" list). Good: the custom domain/route for `puffinpost.app`
-   (apex) and `www.puffinpost.app` is the only binding that serves either
-   host. No other worker, Pages project, or route claims them.
+   / "Domains" list). Good: `rpthreadbuddy.app` and `puffinpost.app` are
+   attached to the existing `puffinpost` Worker. The Worker redirects legacy
+   requests to `.app`; the `.com` redirect rule targets `.app` and preserves
+   paths and query strings. Do not attach `.com` to this Worker.
 
 3. **DNSSEC.** Go to DNS → Settings → DNSSEC, enable it. Then at your
    registrar: add the DS record(s) Cloudflare shows on that page (Key Tag,
@@ -24,8 +25,8 @@ the site, and the domain is signed + locked down.
    zone — remove it at the registrar and retry before leaving it on.
 
 4. **Email authentication for the sending domain** (the domain used in
-   MAIL_FROM — check `worker.ts` / `.dev.vars` for the exact host, e.g.
-   `mail.puffinpost.app` or the apex). In DNS → Records for that domain:
+   `MAIL_FROM`, currently `mail.rpthreadbuddy.app`). In DNS → Records for that
+   domain:
    - SPF + DKIM: open Resend → Domains → your domain and copy every record it
      lists (the DKIM TXT `resend._domainkey`, and the MX + SPF TXT on the
      `send` subdomain) exactly as shown. Good: Resend marks the domain

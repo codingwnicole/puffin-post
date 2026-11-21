@@ -4,6 +4,7 @@ import type { Env } from '../worker'
 import { requireWorkspace } from '../auth/sessions'
 import { createTumblrClient, type TumblrNotification, type TumblrPost } from '../tumblr/client'
 import { decryptToken } from '../tumblr/oauth'
+import { checkRateLimit } from '../auth/rate-limits'
 
 const MENTION_TYPES = new Set(['mention', 'mention_in_post', 'mention_in_reply', 'user_mention', 'note_mention'])
 type ConnectedBlog = { tokenEncrypted: string; tokenSecretEncrypted: string; blogIdentifier: string }
@@ -16,6 +17,11 @@ export function tumblrActivityRoutes() {
 
   app.get('/', async c => {
     const scope = await requireWorkspace(c)
+    const requestLimit = await checkRateLimit(scope.db, `tumblr_activity:${scope.workspaceId}`, 20, 60_000)
+    if (!requestLimit.allowed) {
+      c.header('Retry-After', String(requestLimit.retryAfterSeconds))
+      return c.json({ error: 'Too many activity refreshes. Wait a minute and try again.' }, 429)
+    }
     // ?blog= filters to one canonical blog; ?before=<unix seconds> pages to older items.
     const blogFilter = c.req.query('blog') || null
     const beforeParam = c.req.query('before')
@@ -60,8 +66,12 @@ export function tumblrActivityRoutes() {
     const isTracked = (post: { id?: string | null; rootPostId?: string | null; threadPostIds?: string[] }) =>
       Boolean((post.rootPostId && trackedPostIds.has(String(post.rootPostId))) || (post.id && trackedPostIds.has(String(post.id))) || post.threadPostIds?.some(id => trackedPostIds.has(String(id))))
     const threadKey = (blogIdentifier: string, postId: string) => `${blogIdentifier.toLowerCase()}:${postId}`
+    // Activity loads can fan out into one post lookup per notification. Bound
+    // Tumblr calls per request so a large workspace cannot consume unbounded API quota.
+    let remainingFetches = 100
+    const budget = { remaining: () => remainingFetches, consume: () => { remainingFetches -= 1 } }
     const responses = await Promise.all(rows.results.map(async row => {
-      const client = createTumblrClient({ consumerKey: c.env.TUMBLR_CONSUMER_KEY, consumerSecret: c.env.TUMBLR_CONSUMER_SECRET, token: await decryptToken(row.tokenEncrypted, c.env.TOKEN_ENCRYPTION_KEY), tokenSecret: await decryptToken(row.tokenSecretEncrypted, c.env.TOKEN_ENCRYPTION_KEY) })
+      const client = createTumblrClient({ consumerKey: c.env.TUMBLR_CONSUMER_KEY, consumerSecret: c.env.TUMBLR_CONSUMER_SECRET, token: await decryptToken(row.tokenEncrypted, c.env.TOKEN_ENCRYPTION_KEY), tokenSecret: await decryptToken(row.tokenSecretEncrypted, c.env.TOKEN_ENCRYPTION_KEY), budget })
       try {
         // Only asks and mentions are shown here; reblog signals are for the background sync, and
         // looking each one up would spend Tumblr calls on nothing.

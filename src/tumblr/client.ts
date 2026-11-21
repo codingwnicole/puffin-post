@@ -62,7 +62,7 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
       if (budget.remaining() <= 0) throw new Error('Subrequest budget exhausted')
       budget.consume()
     }
-    const response = await run(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+    const response = await run(url, { ...init, redirect: 'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
     // A 429 is Tumblr's app-wide limit, not this blog's fault. Throw a single
     // sentinel so the runner stops the whole run (not just this blog) and record
     // Retry-After on the error so the runner can hold off the next run.

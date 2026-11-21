@@ -34,7 +34,7 @@ for (const { hash, heading } of EXPECTED) {
     await page.goto(`/${hash}`)
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible({ timeout: 10000 })
     await expect(page.getByText('Effective date: November 17, 2026')).toBeVisible()
-    await expect(page.getByText('privacy@puffinpost.app').first()).toBeVisible()
+    await expect(page.getByText('privacy@rpthreadbuddy.app').first()).toBeVisible()
   })
 }
 
@@ -66,7 +66,7 @@ test('signed-in: nav footer links reach each legal page', async ({ page }) => {
     await page.goto(`/${hash}`)
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
     await expect(page.getByText('Effective date: November 17, 2026')).toBeVisible()
-    await expect(page.getByText('privacy@puffinpost.app').first()).toBeVisible()
+    await expect(page.getByText('privacy@rpthreadbuddy.app').first()).toBeVisible()
   }
 })
 

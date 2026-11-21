@@ -14,6 +14,16 @@ async function seedSecondBlog() {
   await fixture.env.DB.prepare("INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label) VALUES ('blog-c','a','character-a','connection-c','c.tumblr.com','c')").run()
 }
 
+async function seedMoreBlogs(names: string[]) {
+  const { encryptToken } = await import('../../src/tumblr/oauth')
+  for (const name of names) {
+    const cipher = await encryptToken(`token-${name}`, fixture.env.TOKEN_ENCRYPTION_KEY)
+    const connectionId = `connection-${name}`
+    await fixture.env.DB.prepare('INSERT INTO tumblr_connections (id,workspace_id,token_encrypted,token_secret_encrypted,account_metadata_json) VALUES (?,?,?,?,?)').bind(connectionId, 'a', cipher, cipher, JSON.stringify({ blogs: [`${name}.tumblr.com`] })).run()
+    await fixture.env.DB.prepare('INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label) VALUES (?,?,?,?,?,?)').bind(`blog-${name}`, 'a', 'character-a', connectionId, `${name}.tumblr.com`, name).run()
+  }
+}
+
 function notificationsResponse(blog: string, items: Array<{ type: string; timestamp: number; post_id?: string | number; from_tumblelog_name?: string }>) {
   const notifications = items.map(item => ({ ...item, blog_name: blog, id: `${blog}:${item.post_id ?? item.timestamp}` }))
   return new Response(JSON.stringify({ response: { notifications, meta: { total: { notifications: notifications.length, asks: notifications.filter(item => item.type === 'ask').length, mentions: notifications.filter(item => item.type === 'mention').length } } } }), { status: 200, headers: { 'content-type': 'application/json' } })
@@ -96,7 +106,12 @@ it('forwards the before cursor to Tumblr', async () => {
     return notificationsResponse(blogOf(path), [])
   })
   expect(seenBefore).toBe('123')
-  expect(calls).toEqual(expect.arrayContaining(['https://api.tumblr.com/v2/blog/a.tumblr.com/posts?limit=20&npf=true&reblog_info=true', 'https://api.tumblr.com/v2/blog/c.tumblr.com/posts?limit=20&npf=true&reblog_info=true']))
+  expect(calls).toEqual(expect.arrayContaining([
+    'https://api.tumblr.com/v2/blog/a.tumblr.com/notifications?rollups=false&before=123',
+    'https://api.tumblr.com/v2/blog/c.tumblr.com/notifications?rollups=false&before=123',
+    'https://api.tumblr.com/v2/blog/a.tumblr.com/posts?limit=20&npf=true&reblog_info=true&before=123',
+    'https://api.tumblr.com/v2/blog/c.tumblr.com/posts?limit=20&npf=true&reblog_info=true&before=123',
+  ]))
   expect(result.blogs).toHaveLength(2)
   expect(result.blogs.every(blog => blog.status === 'ok')).toBe(true)
 }, 60_000)
@@ -118,6 +133,33 @@ it('fetches a blog shared by two characters only once', async () => {
   expect(notificationCalls).toBe(1)
   expect(result.blogs.filter(blog => blog.blogIdentifier === 'a.tumblr.com')).toHaveLength(1)
   expect(result.blogs.map(blog => blog.blogIdentifier).sort()).toEqual(['a.tumblr.com'])
+})
+
+it('caps Tumblr API fan-out for a workspace with many blogs and notifications', async () => {
+  await seedMoreBlogs(['c', 'd', 'e', 'f', 'g'])
+  let calls = 0
+  const result = await fetchActivity('/api/tumblr-activity', url => {
+    calls += 1
+    const path = String(url)
+    if (path.includes('/notifications?')) return notificationsResponse(blogOf(path), Array.from({ length: 20 }, (_, index) => ({ type: 'mention', timestamp: index + 1, post_id: index + 1, from_tumblelog_name: 'partner' })))
+    if (path.includes('/posts?id=')) return new Response(JSON.stringify({ response: { posts: [{ blog_name: 'partner', id_string: '1' }] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    return new Response(JSON.stringify({ response: { posts: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+  })
+  expect(calls).toBe(100)
+  expect(result.blogs).toHaveLength(6)
+})
+
+it('rate limits repeated activity reloads for one workspace', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async url => String(url).includes('/posts?limit')
+    ? new Response(JSON.stringify({ response: { posts: [] } }), { status: 200, headers: { 'content-type': 'application/json' } })
+    : notificationsResponse('a.tumblr.com', [])) as typeof fetch
+  try {
+    const statuses: number[] = []
+    for (let index = 0; index < 21; index += 1) statuses.push((await fixture.request('/api/tumblr-activity')).status)
+    expect(statuses.slice(0, 20).every(status => status === 200)).toBe(true)
+    expect(statuses[20]).toBe(429)
+  } finally { globalThis.fetch = originalFetch }
 })
 
 it('a dismissed tagged post stays hidden on the next load (B09)', async () => {

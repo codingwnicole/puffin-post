@@ -13,9 +13,9 @@ describe('public magic-link sign-up and invites against local D1', () => {
 
   beforeEach(async () => {
     const platform = await getPlatformProxy<Env>({ persist: false })
-    env = { ...platform.env, APP_ORIGIN: 'https://threadums.test', SESSION_SECRET: 'test-only-session-secret-with-32-characters' }
+    env = { ...platform.env, APP_ORIGIN: 'https://rpthreadbuddy.app', SESSION_SECRET: 'test-only-session-secret-with-32-characters' }
     dispose = platform.dispose
-    for (const file of ['0001_initial.sql', '0002_auth.sql']) {
+    for (const file of ['0001_initial.sql', '0002_auth.sql', '0029_rate_limits.sql']) {
       const sql = await readFile(`src/db/migrations/${file}`, 'utf8')
       await env.DB.batch(sql.split(';').filter((part) => part.trim()).map((part) => env.DB.prepare(part)))
     }
@@ -31,7 +31,7 @@ describe('public magic-link sign-up and invites against local D1', () => {
   function request(path: string, body?: object | null, cookie?: string, origin = env.APP_ORIGIN) {
     return createApp(env, { mailSender: mail }).request(path, {
       method: body !== undefined ? 'POST' : 'GET',
-      headers: { origin, ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(cookie ? { cookie } : {}) },
+      headers: { origin, 'cf-connecting-ip': '203.0.113.10', ...(body !== undefined ? { 'content-type': 'application/json' } : {}), ...(cookie ? { cookie } : {}) },
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     }, env)
   }
@@ -154,8 +154,9 @@ describe('public magic-link sign-up and invites against local D1', () => {
 
   it('sends a branded HTML sign-in email with a text-safe fallback link', async () => {
     await request('/api/auth/magic-link', { email: 'owner@example.com' })
-    expect(sent[0].html).toContain('Puffin Post')
-    expect(sent[0].html).toContain('Open Puffin Post')
+    expect(new URL(sent[0].url).origin).toBe('https://rpthreadbuddy.app')
+    expect(sent[0].html).toContain('RP Thread Buddy')
+    expect(sent[0].html).toContain('Open RP Thread Buddy')
     expect(sent[0].html).toContain(sent[0].url)
     expect(sent[0].html).toContain('15 minutes')
   })
@@ -168,6 +169,9 @@ describe('public magic-link sign-up and invites against local D1', () => {
     expect(header).toContain('HttpOnly')
     expect(header).toContain('Secure')
     expect(header).toContain('SameSite=Lax')
+    expect(header).toContain('Path=/')
+    expect(header).toContain('Max-Age=604800')
+    expect(header).not.toMatch(/Domain=/i)
     const cookie = header.split(';')[0]
     expect((await request('/api/auth/session', undefined, cookie)).status).toBe(200)
     expect((await request('/api/auth/session', undefined, cookie + 'x')).status).toBe(401)
@@ -200,6 +204,7 @@ describe('public magic-link sign-up and invites against local D1', () => {
   it('expires sessions and rejects cross-origin state changes', async () => {
     const cookie = await login()
     expect((await request('/api/auth/sign-out', {}, cookie, 'https://evil.test')).status).toBe(403)
+    expect((await request('/api/auth/sign-out', {}, cookie, 'https://puffinpost.app')).status).toBe(403)
     await env.DB.prepare("UPDATE sessions SET expires_at = '2000-01-01T00:00:00.000Z'").run()
     expect((await request('/api/auth/session', undefined, cookie)).status).toBe(401)
   })
@@ -311,6 +316,21 @@ describe('public magic-link sign-up and invites against local D1', () => {
     expect(sent).toHaveLength(4)
   })
 
+  it('keeps the per-address magic-link cap under concurrent submissions', async () => {
+    const responses = await Promise.all(Array.from({ length: 8 }, () => request('/api/auth/magic-link', { email: 'parallel@example.com' })))
+    expect(responses.every(response => response.status === 202)).toBe(true)
+    expect(sent.filter(message => message.to === 'parallel@example.com')).toHaveLength(3)
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM magic_links WHERE email=?').bind('parallel@example.com').first<{ n: number }>())!.n).toBe(3)
+    expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM users WHERE email=?').bind('parallel@example.com').first<{ n: number }>())!.n).toBe(1)
+  })
+
+  it('throttles high-volume magic-link requests by IP without revealing whether emails exist', async () => {
+    const responses = await Promise.all(Array.from({ length: 22 }, (_, index) => request('/api/auth/magic-link', { email: `bulk-${index}@example.com` })))
+    expect(responses.every(response => response.status === 202)).toBe(true)
+    expect(new Set(await Promise.all(responses.map(response => response.text()))).size).toBe(1)
+    expect(sent).toHaveLength(20)
+  })
+
   it('stamps X-Build-Revision on 404 and 400 error responses', async () => {
     const cookie = await login()
     const notFound = await createApp(env, { mailSender: mail }).request('/api/characters/does-not-exist', { method: 'PATCH', headers: { cookie, 'content-type': 'application/json', origin: env.APP_ORIGIN }, body: JSON.stringify({ name: 'Ghost' }) }, env)
@@ -322,4 +342,15 @@ describe('public magic-link sign-up and invites against local D1', () => {
     expect(bad.status).toBe(400)
     expect(bad.headers.get('X-Build-Revision')).toBe('dev')
   })
+
+  it('does not expose internal exception messages in 500 responses', async () => {
+    const marker = 'raw-secret-value-abcdefghijk'
+    const failingEnv = { ...env, DB: { prepare() { throw new Error(marker) } } as unknown as D1Database }
+    const response = await createApp(failingEnv, { mailSender: mail }).request('/api/auth/magic-link', {
+      method: 'POST', headers: { origin: env.APP_ORIGIN, 'content-type': 'application/json' }, body: JSON.stringify({ email: 'safe@example.com' }),
+    }, failingEnv)
+    expect(response.status).toBe(500)
+    expect(await response.json()).toEqual({ error: 'Request failed' })
+  })
+
 })

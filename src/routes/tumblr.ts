@@ -5,6 +5,7 @@ import { requireWorkspace, hashToken, randomToken } from '../auth/sessions'
 import { createOauthState, decryptToken, encryptToken, oauthAuthorizationHeader } from '../tumblr/oauth'
 import { blogMetadata, createTumblrClient } from '../tumblr/client'
 import { canonicalBlogIdentifier } from '../tumblr/normalize'
+import { checkRateLimit } from '../auth/rate-limits'
 
 const REQUEST_TOKEN_URL = 'https://www.tumblr.com/oauth/request_token'
 const ACCESS_TOKEN_URL = 'https://www.tumblr.com/oauth/access_token'
@@ -16,11 +17,16 @@ export function tumblrRoutes() {
   const app = new Hono<{ Bindings: Env }>()
   app.get('/connect', async c => {
     const scope = await requireWorkspace(c)
+    const requestLimit = await checkRateLimit(scope.db, `tumblr_oauth_connect:${scope.workspaceId}`, 5, 60_000)
+    if (!requestLimit.allowed) {
+      c.header('Retry-After', String(requestLimit.retryAfterSeconds))
+      return c.json({ error: 'Too many Tumblr connection attempts. Wait a minute and try again.' }, 429)
+    }
     const state = await createOauthState()
     // OAuth 1 providers return the registered callback unchanged, so state lives in
     // the signed callback itself rather than an OAuth 2-only authorization parameter.
     const callback = `${c.env.APP_ORIGIN}/api/tumblr/callback?state=${encodeURIComponent(state.value)}`
-    const response = await fetch(REQUEST_TOKEN_URL, { method:'POST', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), headers: { Authorization: await oauthAuthorizationHeader('POST', REQUEST_TOKEN_URL, c.env.TUMBLR_CONSUMER_KEY, c.env.TUMBLR_CONSUMER_SECRET, '', '', { oauth_callback: callback }) } })
+    const response = await fetch(REQUEST_TOKEN_URL, { method:'POST', redirect:'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), headers: { Authorization: await oauthAuthorizationHeader('POST', REQUEST_TOKEN_URL, c.env.TUMBLR_CONSUMER_KEY, c.env.TUMBLR_CONSUMER_SECRET, '', '', { oauth_callback: callback }) } })
     if (!response.ok) throw new HTTPException(502, { message:'Tumblr connection unavailable' })
     const token = parseForm(await response.text())
     if (!token.oauth_token || !token.oauth_token_secret) throw new HTTPException(502, { message:'Tumblr connection unavailable' })
@@ -36,14 +42,14 @@ export function tumblrRoutes() {
     if (!row) throw new HTTPException(400, { message:'Invalid Tumblr connection' })
     // The browser finishing the connection must be signed in to the workspace that started it,
     // so a stranger's Allow link can never attach their Tumblr account to someone else's space.
-    if ((await requireWorkspace(c)).workspaceId !== row.workspace_id) throw new HTTPException(403, { message:'Sign in to the Puffin Post account that started this connection.' })
+    if ((await requireWorkspace(c)).workspaceId !== row.workspace_id) throw new HTTPException(403, { message:'Sign in to the RP Thread Buddy account that started this connection.' })
     // Consume before exchanging so a second callback cannot redeem the same state.
     const claimed = await c.env.DB.prepare('UPDATE tumblr_oauth_states SET consumed_at=? WHERE state_hash=? AND consumed_at IS NULL').bind(new Date().toISOString(), hash).run()
     if (!claimed.meta.changes) throw new HTTPException(400, { message:'Invalid Tumblr connection' })
     const requestToken = await decryptToken(row.request_token_encrypted, c.env.TOKEN_ENCRYPTION_KEY)
     if (token !== requestToken) throw new HTTPException(400, { message:'Invalid Tumblr connection' })
     const requestSecret = await decryptToken(row.request_secret_encrypted, c.env.TOKEN_ENCRYPTION_KEY)
-    const response = await fetch(ACCESS_TOKEN_URL, { method:'POST', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), headers: { Authorization: await oauthAuthorizationHeader('POST', ACCESS_TOKEN_URL, c.env.TUMBLR_CONSUMER_KEY, c.env.TUMBLR_CONSUMER_SECRET, token, requestSecret, { oauth_verifier: verifier }) } })
+    const response = await fetch(ACCESS_TOKEN_URL, { method:'POST', redirect:'manual', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), headers: { Authorization: await oauthAuthorizationHeader('POST', ACCESS_TOKEN_URL, c.env.TUMBLR_CONSUMER_KEY, c.env.TUMBLR_CONSUMER_SECRET, token, requestSecret, { oauth_verifier: verifier }) } })
     if (!response.ok) throw new HTTPException(502, { message:'Tumblr connection unavailable' })
     const access = parseForm(await response.text())
     if (!access.oauth_token || !access.oauth_token_secret) throw new HTTPException(502, { message:'Tumblr connection unavailable' })

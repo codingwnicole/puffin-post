@@ -24,7 +24,7 @@ export async function statsCardBlob(character: { id: string; name: string; state
   if (!context) throw new Error('Could not make a stats card')
   canvas.width = 1200; canvas.height = 630
   context.fillStyle = '#182126'; context.fillRect(0, 0, 1200, 630); context.fillStyle = '#234e61'; context.fillRect(0, 0, 1200, 170)
-  context.fillStyle = '#f8f3e9'; context.font = '700 34px system-ui'; context.fillText('PUFFIN POST  /  WRITING STATS', 70, 93)
+  context.fillStyle = '#f8f3e9'; context.font = '700 34px system-ui'; context.fillText('RP THREAD BUDDY  /  WRITING STATS', 70, 93)
   context.font = '600 74px Georgia'; context.fillText(character.name.slice(0, 24), 330, 270)
   context.fillStyle = '#a9d4dc'; context.font = '700 24px system-ui'; context.fillText(character.state.toUpperCase(), 332, 320)
   ;[['TOTAL THREADS', counts.total], ['YOUR TURN', counts.mine], ['THEIR TURN', counts.theirs]].forEach(([label, value], index) => { const x = 70 + index * 365; context.fillStyle = '#2d3a40'; context.fillRect(x, 410, 325, 145); context.fillStyle = '#a9d4dc'; context.font = '700 20px system-ui'; context.fillText(String(label), x + 24, 450); context.fillStyle = '#f8f3e9'; context.font = '600 64px Georgia'; context.fillText(String(value), x + 24, 525) })
@@ -50,7 +50,7 @@ async function exportRpStats(group: Group, characters: Character[], counts: Reco
   canvas.width = 1200; canvas.height = Math.max(460, 220 + characters.length * 132)
   context.fillStyle = '#182126'; context.fillRect(0, 0, canvas.width, canvas.height)
   context.fillStyle = '#234e61'; context.fillRect(0, 0, canvas.width, 160)
-  context.fillStyle = '#f8f3e9'; context.font = '700 28px system-ui'; context.fillText('PUFFIN POST  /  RP STATS', 70, 76)
+  context.fillStyle = '#f8f3e9'; context.font = '700 28px system-ui'; context.fillText('RP THREAD BUDDY  /  RP STATS', 70, 76)
   context.font = '600 66px Georgia'; context.fillText(group.name.slice(0, 30), 70, 135)
   context.font = '700 18px system-ui'; context.fillStyle = '#a9d4dc'; context.fillText(`${characters.length} CHARACTER${characters.length === 1 ? '' : 'S'}`, 920, 76)
   ;[['CHARACTER', 70], ['THREADS', 680], ['YOUR TURN', 840], ['THEIR TURN', 1010]].forEach(([label, x]) => { context.fillStyle = '#a9d4dc'; context.font = '700 18px system-ui'; context.fillText(String(label), Number(x), 205) })

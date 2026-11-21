@@ -85,7 +85,7 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
     <rect x={6} y={6} width={628} height={848} rx={t.corner + 14} fill={`url(#${id('bg')})`} stroke={`url(#${id('foil')})`} strokeWidth={10} />
     <rect x={20} y={20} width={600} height={820} rx={t.corner + 6} fill="none" stroke={t.stroke} strokeOpacity={.55} />
     <text x={44} y={50} {...label}>{side === 'front' ? 'CHARACTER CARD ///' : side === 'back' ? 'CHARACTER DETAILS ///' : 'MOODBOARD ///'}</text>
-    <text x={596} y={50} textAnchor="end" {...label}>PUFFIN POST</text>
+    <text x={596} y={50} textAnchor="end" {...label}>RP THREAD BUDDY</text>
     {glyph && symbolText(320, 832, 18)}
     {side === 'front' ? <>
       <g clipPath={`url(#${id('portrait')})`}>

@@ -1,6 +1,7 @@
 // The moodboard side of a trading card: a third face with the uploaded images, and a
 // three-panel download (PNG 3960 × 1800, or a 1980-wide animated GIF when the portrait is a GIF).
 import { expect, test } from '@playwright/test'
+import { createSignedInUser } from './auth-fixture'
 import gifenc from 'gifenc' // CommonJS in Node
 const { GIFEncoder } = gifenc
 
@@ -45,7 +46,7 @@ async function seedMoodboard(page: import('@playwright/test').Page, id: string) 
 test('a card with a moodboard gains a third side and a three-panel download', async ({ browser }) => {
   const ctx = await browser.newContext({ baseURL: APP, viewport: { width: 1280, height: 900 }, extraHTTPHeaders: { 'cf-connecting-ip': '10.3.' + Math.floor(Math.random() * 250) + '.' + Math.floor(Math.random() * 250), origin: APP } })
   const page = await ctx.newPage()
-  expect((await page.request.post('/api/auth/password-sign-up', { data: { email: `mood-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`, password: 'correct horse battery' }, headers: ORIGIN })).status()).toBe(201)
+  await createSignedInUser(page)
   const { id } = await (await page.request.post('/api/characters', { data: { name: 'Sable Vane' }, headers: ORIGIN })).json() as { id: string }
   await page.goto('/#characters'); await page.reload()
   await page.evaluate(cid => { (window as unknown as { __cardId?: string }).__cardId = cid }, id)

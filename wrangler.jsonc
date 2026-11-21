@@ -4,12 +4,13 @@
   "main": "src/worker.ts",
   "compatibility_date": "2026-11-11",
   "assets": {
+    "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*", "/c/*"]
+    "run_worker_first": true
   },
   "vars": {
     "APP_ORIGIN": "http://localhost:5173",
-    "MAIL_FROM": "Threadums <noreply@example.com>"
+    "MAIL_FROM": "RP Thread Buddy <noreply@local.test>"
     // Optional: REFRESH_FETCH_BUDGET (int, clamped 1..900, default 30). Raises the
     // per-run Tumblr fetch ceiling on a paid plan without a code change. Deliberately
     // NOT set here as a value — leave it unset so the default applies.

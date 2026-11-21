@@ -5,12 +5,12 @@ Use dedicated test blogs and fictional posts. Do not use real roleplay threads o
 ## Setup
 
 1. Prepare one Tumblr account with a primary test blog and, if possible, a second sideblog. Prepare three partner test blogs.
-2. Sign in to Puffin Post with the beta magic link and connect the Tumblr test account.
+2. Sign in to RP Thread Buddy with the beta magic link and connect the Tumblr test account.
 3. Confirm the Connections screen lists only the blogs Tumblr returned. Attach the selected blog to a character.
 
 ## Branch behavior
 
-1. Publish a root starter from the selected character blog and add it to Puffin Post.
+1. Publish a root starter from the selected character blog and add it to RP Thread Buddy.
 2. Create three reply branches from that one starter, each with a distinct partner blog.
 3. Cause partner A to reply/reblog. Run or wait for refresh.
 4. Verify only A's branch changes activity/turn information. B and C retain their own notes, status, and activity.

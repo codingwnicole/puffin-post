@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception'
 import type { Env } from '../worker'
 import { z } from 'zod'
 import { requireWorkspace } from '../auth/sessions'
+import { checkRateLimit } from '../auth/rate-limits'
 import { getAuthorizedCharacterIcon, putCharacterIcon, MAX_ICON_BYTES, validatedRasterType } from '../storage/icons'
 import { parsePlaylist, parseBoard, parsePin } from '../shared/embeds'
 import { CARD_SYMBOL_KEYS } from '../shared/card-symbols'
@@ -41,17 +42,25 @@ export function spotifyTrackFromEmbed(html: string) {
 }
 async function spotifySong(raw: string, url: URL, fallback: string) {
   try {
-    const resolved = url.hostname === 'spotify.link' ? new URL((await fetch(raw, { headers: { 'user-agent': 'PuffinPost/1' } })).url) : url
+    let resolved = url
+    if (url.hostname === 'spotify.link') {
+      const response = await fetch(raw, { headers: { 'user-agent': 'RPThreadBuddy/1' }, redirect: 'manual', signal: AbortSignal.timeout(5_000) })
+      const location = response.headers.get('location')
+      if (!location) return spotifyTitle(fallback)
+      resolved = new URL(location, url)
+      if (resolved.protocol !== 'https:' || resolved.hostname !== 'open.spotify.com') return spotifyTitle(fallback)
+    }
     const match = resolved.pathname.match(/\/track\/([A-Za-z0-9]+)/)
     if (!match) return spotifyTitle(fallback)
-    const meta = spotifyTrackFromEmbed(await (await fetch(`https://open.spotify.com/embed/track/${match[1]}`, { headers: { 'user-agent': 'PuffinPost/1' } })).text())
+    const response = await fetch(`https://open.spotify.com/embed/track/${match[1]}`, { headers: { 'user-agent': 'RPThreadBuddy/1' }, redirect: 'manual', signal: AbortSignal.timeout(5_000) })
+    const meta = spotifyTrackFromEmbed(await response.text())
     return meta.song ? meta : spotifyTitle(fallback)
   } catch { return spotifyTitle(fallback) }
 }
 
 export function characterRoutes() {
   const app = new Hono<{ Bindings: Env }>()
-  app.get('/song-lookup', async c => { const s=await requireWorkspace(c),raw=c.req.query('url'); if(!raw) throw new HTTPException(400,{message:'url required'}); let url:URL; try{url=new URL(raw)}catch{throw new HTTPException(400,{message:'Invalid URL'})}; const host=url.hostname.toLowerCase(),isSpotify=host==='open.spotify.com'||host==='spotify.link',endpoint=isSpotify?'https://open.spotify.com/oembed?url=':OEMBED[host]; if(!endpoint) return c.json({song:'',artist:''}); try{const r=await fetch(endpoint+encodeURIComponent(raw),{headers:{'user-agent':'PuffinPost/1'}}); if(!r.ok) return c.json({song:'',artist:''}); const d=await r.json() as Record<string,unknown>; const title=String(d.title??''),author=String(d.author_name??''); const parsed=isSpotify?await spotifySong(raw,url,title):{song:title.trim(),artist:author.trim()}; return c.json({song:parsed.song.slice(0,120),artist:parsed.artist.slice(0,120)})}catch{return c.json({song:'',artist:''})} })
+  app.get('/song-lookup', async c => { const s=await requireWorkspace(c),raw=c.req.query('url'); if(!raw) throw new HTTPException(400,{message:'url required'}); if(raw.length>2048) throw new HTTPException(400,{message:'URL is too long'}); let url:URL; try{url=new URL(raw)}catch{throw new HTTPException(400,{message:'Invalid URL'})}; if(url.protocol!=='https:'||url.username||url.password) throw new HTTPException(400,{message:'Use an HTTPS link'}); const host=url.hostname.toLowerCase(),isSpotify=host==='open.spotify.com'||host==='spotify.link',endpoint=isSpotify?'https://open.spotify.com/oembed?url=':OEMBED[host]; if(!endpoint) return c.json({song:'',artist:''}); if(!(await checkRateLimit(s.db,`song_lookup:${s.userId}`,30,60_000)).allowed) throw new HTTPException(429,{message:'Too many lookups. Wait a minute and try again.'}); try{const r=await fetch(endpoint+encodeURIComponent(raw),{headers:{'user-agent':'RPThreadBuddy/1'},redirect:'manual',signal:AbortSignal.timeout(5_000)}); if(!r.ok) return c.json({song:'',artist:''}); const d=await r.json() as Record<string,unknown>; const title=String(d.title??''),author=String(d.author_name??''); const parsed=isSpotify?await spotifySong(raw,url,title):{song:title.trim(),artist:author.trim()}; return c.json({song:parsed.song.slice(0,120),artist:parsed.artist.slice(0,120)})}catch{return c.json({song:'',artist:''})} })
   app.get('/', async c => { const s=await requireWorkspace(c); const rows=await s.db.prepare('SELECT id,name,color,state,notes,icon_object_key AS iconObjectKey,portrait_object_key AS portraitObjectKey,card_json AS cardJson FROM characters WHERE workspace_id=? AND state=\'active\' ORDER BY name').bind(s.workspaceId).all<Record<string,unknown>&{cardJson:string|null}>(); return c.json(rows.results.map(({cardJson,...row})=>({...row,card:cardJson?JSON.parse(cardJson):null}))) })
   app.put('/:id/card', async c => { const s=await requireWorkspace(c),id=c.req.param('id'), parsed=cardSchema.safeParse(await c.req.json().catch(()=>null)); if(!parsed.success) throw new HTTPException(400,{message:'Check the card fields'}); const result=await s.db.prepare('UPDATE characters SET card_json=? WHERE workspace_id=? AND id=?').bind(JSON.stringify(parsed.data),s.workspaceId,id).run(); if(!result.meta.changes) throw new HTTPException(404,{message:'Character not found'}); const old=await s.db.prepare('SELECT preview_object_key AS k FROM character_shares WHERE workspace_id=? AND character_id=?').bind(s.workspaceId,id).first<{k:string|null}>(); if(old?.k){await s.db.prepare('UPDATE character_shares SET preview_object_key=NULL,updated_at=? WHERE workspace_id=? AND character_id=?').bind(new Date().toISOString(),s.workspaceId,id).run();c.executionCtx.waitUntil(c.env.ICONS.delete(old.k).catch(()=>{}))} return c.json(parsed.data) })
   app.delete('/:id/card', async c => { const s=await requireWorkspace(c),id=c.req.param('id'); const row=await s.db.prepare('SELECT portrait_object_key AS portraitKey FROM characters WHERE workspace_id=? AND id=?').bind(s.workspaceId,id).first<{portraitKey:string|null}>(); if(!row) throw new HTTPException(404,{message:'Character not found'}); await s.db.prepare('UPDATE characters SET card_json=NULL, portrait_object_key=NULL WHERE workspace_id=? AND id=?').bind(s.workspaceId,id).run(); if(row.portraitKey) c.executionCtx.waitUntil(c.env.ICONS.delete(row.portraitKey)); return c.body(null,204) })

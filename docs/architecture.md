@@ -1,4 +1,4 @@
-# Puffin Post architecture
+# RP Thread Buddy architecture
 
 One Cloudflare Worker (Hono) serves the API and the built React single-page app. D1 holds all data, R2 holds character icons, a cron trigger runs background sync.
 
@@ -7,10 +7,11 @@ One Cloudflare Worker (Hono) serves the API and the built React single-page app.
 | Path | Responsibility |
 | --- | --- |
 | `src/worker.ts` | Wires routes under `/api`, security headers, same-origin check for writes, error handler, cron entry (`scheduled`). |
-| `src/auth/sessions.ts` | Session cookie, `requireWorkspace` (every data route starts here). |
-| `src/auth/magic-links.ts`, `passwords.ts` | Email sign-in links, password hashing and sign-in. |
+| `src/auth/sessions.ts` | Signed `__Host-` session cookie, expiry, revocation, membership checks. |
+| `src/auth/magic-links.ts`, `passwords.ts` | Single-use email sign-in links, password hashing and sign-in. Passwords can be added after email-link sign-in. |
+| `src/auth/moderator.ts` | Moderator check against the configured server-side user ID. |
 | `src/auth/invites.ts` | Shared-workspace invites and owner checks. |
-| `src/auth/rate-limits.ts` | D1-backed rate limits for sign-in, sign-up and expensive calls. |
+| `src/auth/rate-limits.ts` | Atomic D1-backed rate limits for sign-in, email requests and expensive calls. |
 | `src/routes/starters.ts` | Add/resolve threads (reads the Tumblr post), titles, premise. |
 | `src/routes/branches.ts` | Inbox, per-partner reply branches, status, archive/restore. |
 | `src/routes/reply-drafts.ts` | Parking lot drafts and converting them to threads. |
@@ -36,11 +37,13 @@ One Cloudflare Worker (Hono) serves the API and the built React single-page app.
 
 ## Secrets
 
-Worker secrets (never in git; local copies in `.dev.vars`): `SESSION_SECRET`, `TOKEN_ENCRYPTION_KEY` (encrypts Tumblr tokens at rest), `TUMBLR_CONSUMER_KEY`/`SECRET`, `RESEND_API_KEY`, `PUSH_VAPID_PRIVATE_KEY`. Plain vars in wrangler config: `APP_ORIGIN`, `MAIL_FROM`, `REFRESH_FETCH_BUDGET`. Tumblr tokens never leave the Worker.
+Worker secrets (never in git; local copies in `.dev.vars`): `SESSION_SECRET`, `TOKEN_ENCRYPTION_KEY` (encrypts Tumblr tokens at rest), `TUMBLR_CONSUMER_KEY`/`SECRET`, `RESEND_API_KEY`, `PUSH_VAPID_PRIVATE_KEY`. Plain vars in Wrangler config: `APP_ORIGIN`, `MAIL_FROM`, `REFRESH_FETCH_BUDGET`, and `MODERATOR_USER_ID`. The moderator variable must contain an existing user ID; an unset value disables moderator actions. Tumblr tokens never leave the Worker.
 
 ## Workspace scoping
 
-Every route calls `requireWorkspace(c)`, which checks the session and membership and returns `{ db, workspaceId }`. Every SQL statement on a tenant table filters by `workspace_id`; `tests/integration/tenant-scoping.test.ts` fails the build if one does not (short allowlist for the cron and account deletion). Cross-user tests: `ownership.test.ts`, `cross-user.test.ts`, `tests/e2e/real-flows.spec.ts`.
+Every protected tenant-data route calls `requireWorkspace(c)`, which checks the session and current membership and returns `{ db, workspaceId }`. Public share pages, email-link confirmation, and the push public key are intentional public routes. Tenant-table statements filter by `workspace_id`; `tests/integration/tenant-scoping.test.ts` checks this (with an allowlist for cron and account deletion). Cross-user tests: `ownership.test.ts`, `cross-user.test.ts`, `tests/e2e/real-flows.spec.ts`.
+
+New accounts are created through the email-link flow. Password sign-in is available for users who set a password after signing in by email. Public email-link sign-up is currently open; each verified address receives a private workspace.
 
 ## Cron sync
 

@@ -88,6 +88,7 @@ export function settingsRoutes() {
         const next = await c.env.DB.prepare('SELECT user_id FROM memberships WHERE workspace_id=? AND user_id!=? LIMIT 1').bind(ws, identity.userId).first<{ user_id: string }>()
         if (next) {
           statements.push(c.env.DB.prepare('UPDATE workspaces SET owner_user_id=? WHERE id=?').bind(next.user_id, ws))
+          statements.push(c.env.DB.prepare("UPDATE memberships SET role='owner' WHERE workspace_id=? AND user_id=?").bind(ws, next.user_id))
         }
       }
       for (const table of USER_TABLES) {

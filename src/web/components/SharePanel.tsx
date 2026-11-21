@@ -104,18 +104,18 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
     try { await navigator.clipboard.writeText(text); setCopied(label); setTimeout(() => setCopied(''), 2000) } catch { /* clipboard may not be available */ }
   }
 
-  const origin = share?.url ? new URL(share.url).origin : 'https://puffinpost.app'
+  const origin = share?.url ? new URL(share.url).origin : 'https://rpthreadbuddy.app'
   const slug = share?.slug ?? ''
   const pageUrl = `${origin}/c/${slug}`
 
   const snippets = share ? [
     { label: 'Link', value: pageUrl, hint: 'Paste anywhere. Discord, Tumblr and iMessage show a preview picture.' },
-    { label: 'Image + link (HTML)', value: `<a href="${pageUrl}"><img src="${pageUrl}/card.png" alt="${character.name} on Puffin Post" width="440"></a>`, hint: 'Tumblr posts (HTML editor), Tumblr bio or theme, carrd Image or Embed element, AO3 and most sites. Tumblr copies the picture into the post, so it won\'t update later.' },
+    { label: 'Image + link (HTML)', value: `<a href="${pageUrl}"><img src="${pageUrl}/card.png" alt="${character.name} on RP Thread Buddy" width="440"></a>`, hint: 'Tumblr posts (HTML editor), Tumblr bio or theme, carrd Image or Embed element, AO3 and most sites. Tumblr copies the picture into the post, so it won\'t update later.' },
     { label: 'BBCode', value: `[url=${pageUrl}][img]${pageUrl}/card.png[/img][/url]`, hint: 'Forums like JCink and ProBoards.' },
     { label: 'Markdown', value: `[![${character.name}](${pageUrl}/card.png)](${pageUrl})`, hint: 'Reddit, Notion, GitHub and other Markdown editors.' },
     { label: 'Interactive card (iframe)', value: style === 'card'
-      ? `<iframe src="${pageUrl}/embed" width="340" height="480" style="border:0" title="${character.name} on Puffin Post" loading="lazy"></iframe>`
-      : `<iframe src="${pageUrl}/embed" width="480" height="260" style="border:0" title="${character.name} on Puffin Post" loading="lazy"></iframe>`,
+      ? `<iframe src="${pageUrl}/embed" width="340" height="480" style="border:0" title="${character.name} on RP Thread Buddy" loading="lazy"></iframe>`
+      : `<iframe src="${pageUrl}/embed" width="480" height="260" style="border:0" title="${character.name} on RP Thread Buddy" loading="lazy"></iframe>`,
       hint: 'Flippable card for carrd (Embed element, Pro plan), personal websites and custom Tumblr themes. Doesn\'t work in Tumblr posts or Discord; use the link or image there.' },
   ] : []
 

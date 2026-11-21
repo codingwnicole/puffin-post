@@ -2,13 +2,12 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { Env } from '../worker'
 import { requireWorkspace } from '../auth/sessions'
-import { checkRateLimit } from '../auth/rate-limits'
+import { isModerator } from '../auth/moderator'
+import { checkRateLimit, opaqueRateLimitKey } from '../auth/rate-limits'
 import { renderToString } from 'react-dom/server'
 import { createElement } from 'react'
 import { Side, emptyCard, normalizeCard, type CardProfile, type CardStats, THEMES } from '../web/components/TradingCard'
 import { parsePlaylist } from '../shared/embeds'
-
-const moderatorEmail = 'tmixwix@gmail.com'
 
 type ShareRow = { id: string; workspaceId: string; characterId: string; slug: string; style: 'card' | 'stats'; showMoodboard: number; showPlaylist: number; showStats: number; indexable: number; previewObjectKey: string | null; disabledByModerator: number }
 type CharRow = { name: string; iconObjectKey: string | null; portraitObjectKey: string | null; cardJson: string | null }
@@ -46,7 +45,7 @@ async function getStats(db: D1Database, workspaceId: string, characterId: string
 function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: CardStats, moodItems: { id: string; kind: string; pinId: string | null }[], appOrigin: string): string {
   const name = char.name
   const slug = share.slug
-  const description = card.nickname || card.quote || 'A character card on Puffin Post'
+  const description = card.nickname || card.quote || 'A character card on RP Thread Buddy'
   const hasPreview = !!share.previewObjectKey
   const noindex = !share.indexable
   const t = THEMES[card.theme] ?? THEMES.holo
@@ -105,7 +104,9 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${escapeHtml(name)} &middot; Puffin Post</title>
+<link rel="canonical" href="${escapeHtml(appOrigin)}/c/${escapeHtml(slug)}">
+<title>${escapeHtml(name)} &middot; RP Thread Buddy</title>
+<meta property="og:site_name" content="RP Thread Buddy">
 <meta property="og:title" content="${escapeHtml(name)}">
 <meta property="og:description" content="${escapeHtml(description)}">
 ${hasPreview ? `<meta property="og:image" content="${escapeHtml(appOrigin)}/c/${escapeHtml(slug)}/card.png">` : ''}
@@ -186,7 +187,7 @@ a{color:var(--accent)}
 .footer{margin-top:3rem;padding-top:1.25rem;border-top:1px solid color-mix(in srgb,var(--stroke) 40%,transparent);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem}
 .footer-brand{display:flex;align-items:center;gap:.5rem;font:600 .95rem Georgia,serif;color:var(--sub);text-decoration:none}
 .footer-brand:hover{color:var(--ink)}
-.footer-mark{display:grid;place-items:center;width:1.6rem;height:1.6rem;border-radius:50%;background:var(--accent);color:var(--panel1);font:italic 700 1rem Georgia,serif}
+.footer-mark{display:grid;place-items:center;width:1.6rem;height:1.6rem;border-radius:50%;background:var(--accent);color:var(--panel1);font:800 .72rem Georgia,serif;letter-spacing:-.08em}
 .footer-right{font-size:.82rem;color:var(--sub)}
 .footer-right a{color:var(--accent);font-weight:600}
 .report-toggle{background:none;border:none;color:var(--sub);font-size:.78rem;cursor:pointer;padding:.2rem}
@@ -227,8 +228,8 @@ ${songLine ? `<p class="hero-song">${escapeHtml(songLine)}</p>` : ''}
 ${factsHtml}${detailsHtml}${moodboardHtml}${boardHtml}${playlistHtml}${tracklistHtml}${statsHtml}
 ${cardDisplayHtml}
 <footer class="footer">
-<a href="https://puffinpost.app" class="footer-brand"><span class="footer-mark">P</span>Puffin Post</a>
-<div class="footer-right"><a href="https://puffinpost.app">Make your own</a><span> &middot; </span><details style="display:inline"><summary class="report-toggle">Report</summary><form method="POST" action="/c/${escapeHtml(slug)}/report" class="report-form"><textarea name="reason" maxlength="1000" required placeholder="Why are you reporting this page?"></textarea><button type="submit" class="btn-accent" style="margin-top:.35rem;padding:.4rem 1rem;font-size:.82rem">Send report</button></form></details></div>
+<a href="${escapeHtml(appOrigin)}" class="footer-brand"><span class="footer-mark">RP</span>RP Thread Buddy</a>
+<div class="footer-right"><a href="${escapeHtml(appOrigin)}">Make your own</a><span> &middot; </span><details style="display:inline"><summary class="report-toggle">Report</summary><form method="POST" action="/c/${escapeHtml(slug)}/report" class="report-form"><textarea name="reason" maxlength="1000" required placeholder="Why are you reporting this page?"></textarea><button type="submit" class="btn-accent" style="margin-top:.35rem;padding:.4rem 1rem;font-size:.82rem">Send report</button></form></details></div>
 </footer>
 </div>
 <script src="/share.js" defer></script>
@@ -242,17 +243,17 @@ function renderEmbed(share: ShareRow, char: CharRow, card: CardProfile, stats: C
   if (share.style === 'card') {
     const frontSvg = renderToString(createElement(Side, { side: 'front', name, profile: card, stats, portrait: `/c/${slug}/portrait`, moodboard: [], uid: 'ef' }))
     const backSvg = renderToString(createElement(Side, { side: 'back', name, profile: card, stats: share.showStats ? stats : { total: 0, mine: 0, theirs: 0, rps: [] }, portrait: null, moodboard: [], uid: 'eb' }))
-    return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh}svg{width:340px;max-height:480px}a{font-size:12px;color:#7c5cbf;margin-top:4px;font-family:sans-serif}[data-flipped="false"] .card-face-front{display:block}[data-flipped="false"] .card-face-back{display:none}[data-flipped="true"] .card-face-front{display:none}[data-flipped="true"] .card-face-back{display:block}button.flip-btn{padding:6px 16px;background:#7c5cbf;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;margin-top:4px;min-height:44px}</style></head><body><div id="embed-card" data-flipped="false"><div class="card-face-front">${frontSvg}</div><div class="card-face-back">${backSvg}</div></div><button type="button" class="flip-btn" data-card-flip="embed-card" aria-pressed="false">Flip</button><a href="${escapeHtml(appOrigin)}/c/${escapeHtml(slug)}" target="_blank" rel="noopener">Open on Puffin Post</a><script src="/share.js" defer></script></body></html>`
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh}svg{width:340px;max-height:480px}a{font-size:12px;color:#7c5cbf;margin-top:4px;font-family:sans-serif}[data-flipped="false"] .card-face-front{display:block}[data-flipped="false"] .card-face-back{display:none}[data-flipped="true"] .card-face-front{display:none}[data-flipped="true"] .card-face-back{display:block}button.flip-btn{padding:6px 16px;background:#7c5cbf;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;margin-top:4px;min-height:44px}</style></head><body><div id="embed-card" data-flipped="false"><div class="card-face-front">${frontSvg}</div><div class="card-face-back">${backSvg}</div></div><button type="button" class="flip-btn" data-card-flip="embed-card" aria-pressed="false">Flip</button><a href="${escapeHtml(appOrigin)}/c/${escapeHtml(slug)}" target="_blank" rel="noopener">Open on RP Thread Buddy</a><script src="/share.js" defer></script></body></html>`
   }
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1520;color:#f0e8f0;font-family:Georgia,serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:16px}img{width:64px;height:64px;border-radius:50%;object-fit:cover;margin-bottom:8px}.stats{display:flex;gap:16px;margin-top:12px;font-size:14px}a{font-size:12px;color:#7c5cbf;margin-top:8px}</style></head><body><img src="/c/${escapeHtml(slug)}/portrait" alt="" onerror="this.style.display='none'"><strong>${escapeHtml(name)}</strong>${share.showStats ? `<div class="stats"><span>${stats.total} threads</span><span>${stats.mine} yours</span><span>${stats.theirs} theirs</span></div>` : ''}<a href="${escapeHtml(appOrigin)}/c/${escapeHtml(slug)}" target="_blank" rel="noopener">Open on Puffin Post</a></body></html>`
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><style>*{margin:0;padding:0;box-sizing:border-box}body{background:#1a1520;color:#f0e8f0;font-family:Georgia,serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:16px}img{width:64px;height:64px;border-radius:50%;object-fit:cover;margin-bottom:8px}.stats{display:flex;gap:16px;margin-top:12px;font-size:14px}a{font-size:12px;color:#7c5cbf;margin-top:8px}</style></head><body><img src="/c/${escapeHtml(slug)}/portrait" alt="" onerror="this.style.display='none'"><strong>${escapeHtml(name)}</strong>${share.showStats ? `<div class="stats"><span>${stats.total} threads</span><span>${stats.mine} yours</span><span>${stats.theirs} theirs</span></div>` : ''}<a href="${escapeHtml(appOrigin)}/c/${escapeHtml(slug)}" target="_blank" rel="noopener">Open on RP Thread Buddy</a></body></html>`
 }
 
-function notFoundPage(): string {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not Found &middot; Puffin Post</title><style>body{font-family:Georgia,serif;background:#1a1520;color:#f0e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}div{text-align:center}a{color:#7c5cbf}</style></head><body><div><h1>Page not found</h1><p style="margin-top:12px">This share link may have been removed or rotated.</p><p style="margin-top:8px"><a href="https://puffinpost.app">Puffin Post</a></p></div></body></html>`
+function notFoundPage(appOrigin: string): string {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Not Found &middot; RP Thread Buddy</title><style>body{font-family:Georgia,serif;background:#1a1520;color:#f0e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}div{text-align:center}a{color:#7c5cbf}</style></head><body><div><h1>Page not found</h1><p style="margin-top:12px">This share link may have been removed or rotated.</p><p style="margin-top:8px"><a href="${escapeHtml(appOrigin)}">RP Thread Buddy</a></p></div></body></html>`
 }
 
-function thankYouPage(): string {
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Report Received &middot; Puffin Post</title><style>body{font-family:Georgia,serif;background:#1a1520;color:#f0e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}div{text-align:center}a{color:#7c5cbf}</style></head><body><div><h1>Thank you</h1><p style="margin-top:12px">Your report has been received. We&#x27;ll review it shortly.</p><p style="margin-top:8px"><a href="https://puffinpost.app">Puffin Post</a></p></div></body></html>`
+function thankYouPage(appOrigin: string): string {
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Report Received &middot; RP Thread Buddy</title><style>body{font-family:Georgia,serif;background:#1a1520;color:#f0e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}div{text-align:center}a{color:#7c5cbf}</style></head><body><div><h1>Thank you</h1><p style="margin-top:12px">Your report has been received. We&#x27;ll review it shortly.</p><p style="margin-top:8px"><a href="${escapeHtml(appOrigin)}">RP Thread Buddy</a></p></div></body></html>`
 }
 
 export function publicShareRoutes() {
@@ -260,7 +261,7 @@ export function publicShareRoutes() {
 
   app.get('/:slug', async c => {
     const data = await loadShare(c.env.DB, c.req.param('slug'))
-    if (!data) return c.html(notFoundPage(), 404, { 'Content-Security-Policy': PAGE_CSP, 'Cache-Control': 'public, max-age=60' })
+    if (!data) return c.html(notFoundPage(c.env.APP_ORIGIN), 404, { 'Content-Security-Policy': PAGE_CSP, 'Cache-Control': 'public, max-age=60' })
     const { share, char } = data
     const card = savedCard(char.cardJson)
     const stats = await getStats(c.env.DB, share.workspaceId, share.characterId)
@@ -272,7 +273,7 @@ export function publicShareRoutes() {
 
   app.get('/:slug/embed', async c => {
     const data = await loadShare(c.env.DB, c.req.param('slug'))
-    if (!data) return c.html(notFoundPage(), 404)
+    if (!data) return c.html(notFoundPage(c.env.APP_ORIGIN), 404)
     const { share, char } = data
     const card = savedCard(char.cardJson)
     const stats = await getStats(c.env.DB, share.workspaceId, share.characterId)
@@ -309,10 +310,10 @@ export function publicShareRoutes() {
   app.post('/:slug/report', async c => {
     const slug = c.req.param('slug')
     const share = await c.env.DB.prepare('SELECT id FROM character_shares WHERE slug=?').bind(slug).first()
-    if (!share) return c.html(notFoundPage(), 404)
+    if (!share) return c.html(notFoundPage(c.env.APP_ORIGIN), 404)
     const ip = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'unknown'
-    const ipHash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ip)))).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16)
-    const rateOk = await checkRateLimit(c.env.DB, `share_report:${ipHash}`, 5, 3600_000)
+    const ipKey = await opaqueRateLimitKey(c.env.SESSION_SECRET, `share_report:${ip}`)
+    const rateOk = await checkRateLimit(c.env.DB, ipKey, 5, 3600_000)
     if (!rateOk.allowed) return c.html('<p>Too many reports. Please wait before trying again.</p>', 429)
     const contentType = c.req.header('content-type') ?? ''
     let reason = ''
@@ -323,12 +324,20 @@ export function publicShareRoutes() {
       try { const json = await c.req.json<{ reason?: string }>(); reason = String(json.reason ?? '').slice(0, 1000) } catch { /* empty */ }
     }
     await c.env.DB.prepare('INSERT INTO share_reports (id,slug,reason,created_at) VALUES (?,?,?,?)').bind(crypto.randomUUID(), slug, reason, new Date().toISOString()).run()
-    const modEmail = c.env.BOOTSTRAP_OWNER_EMAIL ?? moderatorEmail
-    await fetch('https://api.resend.com/emails', {
-      method: 'POST', headers: { authorization: `Bearer ${c.env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: c.env.MAIL_FROM, to: [modEmail], subject: `Puffin Post share report: ${slug}`, text: `Reason: ${reason}\n\nLink: ${c.env.APP_ORIGIN}/c/${slug}` }),
-    }).catch(() => undefined)
-    return c.html(thankYouPage())
+    if (c.env.BOOTSTRAP_OWNER_EMAIL) {
+      try {
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST', headers: { authorization: `Bearer ${c.env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+          redirect: 'manual',
+          signal: AbortSignal.timeout(10_000),
+          body: JSON.stringify({ from: c.env.MAIL_FROM, to: [c.env.BOOTSTRAP_OWNER_EMAIL], subject: `RP Thread Buddy share report: ${slug}`, text: `Reason: ${reason}\n\nLink: ${c.env.APP_ORIGIN}/c/${slug}` }),
+        })
+        if (!response.ok) throw new Error('Email provider rejected the report')
+      } catch {
+        console.error('Share report saved but moderator notification failed')
+      }
+    }
+    return c.html(thankYouPage(c.env.APP_ORIGIN))
   })
 
   return app
@@ -339,7 +348,7 @@ export function shareAdminRoutes() {
 
   app.post('/:slug/disable', async c => {
     const scope = await requireWorkspace(c)
-    if (scope.email.toLowerCase() !== moderatorEmail) throw new HTTPException(403, { message: 'Moderator access required' })
+    if (!isModerator(scope.userId, c.env.MODERATOR_USER_ID)) throw new HTTPException(403, { message: 'Moderator access required' })
     const result = await c.env.DB.prepare('UPDATE character_shares SET disabled_by_moderator=1,updated_at=? WHERE slug=?').bind(new Date().toISOString(), c.req.param('slug')).run()
     if (!result.meta.changes) throw new HTTPException(404, { message: 'Share not found' })
     return c.json({ ok: true })
@@ -347,7 +356,7 @@ export function shareAdminRoutes() {
 
   app.post('/:slug/enable', async c => {
     const scope = await requireWorkspace(c)
-    if (scope.email.toLowerCase() !== moderatorEmail) throw new HTTPException(403, { message: 'Moderator access required' })
+    if (!isModerator(scope.userId, c.env.MODERATOR_USER_ID)) throw new HTTPException(403, { message: 'Moderator access required' })
     const result = await c.env.DB.prepare('UPDATE character_shares SET disabled_by_moderator=0,updated_at=? WHERE slug=?').bind(new Date().toISOString(), c.req.param('slug')).run()
     if (!result.meta.changes) throw new HTTPException(404, { message: 'Share not found' })
     return c.json({ ok: true })

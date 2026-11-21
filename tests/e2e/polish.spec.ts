@@ -52,7 +52,7 @@ test.describe('T7c polish', () => {
       body: JSON.stringify([]),
     }))
     await page.goto('/#inbox')
-    await expect(page.getByRole('link', { name: 'Puffin Post', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
 
     // "1 overdue note" link (.reminder-summary a)
     const overdue = page.locator('.reminder-summary a')
@@ -75,7 +75,7 @@ test.describe('T7c polish', () => {
 
     // .text-button "Add link" and "assign Tumblr" (.field-help a) are on the character list.
     await page.goto('/#characters')
-    await expect(page.getByRole('link', { name: 'Puffin Post', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
     await expect(page.getByText('Rowan Ash')).toBeVisible({ timeout: 3000 })
 
     // "assign Tumblr" (.field-help a)
@@ -94,7 +94,7 @@ test.describe('T7c polish', () => {
   test('tabular numbers: count/stat elements have font-variant-numeric: tabular-nums', async ({ page }) => {
     baseRoute(page, { inbox: { branches: [], yourTurnCount: 0, overdueDraftCount: 0, dueSoonCount: 0 } })
     await page.goto('/#inbox')
-    await expect(page.getByRole('link', { name: 'Puffin Post', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
 
     // The reply count now lives once, in the chart card's donut
     const countPill = page.locator('.reply-donut strong').first()
@@ -125,7 +125,7 @@ test.describe('T7c polish', () => {
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
     })
     await page.goto('/#inbox')
-    await expect(page.getByRole('link', { name: 'Puffin Post', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
 
     // Skeleton should be visible while loading
     await expect(page.locator('.skeletons')).toBeVisible({ timeout: 500 })
@@ -141,7 +141,7 @@ test.describe('T7c polish', () => {
   test('skeleton vs empty: resolved inbox with no branches shows empty state, no skeleton', async ({ page }) => {
     baseRoute(page, { inbox: { branches: [], yourTurnCount: 0, overdueDraftCount: 0, dueSoonCount: 0 } })
     await page.goto('/#inbox')
-    await expect(page.getByRole('link', { name: 'Puffin Post', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
 
     // Wait for load to finish
     await page.waitForTimeout(300)
@@ -162,7 +162,7 @@ test.describe('T7c polish', () => {
       body: JSON.stringify([{ id: 'c1', name: 'Rowan Ash', state: 'active', iconObjectKey: 'key1' }]),
     }))
     await page.goto('/#characters')
-    await expect(page.getByRole('link', { name: 'Puffin Post', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
 
     // Wait for the 404 to trigger the fallback
     const avatar = page.locator('.character-avatar').first()
@@ -186,7 +186,7 @@ test.describe('T7c polish', () => {
     await page.setViewportSize({ width: 640, height: 400 })
     baseRoute(page, { inbox: { branches: [], yourTurnCount: 0, overdueDraftCount: 0, dueSoonCount: 0 } })
     await page.goto('/#inbox')
-    await expect(page.getByRole('link', { name: 'Puffin Post', exact: true })).toBeVisible()
+    await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
     await page.waitForTimeout(300)
 
     const { scrollWidth, clientWidth } = await page.evaluate(() => ({

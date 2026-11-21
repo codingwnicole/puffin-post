@@ -1,5 +1,6 @@
 // Public share: create a character, enable sharing, verify public page, embed, snippets, rotate, disable.
 import { expect, test } from '@playwright/test'
+import { createSignedInUser } from './auth-fixture'
 
 const APP = 'http://localhost:5173'
 test.use({ baseURL: APP })
@@ -9,7 +10,7 @@ test('share lifecycle: enable, public page, snippets, rotate, disable', async ({
   const ctx = await browser.newContext({ baseURL: APP, viewport: { width: 1280, height: 900 }, extraHTTPHeaders: { 'cf-connecting-ip': '10.4.' + Math.floor(Math.random() * 250) + '.' + Math.floor(Math.random() * 250), origin: APP } })
   const page = await ctx.newPage()
   await page.goto('/#inbox')
-  expect((await page.request.post('/api/auth/password-sign-up', { data: { email: `share-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`, password: 'correct horse battery' } })).status()).toBe(201)
+  await createSignedInUser(page)
   const { id } = await (await page.request.post('/api/characters', { data: { name: 'Sage Blackthorn' } })).json() as { id: string }
   await page.request.post('/api/starters', { data: { characterId: id, title: 'Midnight library', partnerName: 'Ivy' } })
 

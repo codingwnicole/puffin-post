@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../worker'
 import { redact } from '../shared/redact'
-import { checkRateLimit } from '../auth/rate-limits'
+import { checkRateLimit, opaqueRateLimitKey } from '../auth/rate-limits'
 
 export function clientErrorRoutes(revision: string = 'rev') {
   const app = new Hono<{ Bindings: Env }>()
@@ -10,7 +10,8 @@ export function clientErrorRoutes(revision: string = 'rev') {
   // rate-limited (T8a limiter, 10 per 15 min per IP) so a wedged page cannot
   // flood the log. Mounted at POST /api/client-errors.
   app.post('/', async c => {
-    const key = 'client-errors:' + (c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'anonymous')
+    const ip = c.req.header('cf-connecting-ip') ?? c.req.header('x-forwarded-for') ?? 'anonymous'
+    const key = await opaqueRateLimitKey(c.env.SESSION_SECRET, `client-errors:${ip}`)
     // Read the body inside the handler (some runtimes only expose it while the
     // request is live), then log it in the background.
     const body = await c.req.text().catch(() => '')

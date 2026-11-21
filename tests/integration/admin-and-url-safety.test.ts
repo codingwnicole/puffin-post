@@ -15,12 +15,12 @@ beforeAll(async () => {
 })
 afterAll(async () => { await dispose() })
 
-const cookieFor = async (tenant: string) => {
+const cookieFor = async (userId: string, workspaceId = userId) => {
   const login = new Hono<{ Bindings: typeof env }>()
-  login.get('/', async c => { await startSession(c, tenant, tenant); return c.text('ok') })
+  login.get('/', async c => { await startSession(c, userId, workspaceId); return c.text('ok') })
   return (await login.request('/', {}, env)).headers.get('set-cookie')!.split(';')[0]
 }
-// The fixture's users are not the hardcoded moderator, so neither A nor B may moderate.
+// Moderator access is granted only to the configured server-side user ID.
 describe('support board moderation is admin-only', () => {
   it('lets a member file a report but no non-admin may patch, delete, or reply', async () => {
     const file = await request('/api/support', 'POST', { kind: 'bug', title: 'Broken export', description: 'Export CSV throws a 500' }, 'a')
@@ -42,22 +42,34 @@ describe('support board moderation is admin-only', () => {
     expect(comments!.n).toBe(0)
   })
 
-  it('lets the configured moderator patch and delete', async () => {
+  it('does not grant moderation by email and lets only the configured user ID moderate', async () => {
     const file = await request('/api/support', 'POST', { kind: 'feature', title: 'Add dark mode', description: 'Please add a dark theme option' }, 'a')
     const { id } = await file.json() as any
-    // Grant the hardcoded moderator a membership in workspace A so they can reach the route.
     await env.DB.prepare('INSERT INTO users (id,email,display_name,auth_identity) VALUES (?,?,?,?)')
-      .bind('admin-user', 'tmixwix@gmail.com', 'Admin', 'email:tmixwix@gmail.com').run()
-    await env.DB.prepare("INSERT INTO memberships (workspace_id,user_id,role) VALUES ('a','admin-user','owner')").run()
+      .bind('spoof-user', 'admin@example.com', 'Spoof', 'email:admin@example.com').run()
+    await env.DB.prepare("INSERT INTO memberships (workspace_id,user_id,role) VALUES ('a','spoof-user','member')").run()
+    env.MODERATOR_USER_ID = 'configured-admin'
+    const spoofCookie = await cookieFor('spoof-user', 'a')
+    const spoofPatch = await createApp(env).request(`/api/support/${id}`, {
+      method: 'PATCH', headers: { cookie: spoofCookie, origin: env.APP_ORIGIN, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'fixed' }),
+    }, env)
+    expect(spoofPatch.status).toBe(403)
 
-    const login = new Hono<{ Bindings: typeof env }>()
-    login.get('/', async c => { await startSession(c, 'admin-user', 'a'); return c.text('ok') })
-    const cookie = (await login.request('/', {}, env)).headers.get('set-cookie')!.split(';')[0]
+    await env.DB.prepare('INSERT INTO users (id,email,display_name,auth_identity) VALUES (?,?,?,?)')
+      .bind('configured-admin', 'moderator@example.com', 'Moderator', 'email:moderator@example.com').run()
+    await env.DB.prepare("INSERT INTO memberships (workspace_id,user_id,role) VALUES ('a','configured-admin','member')").run()
+    const cookie = await cookieFor('configured-admin', 'a')
 
     const patch = await createApp(env).request(`/api/support/${id}`, {
       method: 'PATCH', headers: { cookie, origin: env.APP_ORIGIN, 'content-type': 'application/json' }, body: JSON.stringify({ status: 'fixed' }),
     }, env)
     expect(patch.status).toBe(200)
+    const shareResponse = await request('/api/characters/character-a/share', 'PUT', { style: 'card', showMoodboard: false, showPlaylist: false, showStats: false, indexable: false }, 'a')
+    const { slug } = await shareResponse.json() as { slug: string }
+    const spoofDisable = await createApp(env).request(`/api/share-admin/${slug}/disable`, { method: 'POST', headers: { cookie: spoofCookie, origin: env.APP_ORIGIN } }, env)
+    expect(spoofDisable.status).toBe(403)
+    const disable = await createApp(env).request(`/api/share-admin/${slug}/disable`, { method: 'POST', headers: { cookie, origin: env.APP_ORIGIN } }, env)
+    expect(disable.status).toBe(200)
     const del = await createApp(env).request(`/api/support/${id}`, { method: 'DELETE', headers: { cookie, origin: env.APP_ORIGIN } }, env)
     expect(del.status).toBe(204)
     const remaining = await env.DB.prepare('SELECT count(*) AS n FROM support_items WHERE id=?').bind(id).first<{ n: number }>()
@@ -66,6 +78,36 @@ describe('support board moderation is admin-only', () => {
 })
 
 describe('user-supplied link URLs are http(s)-only', () => {
+  it('does not follow a Spotify short-link redirect to a private address', async () => {
+    const originalFetch = globalThis.fetch
+    const calls: string[] = []
+    const redirectModes: Array<RequestRedirect | undefined> = []
+    globalThis.fetch = async (input, init) => {
+      const url = String(input)
+      calls.push(url)
+      redirectModes.push(init?.redirect)
+      if (url.startsWith('https://open.spotify.com/oembed?')) return new Response(JSON.stringify({ title: 'Track title' }), { headers: { 'content-type': 'application/json' } })
+      if (url === 'https://spotify.link/abc') return new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/private' } })
+      throw new Error('Unexpected external request')
+    }
+    try {
+      const url = encodeURIComponent('https://spotify.link/abc')
+      const response = await request(`/api/characters/song-lookup?url=${url}`, 'GET', undefined, 'a')
+      expect(response.status).toBe(200)
+      expect(calls).toEqual([
+        expect.stringContaining('https://open.spotify.com/oembed?'),
+        'https://spotify.link/abc',
+      ])
+      expect(redirectModes).toEqual(['manual', 'manual'])
+      expect(calls.some(call => call.includes('127.0.0.1'))).toBe(false)
+      const insecure = await request(`/api/characters/song-lookup?url=${encodeURIComponent('http://spotify.link/abc')}`, 'GET', undefined, 'a')
+      expect(insecure.status).toBe(400)
+      expect(calls).toHaveLength(2)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
   it('rejects javascript: and data: quicklinks with 400', async () => {
     for (const evil of ['javascript:alert(1)', 'data:text/html,<script>alert(1)</script>']) {
       const r = await request(`/api/characters/${characterA}/quicklinks`, 'POST', { label: 'x', url: evil }, 'a')

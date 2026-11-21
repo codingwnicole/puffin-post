@@ -97,6 +97,28 @@ describe('S14 push endpoint allowlist', () => {
     expect((await subscribe('https://updates.push.services.mozilla.com/wpush/v1/test')).status).toBe(204)
   })
 
+  it('does not reassign another user\'s endpoint and limits devices per account', async () => {
+    const sharedEndpoint = 'https://fcm.googleapis.com/fcm/send/shared-token'
+    expect((await subscribe(sharedEndpoint)).status).toBe(204)
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO users (id,email,display_name,auth_identity) VALUES ('u2','u2@example.com','u2','email:u2@example.com')"),
+      env.DB.prepare("INSERT INTO workspaces (id,name,owner_user_id) VALUES ('w2','w2','u2')"),
+      env.DB.prepare("INSERT INTO memberships (workspace_id,user_id,role) VALUES ('w2','u2','owner')"),
+    ])
+    const sessionApp = new Hono<{ Bindings: Env }>()
+    sessionApp.get('/', async c => { await startSession(c, 'u2', 'w2'); return c.text('ok') })
+    const otherCookie = (await sessionApp.request('/', {}, env)).headers.get('set-cookie')!.split(';')[0]
+    const takeover = await app.request('/api/push/subscription', {
+      method: 'POST', headers: { origin: env.APP_ORIGIN, 'content-type': 'application/json', cookie: otherCookie },
+      body: JSON.stringify({ endpoint: sharedEndpoint }),
+    }, env)
+    expect(takeover.status).toBe(429)
+    expect((await env.DB.prepare('SELECT user_id FROM push_subscriptions WHERE endpoint=?').bind(sharedEndpoint).first<{ user_id: string }>())!.user_id).toBe('u1')
+
+    for (let index = 0; index < 4; index++) expect((await subscribe(`https://fcm.googleapis.com/fcm/send/device-${index}`)).status).toBe(204)
+    expect((await subscribe('https://fcm.googleapis.com/fcm/send/device-over-limit')).status).toBe(429)
+  })
+
   it('rejects an attacker-chosen endpoint host (400)', async () => {
     expect((await subscribe('https://evil.example.com/push')).status).toBe(400)
     expect((await subscribe('https://169.254.169.254/latest/meta-data')).status).toBe(400)

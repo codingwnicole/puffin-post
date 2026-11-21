@@ -115,6 +115,8 @@ describe('data lifecycle: disconnect, account deletion, refresh lock', () => {
     // User a's membership is gone; the workspace + shared data survive.
     expect((await env.DB.prepare('SELECT COUNT(*) AS n FROM memberships WHERE user_id=?').bind('a').first()).n).toBe(0)
     expect(await workspaceRows('a')).toBeGreaterThan(0)
+    expect((await env.DB.prepare('SELECT owner_user_id FROM workspaces WHERE id=?').bind('a').first()).owner_user_id).toBe('b')
+    expect((await env.DB.prepare('SELECT role FROM memberships WHERE workspace_id=? AND user_id=?').bind('a','b').first()).role).toBe('owner')
     // Other member still sees everything.
     const chars = await fixture.request('/api/characters', 'GET', undefined, 'b')
     expect(chars.status).toBe(200)

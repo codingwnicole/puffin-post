@@ -2,9 +2,12 @@
 # Generate SESSION_SECRET and TOKEN_ENCRYPTION_KEY with a cryptographically secure 32-byte random value.
 APP_ORIGIN=http://localhost:5173
 # Production must use a sender/address verified in Resend, for example:
-# Puffin Post <noreply@YOUR_VERIFIED_RESEND_DOMAIN>
-MAIL_FROM=Puffin Post <noreply@local.test>
+# RP Thread Buddy <noreply@YOUR_VERIFIED_RESEND_DOMAIN>
+MAIL_FROM=RP Thread Buddy <noreply@local.test>
 BOOTSTRAP_OWNER_EMAIL=replace-with-your-owner-email
+# Optional: existing user ID allowed to moderate support and public-share reports.
+# Omit to disable moderator actions; never use an email address for authorization.
+# MODERATOR_USER_ID=replace-with-existing-user-id
 SESSION_SECRET=replace-with-a-random-secret
 TOKEN_ENCRYPTION_KEY=replace-with-a-random-32-byte-key
 TUMBLR_CONSUMER_KEY=replace-with-your-tumblr-oauth-consumer-key

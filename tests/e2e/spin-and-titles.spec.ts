@@ -1,5 +1,6 @@
 // Spin the wheel, turn markers and the add-thread title flow (simulated Chromium, real Worker + local D1).
 import { expect, test, type Browser } from '@playwright/test'
+import { createSignedInUser } from './auth-fixture'
 
 const APP = 'http://localhost:5173'
 test.use({ baseURL: APP })
@@ -9,7 +10,7 @@ async function signedIn(browser: Browser) {
   const context = await browser.newContext({ baseURL: APP, extraHTTPHeaders: { 'cf-connecting-ip': ip, origin: APP } })
   const page = await context.newPage()
   const email = `spin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.test`
-  expect((await page.request.post('/api/auth/password-sign-up', { data: { email, password: 'correct horse battery' } })).status()).toBe(201)
+  await createSignedInUser(page, { email })
   return { context, page }
 }
 

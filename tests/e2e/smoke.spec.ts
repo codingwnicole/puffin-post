@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('shows the Puffin Post app shell', async ({ page }) => {
+test('shows the RP Thread Buddy app shell', async ({ page }) => {
   // AppShell renders the signed-in shell when GET /api/auth/session returns 200.
   await page.route('**/api/**', route => {
     const url = new URL(route.request().url())
@@ -15,7 +15,7 @@ test('shows the Puffin Post app shell', async ({ page }) => {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/')
-  await expect(page).toHaveTitle('Puffin Post')
-  await expect(page.getByRole('link', { name: 'Puffin Post', exact: true })).toBeVisible()
+  await expect(page).toHaveTitle('RP Thread Buddy')
+  await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
   await expect(page.getByRole('main')).toContainText('Your turn')
 })

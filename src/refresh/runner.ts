@@ -338,7 +338,7 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
     if (budget.remaining() - 1 < subCount) break // keep 1 for the scheduler batch
     for (let i = 0; i < subCount; i++) budget.consume()
     const body = [counts.replyCount ? `${counts.replyCount} replies waiting` : null, counts.tagCount ? `${counts.tagCount} new tags` : null].filter(Boolean).join(', ')
-    await sendWorkspacePush(env, workspaceId, { title: 'Puffin Post', body, url: '/#inbox' })
+    await sendWorkspacePush(env, workspaceId, { title: 'RP Thread Buddy', body, url: '/#inbox' })
   }
   const used = budget.used()
   return { selected: selected.length, refreshed, failed, skipped, fetchesUsed: used.fetches, d1Used: used.d1, rateLimited }

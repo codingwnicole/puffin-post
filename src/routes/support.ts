@@ -2,11 +2,11 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
 import { requireWorkspace } from '../auth/sessions'
+import { isModerator } from '../auth/moderator'
+import { checkRateLimit } from '../auth/rate-limits'
 import type { Env } from '../worker'
 
 const statusSchema = z.enum(['reported', 'acknowledged', 'investigating', 'planned', 'fixed'])
-const moderatorEmail = 'tmixwix@gmail.com'
-
 async function emailWorkspaceOwner(env: Env, db: D1Database, workspaceId: string, from: string, kind: string, title: string, description: string) {
   const owner = await db.prepare(`SELECT u.email FROM memberships m JOIN users u ON u.id=m.user_id
     WHERE m.workspace_id=? AND m.role='owner' ORDER BY m.created_at LIMIT 1`).bind(workspaceId).first<{ email: string }>()
@@ -14,14 +14,15 @@ async function emailWorkspaceOwner(env: Env, db: D1Database, workspaceId: string
   if (!recipient) return
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ from: env.MAIL_FROM, to: [recipient], subject: `New Puffin Post ${kind} report: ${title}`, text: `From: ${from}\n\n${description}` }),
+    redirect: 'manual',
+    signal: AbortSignal.timeout(10_000),
+    body: JSON.stringify({ from: env.MAIL_FROM, to: [recipient], subject: `New RP Thread Buddy ${kind} report: ${title}`, text: `From: ${from}\n\n${description}` }),
   })
   if (!response.ok) throw new Error('Unable to email the report')
 }
 
 export function supportRoutes() {
   const app = new Hono<{ Bindings: Env }>()
-  const canModerate = (email:string) => email.toLowerCase() === moderatorEmail
   app.get('/', async c => {
     const scope = await requireWorkspace(c)
     const items = await scope.db.prepare(`SELECT si.id,si.kind,si.title,si.description,si.status,si.created_at AS createdAt,si.updated_at AS updatedAt,
@@ -31,11 +32,14 @@ export function supportRoutes() {
     // The board is shared by every user: never send emails (only the admin can comment).
     const comments=await scope.db.prepare(`SELECT sc.id,sc.support_item_id AS supportItemId,sc.body,sc.created_at AS createdAt
       FROM support_comments sc ORDER BY sc.created_at`).all<{id:string;supportItemId:string;body:string;createdAt:string}>()
-    return c.json({ items: items.results.map(item=>({...item,comments:comments.results.filter(comment=>comment.supportItemId===item.id)})), canManage: canModerate(scope.email) })
+    return c.json({ items: items.results.map(item=>({...item,comments:comments.results.filter(comment=>comment.supportItemId===item.id)})), canManage: isModerator(scope.userId, c.env.MODERATOR_USER_ID) })
   })
   app.post('/', async c => {
     const scope = await requireWorkspace(c)
     const body = z.object({ kind: z.enum(['bug', 'feature']), title: z.string().trim().min(4).max(160), description: z.string().trim().min(8).max(5000) }).strict().parse(await c.req.json())
+    if (!(await checkRateLimit(scope.db, `support_submission:${scope.userId}`, 5, 60 * 60_000)).allowed) {
+      throw new HTTPException(429, { message: 'Too many support submissions. Try again later.' })
+    }
     const id = crypto.randomUUID(), now = new Date().toISOString()
     await scope.db.prepare('INSERT INTO support_items (id,kind,title,description,submitted_by_user_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
       .bind(id, body.kind, body.title, body.description, scope.userId, now, now).run()
@@ -52,7 +56,7 @@ export function supportRoutes() {
   })
   app.patch('/:id', async c => {
     const scope = await requireWorkspace(c)
-    if (!canModerate(scope.email)) throw new HTTPException(403, { message: 'Only the Puffin Post admin can update support status' })
+    if (!isModerator(scope.userId, c.env.MODERATOR_USER_ID)) throw new HTTPException(403, { message: 'Only the RP Thread Buddy admin can update support status' })
     const body = z.object({ status: statusSchema }).strict().parse(await c.req.json())
     const result = await scope.db.prepare('UPDATE support_items SET status=?,updated_at=? WHERE id=?').bind(body.status, new Date().toISOString(), c.req.param('id')).run()
     if (!result.meta.changes) throw new HTTPException(404, { message: 'Support item not found' })
@@ -60,7 +64,7 @@ export function supportRoutes() {
   })
   app.post('/:id/comments',async c=>{
     const scope=await requireWorkspace(c), id=c.req.param('id')
-    if(!canModerate(scope.email))throw new HTTPException(403,{message:'Only the Puffin Post admin can reply'})
+    if(!isModerator(scope.userId, c.env.MODERATOR_USER_ID))throw new HTTPException(403,{message:'Only the RP Thread Buddy admin can reply'})
     const body=z.object({body:z.string().trim().min(1).max(5000)}).parse(await c.req.json())
     if(!await scope.db.prepare('SELECT id FROM support_items WHERE id=?').bind(id).first())throw new HTTPException(404,{message:'Support item not found'})
     const comment={id:crypto.randomUUID(),supportItemId:id,body:body.body,createdAt:new Date().toISOString()}
@@ -69,7 +73,7 @@ export function supportRoutes() {
   })
   app.delete('/:id',async c=>{
     const scope=await requireWorkspace(c)
-    if(!canModerate(scope.email))throw new HTTPException(403,{message:'Only the Puffin Post admin can delete support items'})
+    if(!isModerator(scope.userId, c.env.MODERATOR_USER_ID))throw new HTTPException(403,{message:'Only the RP Thread Buddy admin can delete support items'})
     const result=await scope.db.prepare('DELETE FROM support_items WHERE id=?').bind(c.req.param('id')).run()
     if(!result.meta.changes)throw new HTTPException(404,{message:'Support item not found'})
     return c.body(null,204)

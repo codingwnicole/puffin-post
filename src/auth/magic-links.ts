@@ -18,14 +18,14 @@ export function magicLinkEmail(url: string) {
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#142027;"><tr><td style="padding:40px 16px;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;margin:0 auto;">
       <tr><td style="padding:0 12px 18px;color:#f8f3e9;font-family:Georgia,'Times New Roman',serif;font-size:23px;font-weight:bold;">
-        <span style="display:inline-block;width:30px;height:30px;line-height:30px;text-align:center;margin-right:9px;border-radius:50%;background:#dce8e9;color:#263d45;font-family:Georgia,'Times New Roman',serif;font-style:italic;">P</span>Puffin Post
+        <span style="display:inline-block;width:30px;height:30px;line-height:30px;text-align:center;margin-right:9px;border-radius:50%;background:#dce8e9;color:#263d45;font-family:Georgia,'Times New Roman',serif;font-weight:bold;font-size:13px;letter-spacing:-1px;">RP</span>RP Thread Buddy
       </td></tr>
       <tr><td style="padding:38px 34px 34px;border:1px solid #4c6670;border-radius:16px;background:#213138;">
         <p style="margin:0 0 12px;color:#a9d4dc;font-size:11px;font-weight:bold;letter-spacing:1.8px;text-transform:uppercase;">Your writing space</p>
         <h1 style="margin:0;color:#f8f3e9;font-family:Georgia,'Times New Roman',serif;font-size:32px;line-height:1.1;font-weight:normal;">Your sign-in link is ready.</h1>
-        <p style="margin:20px 0 26px;color:#d9e1dd;font-size:16px;line-height:1.6;">Open Puffin and pick your story back up right where you left it.</p>
+        <p style="margin:20px 0 26px;color:#d9e1dd;font-size:16px;line-height:1.6;">Open RP Thread Buddy and pick your story back up right where you left it.</p>
         <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius:9px;background:#a9d4dc;">
-          <a href="${safeUrl}" style="display:inline-block;padding:14px 22px;border-radius:9px;color:#17242a;font-size:16px;font-weight:bold;line-height:1;text-decoration:none;">Open Puffin Post</a>
+          <a href="${safeUrl}" style="display:inline-block;padding:14px 22px;border-radius:9px;color:#17242a;font-size:16px;font-weight:bold;line-height:1;text-decoration:none;">Open RP Thread Buddy</a>
         </td></tr></table>
         <p style="margin:27px 0 0;padding-top:20px;border-top:1px solid #4c6670;color:#b9c8c7;font-size:13px;line-height:1.55;">This private link expires in 15 minutes and works once. If you did not request it, you can safely ignore this email.</p>
       </td></tr>
@@ -39,9 +39,11 @@ export function resendMailSender(env: Env): MailSender {
   return { async send({ to, url }) {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
+    redirect: 'manual',
       headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject: 'Your Puffin Post sign-in link',
-        text: `Sign in to Puffin Post: ${url}\n\nThis link expires in 15 minutes and can be used once.`, html: magicLinkEmail(url) }),
+      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject: 'Your RP Thread Buddy sign-in link',
+        text: `Sign in to RP Thread Buddy: ${url}\n\nThis link expires in 15 minutes and can be used once.`, html: magicLinkEmail(url) }),
     })
     if (!response.ok) throw new Error('Unable to send sign-in email')
   } }
@@ -55,7 +57,7 @@ export interface MagicLinkIdentity {
 }
 
 export function createMagicLinks(env: Env, sender: MailSender = resendMailSender(env)) {
-  async function issueMagicLink(email: string, intent: MagicLinkIdentity['intent'] = 'sign_in', invite?: { inviteToken: string; workspaceId: string }): Promise<string> {
+  async function insertMagicLink(email: string, intent: MagicLinkIdentity['intent'], invite: { inviteToken: string; workspaceId: string } | undefined, limitActive: boolean): Promise<string | null> {
     email = normalizeEmail(email)
     let workspaceId: string
     let inviteId: string | null = null
@@ -71,8 +73,21 @@ export function createMagicLinks(env: Env, sender: MailSender = resendMailSender
       workspaceId = member.workspaceId
     } else { throw new Error('invalid magic link') }
     const token = randomToken()
-    await env.DB.prepare('INSERT INTO magic_links (token_hash, email, intent, workspace_id, invite_id, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .bind(await hashToken(token), email, intent, workspaceId, inviteId, new Date(Date.now() + 15 * 60_000).toISOString()).run()
+    const tokenHash = await hashToken(token), expiresAt = new Date(Date.now() + 15 * 60_000).toISOString()
+    const inserted = limitActive
+      ? await env.DB.prepare(`INSERT INTO magic_links (token_hash, email, intent, workspace_id, invite_id, expires_at)
+          SELECT ?, ?, ?, ?, ?, ?
+          WHERE (SELECT COUNT(*) FROM magic_links WHERE email=? COLLATE NOCASE AND consumed_at IS NULL AND expires_at>?) < 3
+          RETURNING token_hash`)
+        .bind(tokenHash, email, intent, workspaceId, inviteId, expiresAt, email, new Date().toISOString()).first()
+      : await env.DB.prepare('INSERT INTO magic_links (token_hash, email, intent, workspace_id, invite_id, expires_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING token_hash')
+        .bind(tokenHash, email, intent, workspaceId, inviteId, expiresAt).first()
+    return inserted ? token : null
+  }
+
+  async function issueMagicLink(email: string, intent: MagicLinkIdentity['intent'] = 'sign_in', invite?: { inviteToken: string; workspaceId: string }): Promise<string> {
+    const token = await insertMagicLink(email, intent, invite, false)
+    if (!token) throw new Error('invalid magic link')
     return token
   }
 
@@ -96,11 +111,12 @@ export function createMagicLinks(env: Env, sender: MailSender = resendMailSender
     return identity
   }
 
-  async function sendMagicLink(email: string, intent: MagicLinkIdentity['intent'], invite?: { inviteToken: string; workspaceId: string }): Promise<void> {
-    const token = await issueMagicLink(email, intent, invite)
+  async function sendMagicLink(email: string, intent: MagicLinkIdentity['intent'], invite?: { inviteToken: string; workspaceId: string }): Promise<boolean> {
+    const token = await insertMagicLink(email, intent, invite, true)
+    if (!token) return false
     const url = new URL('/api/auth/verify', env.APP_ORIGIN)
     url.searchParams.set('token', token)
-    try { await sender.send({ to: normalizeEmail(email), url: url.toString(), html: magicLinkEmail(url.toString()) }) } catch (error) {
+    try { await sender.send({ to: normalizeEmail(email), url: url.toString(), html: magicLinkEmail(url.toString()) }); return true } catch (error) {
       await env.DB.prepare('DELETE FROM magic_links WHERE token_hash = ?').bind(await hashToken(token)).run()
       throw error
     }
