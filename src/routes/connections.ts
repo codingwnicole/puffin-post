@@ -42,7 +42,7 @@ export function connectionRoutes() {
     const assignments = await scope.db.prepare(`SELECT character_blogs.id, character_blogs.tumblr_connection_id AS connectionId, character_blogs.character_id AS characterId,
       character_blogs.blog_identifier AS blogIdentifier, character_blogs.display_label AS displayLabel, character_blogs.character_tag AS characterTag, characters.name AS characterName
       FROM character_blogs JOIN characters ON characters.id=character_blogs.character_id AND characters.workspace_id=character_blogs.workspace_id
-      WHERE character_blogs.workspace_id=? ORDER BY characters.name COLLATE NOCASE, character_blogs.display_label COLLATE NOCASE`).bind(scope.workspaceId).all<{id:string;connectionId:string;characterId:string;blogIdentifier:string;displayLabel:string;characterName:string}>()
+      WHERE character_blogs.workspace_id=? AND characters.state != 'archived' ORDER BY characters.name COLLATE NOCASE, character_blogs.display_label COLLATE NOCASE`).bind(scope.workspaceId).all<{id:string;connectionId:string;characterId:string;blogIdentifier:string;displayLabel:string;characterName:string}>()
     return c.json(rows.results.map(({ account_metadata_json, token: _token, secret: _secret, ...connection }) => {
       let blogs: string[] = []; try { blogs = JSON.parse(account_metadata_json).blogs ?? [] } catch { /* no assignable blogs */ }
       return { ...connection, blogs: blogs.map(canonicalBlogIdentifier), assignments: assignments.results.filter(assignment => assignment.connectionId === connection.id) }
@@ -60,6 +60,13 @@ export function connectionRoutes() {
     const blogIdentifier = canonicalBlogIdentifier(input.blogIdentifier)
     const characterTag = input.characterTag?.trim() ? normalizeTumblrTag(input.characterTag) : null
     if (!blogs.map(canonicalBlogIdentifier).includes(blogIdentifier)) return c.json({ error:'Blog is not available for this Tumblr connection' },400)
+    // An archived duplicate must not keep a live character from reclaiming its
+    // blog. Threads remain attached to the archived character; only its future
+    // Tumblr assignment is released.
+    await scope.db.prepare(`DELETE FROM character_blogs
+      WHERE workspace_id=? AND tumblr_connection_id=? AND blog_identifier=? AND character_id != ?
+        AND character_id IN (SELECT id FROM characters WHERE workspace_id=? AND state='archived')`)
+      .bind(scope.workspaceId,c.req.param('connectionId'),blogIdentifier,input.characterId,scope.workspaceId).run()
     const existing = await scope.db.prepare('SELECT id FROM character_blogs WHERE workspace_id=? AND character_id=? AND blog_identifier=?').bind(scope.workspaceId,input.characterId,blogIdentifier).first()
     const overlapping = await scope.db.prepare('SELECT id,character_tag AS characterTag FROM character_blogs WHERE workspace_id=? AND tumblr_connection_id=? AND blog_identifier=? AND character_id != ?').bind(scope.workspaceId,c.req.param('connectionId'),blogIdentifier,input.characterId).all<{id:string;characterTag:string|null}>()
     if ((!characterTag && overlapping.results.length) || (characterTag && overlapping.results.some(rule => !rule.characterTag || rule.characterTag === characterTag))) {

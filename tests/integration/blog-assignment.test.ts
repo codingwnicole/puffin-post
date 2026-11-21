@@ -50,6 +50,17 @@ describe('B04: idempotent blog assignment', () => {
     expect(count?.n).toBe(1)
   })
 
+  it('reclaims a blog from an archived duplicate without touching its history', async () => {
+    await fixture.env.DB.prepare("INSERT INTO characters (id,workspace_id,name,state) VALUES (?,?,?,?)").bind('character-archived', 'a', 'Retired character', 'archived').run()
+    await fixture.env.DB.prepare("INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label) VALUES (?,?,?,?,?,?)").bind('blog-archived', 'a', 'character-archived', 'connection-a', 'a.tumblr.com', 'a').run()
+    await fixture.env.DB.prepare("DELETE FROM character_blogs WHERE workspace_id=? AND character_id=? AND blog_identifier=?").bind('a', 'character-a', 'a.tumblr.com').run()
+
+    const reassigned = await fixture.request('/api/connections/connection-a/blogs', 'POST', { characterId: 'character-a', blogIdentifier: 'a.tumblr.com' })
+    expect(reassigned.status).toBe(201)
+    expect((await fixture.env.DB.prepare('SELECT id FROM character_blogs WHERE workspace_id=? AND character_id=?').bind('a', 'character-archived').all()).results).toEqual([])
+    expect((await fixture.env.DB.prepare('SELECT id FROM character_blogs WHERE workspace_id=? AND character_id=? AND blog_identifier=?').bind('a', 'character-a', 'a.tumblr.com').all()).results).toHaveLength(1)
+  })
+
   it('409s a re-save that would give a character the same tag as another character on the shared blog', async () => {
     await fixture.request('/api/connections/connection-a/blogs', 'POST', { characterId: 'character-a', blogIdentifier: 'a.tumblr.com', characterTag: 'aaa' })
     const other = (await (await fixture.request('/api/characters', 'POST', { name: 'Character e' })).json()) as { id: string }
