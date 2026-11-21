@@ -75,7 +75,8 @@ export function connectionRoutes() {
     // Re-save of this character's own assignment: update in place (after the shared-tag check, so a tag change can't collide).
     if (existing) {
       const displayLabel = input.displayLabel?.trim() || blogIdentifier
-      await scope.db.prepare('UPDATE character_blogs SET display_label=?,character_tag=? WHERE workspace_id=? AND id=?').bind(displayLabel,characterTag,scope.workspaceId,existing.id).run()
+      // Saved through a different Tumblr account (e.g. the old one was disconnected): the assignment follows it.
+      await scope.db.prepare('UPDATE character_blogs SET display_label=?,character_tag=?,tumblr_connection_id=? WHERE workspace_id=? AND id=?').bind(displayLabel,characterTag,c.req.param('connectionId'),scope.workspaceId,existing.id).run()
       return c.json({ id: existing.id, characterId: input.characterId, connectionId:c.req.param('connectionId'), blogIdentifier, displayLabel, characterTag },200)
     }
     const id = crypto.randomUUID()
@@ -89,7 +90,7 @@ export function connectionRoutes() {
       if(String((error as {message?:string}).message??'').includes('SQLITE_CONSTRAINT_UNIQUE')){
         const winner=await scope.db.prepare('SELECT id FROM character_blogs WHERE workspace_id=? AND character_id=? AND blog_identifier=?').bind(scope.workspaceId,input.characterId,blogIdentifier).first<{id:string}>()
         if(!winner) return c.json({ error:'A shared blog needs a different character tag for each character.' },409)
-        await scope.db.prepare('UPDATE character_blogs SET display_label=?,character_tag=? WHERE workspace_id=? AND id=?').bind(displayLabel,characterTag,scope.workspaceId,winner.id).run()
+        await scope.db.prepare('UPDATE character_blogs SET display_label=?,character_tag=?,tumblr_connection_id=? WHERE workspace_id=? AND id=?').bind(displayLabel,characterTag,c.req.param('connectionId'),scope.workspaceId,winner.id).run()
         return c.json({ id:winner.id, characterId:input.characterId, connectionId:c.req.param('connectionId'), blogIdentifier, displayLabel, characterTag },200)
       }
       throw error

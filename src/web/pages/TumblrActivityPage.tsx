@@ -120,9 +120,12 @@ export default function TumblrActivityPage() {
     const wasInMentions = mentions.some(mention => mention.id === item.id)
     setThreadCandidates(current => current.filter(candidate => candidate.id !== item.id))
     setMentions(current => current.filter(mention => mention.id !== item.id))
+    // Dismiss the whole thread (its root) when known, so the next reblog in it doesn't resurface.
+    const [rootBlog, rootPost] = item.threadKey?.split(':') ?? []
+    const target = rootBlog && rootPost ? { blogIdentifier: rootBlog, postId: rootPost } : { blogIdentifier: item.blogIdentifier, postId: item.postId }
     try {
-      await api('/tumblr-activity/dismissals', 'POST', { blogIdentifier: item.blogIdentifier, postId: item.postId })
-      toast(`Dismissed “${blogLabel(item.blogIdentifier)}”.`, () => api('/tumblr-activity/dismissals', 'DELETE', { blogIdentifier: item.blogIdentifier, postId: item.postId }))
+      await api('/tumblr-activity/dismissals', 'POST', target)
+      toast(`Dismissed “${blogLabel(item.blogIdentifier)}”.`, () => api('/tumblr-activity/dismissals', 'DELETE', target))
     } catch (problem) {
       if (wasInCandidates) setThreadCandidates(current => [...current, item])
       if (wasInMentions) setMentions(current => [...current, item])

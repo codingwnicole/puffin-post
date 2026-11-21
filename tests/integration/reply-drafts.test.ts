@@ -60,3 +60,18 @@ it('edits a draft and converts explicit notes/status, while revoked membership l
   await fixture.env.DB.prepare("DELETE FROM memberships WHERE workspace_id='a' AND user_id='a'").run()
   expect((await fixture.request('/api/reply-drafts')).status).toBe(403)
 })
+
+it('converting a draft whose link is already tracked joins that thread instead of duplicating it', async () => {
+  const db = fixture.env.DB
+  // The thread was tracked earlier through the inbox (post 12345 is a reply in thread root 999).
+  await db.prepare("INSERT INTO starters (id,workspace_id,character_id,title,source,root_post_id,root_blog_id,thread_root_id,thread_root_blog_id) VALUES ('tracked','a','character-a','Tracked','tumblr','12345','a.tumblr.com','999','partner.tumblr.com')").run()
+  await db.prepare("INSERT INTO reply_branches (id,workspace_id,starter_id,partner_id,status) VALUES ('tracked-branch','a','tracked','partner-a','their_turn')").run()
+  const draft = await (await fixture.request('/api/reply-drafts','POST',{ ...draftInput, partnerId: 'partner-a' })).json() as any
+  const response = await fixture.request(`/api/reply-drafts/${draft.id}/convert`,'POST',{ starter: starterInput })
+  expect(response.status).toBe(200)
+  const conversion = await response.json() as any
+  expect(conversion.starter.id).toBe('tracked')
+  expect(conversion.branch.id).toBe('tracked-branch')
+  expect(await db.prepare("SELECT COUNT(*) AS n FROM starters WHERE workspace_id='a'").first()).toEqual({ n: 1 })
+  expect(await db.prepare("SELECT COUNT(*) AS n FROM reply_branches WHERE workspace_id='a'").first()).toEqual({ n: 1 })
+})

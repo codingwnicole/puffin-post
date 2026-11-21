@@ -114,7 +114,10 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
     SELECT cb.id, cb.workspace_id AS workspaceId, cb.character_id AS characterId, cb.blog_identifier AS blogIdentifier, tc.id AS connectionId,
       tc.token_encrypted AS tokenEncrypted, tc.token_secret_encrypted AS tokenSecretEncrypted,
       COALESCE(rc.last_attempt_at, '') AS lastAttempt,
-      cb.id = (SELECT MIN(x.id) FROM character_blogs x WHERE x.workspace_id=cb.workspace_id AND x.character_id=cb.character_id) AS leadsCharacter,
+      -- The lead is the lowest-id blog that can run now: a disconnected or backing-off first blog must not strand the character's threads.
+      cb.id = (SELECT MIN(x.id) FROM character_blogs x JOIN tumblr_connections xt ON xt.workspace_id=x.workspace_id AND xt.id=x.tumblr_connection_id
+        LEFT JOIN refresh_cursors xr ON xr.workspace_id=x.workspace_id AND xr.character_blog_id=x.id
+        WHERE x.workspace_id=cb.workspace_id AND x.character_id=cb.character_id AND xt.status='active' AND (xr.next_retry_at IS NULL OR xr.next_retry_at <= ?)) AS leadsCharacter,
       ROW_NUMBER() OVER (PARTITION BY cb.workspace_id ORDER BY COALESCE(rc.last_attempt_at, ''), cb.id) AS rn,
       COUNT(*) OVER () AS totalDue
     FROM character_blogs cb
@@ -123,7 +126,7 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
     LEFT JOIN refresh_cursors rc ON rc.workspace_id=cb.workspace_id AND rc.character_blog_id=cb.id
     WHERE c.state='active' AND tc.status='active'
       AND (rc.next_retry_at IS NULL OR rc.next_retry_at <= ?)
-  ) ORDER BY rn, lastAttempt, id LIMIT ?`).bind(now.toISOString(), effectiveLimit).all<RefreshTarget & { totalDue: number }>()
+  ) ORDER BY rn, lastAttempt, id LIMIT ?`).bind(now.toISOString(), now.toISOString(), effectiveLimit).all<RefreshTarget & { totalDue: number }>()
   const selected = candidates.results
   dueTargets = selected[0]?.totalDue ?? 0
   let failed = 0, skipped = 0

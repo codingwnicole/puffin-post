@@ -58,22 +58,25 @@ export function characterPlannerRoutes() {
     const resources = await s.db.prepare('SELECT label,url FROM character_plan_resources WHERE workspace_id=? AND plan_id=?').bind(s.workspaceId,c.req.param('id')).all<{label:string;url:string}>()
     let characterId: string
     const batch: ReturnType<typeof s.db.prepare>[] = []
+    // Every write runs only while the plan still exists, so two tabs (or a retry) adding the same idea
+    // at once make one character: a D1 batch is one transaction, and the loser finds the plan gone.
+    const planId = c.req.param('id'), planExists = 'EXISTS (SELECT 1 FROM character_plans WHERE workspace_id=? AND id=?)'
+    const addLink = (resource: { label: string; url: string }) => batch.push(s.db.prepare(`INSERT INTO character_quicklinks (id,workspace_id,character_id,label,url) SELECT ?,?,?,?,? WHERE ${planExists}`).bind(crypto.randomUUID(),s.workspaceId,characterId,resource.label,resource.url,s.workspaceId,planId))
     if (plan.sourceCharacterId) {
       characterId = plan.sourceCharacterId
-      batch.push(s.db.prepare('UPDATE characters SET name=?,icon_object_key=COALESCE(?,icon_object_key),state=\'active\',notes=? WHERE workspace_id=? AND id=?').bind(plan.name,plan.iconObjectKey,plan.notes,s.workspaceId,plan.sourceCharacterId))
+      batch.push(s.db.prepare(`UPDATE characters SET name=?,icon_object_key=COALESCE(?,icon_object_key),state='active',notes=? WHERE workspace_id=? AND id=? AND ${planExists}`).bind(plan.name,plan.iconObjectKey,plan.notes,s.workspaceId,plan.sourceCharacterId,s.workspaceId,planId))
       for (const resource of resources.results) {
         const existing = await s.db.prepare('SELECT id FROM character_quicklinks WHERE workspace_id=? AND character_id=? AND url=?').bind(s.workspaceId,characterId,resource.url).first()
-        if (!existing) batch.push(s.db.prepare('INSERT INTO character_quicklinks (id,workspace_id,character_id,label,url) VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),s.workspaceId,characterId,resource.label,resource.url))
+        if (!existing) addLink(resource)
       }
     } else {
       characterId = crypto.randomUUID()
-      batch.push(s.db.prepare('INSERT INTO characters (id,workspace_id,name,icon_object_key,state,notes) VALUES (?,?,?,?,?,?)').bind(characterId,s.workspaceId,plan.name,plan.iconObjectKey,'active',plan.notes))
-      for (const resource of resources.results) {
-        batch.push(s.db.prepare('INSERT INTO character_quicklinks (id,workspace_id,character_id,label,url) VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),s.workspaceId,characterId,resource.label,resource.url))
-      }
+      batch.push(s.db.prepare(`INSERT INTO characters (id,workspace_id,name,icon_object_key,state,notes) SELECT ?,?,?,?,?,? WHERE ${planExists}`).bind(characterId,s.workspaceId,plan.name,plan.iconObjectKey,'active',plan.notes,s.workspaceId,planId))
+      for (const resource of resources.results) addLink(resource)
     }
-    batch.push(s.db.prepare('DELETE FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId,c.req.param('id')))
-    await s.db.batch(batch)
+    batch.push(s.db.prepare('DELETE FROM character_plans WHERE workspace_id=? AND id=?').bind(s.workspaceId,planId))
+    const results = await s.db.batch(batch)
+    if (!results.at(-1)?.meta.changes) throw new HTTPException(404,{message:'Character plan not found'})
     return c.json({id:characterId,name:plan.name},201)
   })
 

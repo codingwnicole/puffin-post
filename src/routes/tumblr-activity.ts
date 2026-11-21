@@ -80,7 +80,7 @@ export function tumblrActivityRoutes() {
           if (!notification.postId || notification.actor === 'anonymous') return notification
           try {
             const post = await client.getPost(notification.actor, notification.postId)
-            return { ...notification, preview: notification.preview ?? post.preview ?? post.title ?? null, sourceUrl: notification.sourceUrl ?? post.postUrl ?? null, rootPostId: post.rootPostId, rootBlogIdentifier: post.rootBlogIdentifier }
+            return { ...notification, preview: notification.preview ?? post.preview ?? post.title ?? null, sourceUrl: notification.sourceUrl ?? post.postUrl ?? null, rootPostId: post.rootPostId, rootBlogIdentifier: post.rootBlogIdentifier, threadPostIds: post.threadPostIds }
           } catch { return notification }
         }))
         // Tumblr's default notifications page is 20 items; a short page means no older items exist.
@@ -94,13 +94,15 @@ export function tumblrActivityRoutes() {
     const diagnostics = responses.flatMap(response => response.error ? [response.error] : [])
     const notifications = responses.flatMap(response => response.notifications)
       .filter(notification => !notification.postId || !dismissedPosts.has(`${notification.blogIdentifier.toLowerCase()}:${notification.postId}`))
-      .filter(notification => !isTracked({ id: notification.postId, rootPostId: 'rootPostId' in notification ? notification.rootPostId : null }))
+      // Dismissing by thread root hides every later reply in that thread, not just the one post.
+      .filter(notification => !('rootPostId' in notification && notification.rootPostId && dismissedPosts.has(threadKey(String(notification.rootBlogIdentifier), String(notification.rootPostId)))))
+      .filter(notification => !isTracked({ id: notification.postId, rootPostId: 'rootPostId' in notification ? notification.rootPostId : null, threadPostIds: 'threadPostIds' in notification ? notification.threadPostIds : undefined }))
       .filter((notification, index, all) => all.findIndex(other => other.type === notification.type && other.actor === notification.actor && other.postId === notification.postId) === index)
       .map(notification => ({ ...notification, threadKey: 'rootPostId' in notification && notification.rootPostId && 'rootBlogIdentifier' in notification && notification.rootBlogIdentifier ? threadKey(String(notification.rootBlogIdentifier), String(notification.rootPostId)) : notification.postId ? threadKey(notification.actor, String(notification.postId)) : null }))
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     const mentionTypes = MENTION_TYPES
     const threadCandidates = [...new Map(responses.flatMap(response => response.recentPosts)
-      .filter(post => !isTracked(post) && !dismissedPosts.has(`${post.blogIdentifier.toLowerCase()}:${post.id}`))
+      .filter(post => !isTracked(post) && !dismissedPosts.has(`${post.blogIdentifier.toLowerCase()}:${post.id}`) && !dismissedPosts.has(threadKey(post.rootBlogIdentifier, post.rootPostId)))
       // Sort before de-duplicating so a reblog chain keeps its newest copy even
       // when Tumblr returned the source blogs in a different order.
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))

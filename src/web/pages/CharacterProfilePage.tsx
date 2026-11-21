@@ -7,7 +7,7 @@ import SharePanel from '../components/SharePanel'
 import { parsePlaylist } from '../../shared/embeds'
 import { fitImage, IMAGE_ACCEPT, IMAGE_HINT } from '../lib/uploads'
 
-type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; portraitObjectKey: string | null; card?: CardProfile | null }
+type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; portraitObjectKey: string | null; card?: CardProfile | null; threadCounts?: { total: number; mine: number; theirs: number } }
 type Group = { id: string; name: string; characterIds: string[] }
 type MoodboardItem = { id: string; kind: 'image' | 'pin'; pinId: string | null; position: number }
 
@@ -16,7 +16,6 @@ const SERVICE_LABEL = { spotify: 'Spotify', youtube: 'YouTube', apple: 'Apple Mu
 export default function CharacterProfilePage({ id }: { id: string }) {
   const [rows, setRows] = useState<Character[]>([])
   const [groups, setGroups] = useState<Group[]>([])
-  const [branches, setBranches] = useState<{ characterId: string; status: string }[]>([])
   const [items, setItems] = useState<MoodboardItem[]>([])
   const [card, setCard] = useState<CardProfile | null>(null)
   const [moodUrls, setMoodUrls] = useState<string[]>([])
@@ -35,16 +34,15 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   useDialogFocus(overlayRef, showCard)
 
   // One reload re-reads everything the page owns: the cast (to find this character), its RP
-  // sections, the inbox threads behind the card stats, the card, and the moodboard tiles.
+  // sections and thread counts (on the character), the card, and the moodboard tiles.
   const reload = async () => {
     try {
-      const [characters, groupRows, inbox, board] = await Promise.all([
+      const [characters, groupRows, board] = await Promise.all([
         staleGet<Character[]>('/characters'),
         staleGet<Group[]>('/rp-groups'),
-        staleGet<{ branches: { characterId: string; status: string }[] }>('/inbox'),
         api<MoodboardItem[]>(`/characters/${id}/moodboard`).catch(() => [] as MoodboardItem[]),
       ])
-      setRows(characters); setGroups(groupRows); setBranches(inbox.branches ?? [])
+      setRows(characters); setGroups(groupRows);
       const boardItems = Array.isArray(board) ? board : (board as { items?: MoodboardItem[] }).items ?? []
       setItems(boardItems)
       setMoodUrls(boardItems.filter(item => item.kind === 'image').map(item => `/api/characters/${id}/moodboard/${item.id}/image`))
@@ -112,8 +110,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   }
 
   const rpGroups = groups.filter(group => group.characterIds.includes(id))
-  const characterBranches = branches.filter(branch => branch.characterId === id)
-  const stats: CardStats = { total: characterBranches.length, mine: characterBranches.filter(b => b.status === 'your_turn').length, theirs: characterBranches.filter(b => b.status === 'their_turn').length, rps: rpGroups.map(group => group.name) }
+  const stats: CardStats = { ...(rows.find(row => row.id === id)?.threadCounts ?? { total: 0, mine: 0, theirs: 0 }), rps: rpGroups.map(group => group.name) }
   const profile = card ?? emptyCard()
   const theme = THEMES[profile.theme] ?? THEMES.holo
   const playlist = profile.playlistUrl ? parsePlaylist(profile.playlistUrl) : null
@@ -144,7 +141,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
             <strong>RP sections</strong>
             {rpGroups.length ? <span>{rpGroups.map(group => group.name).join(' / ')}</span> : <span>Not sorted yet</span>}
           </p>
-          <p className="profile-stats">{characterBranches.length} thread{characterBranches.length === 1 ? '' : 's'} · your turn on {stats.mine} · their turn on {stats.theirs}</p>
+          <p className="profile-stats">{stats.total} thread{stats.total === 1 ? '' : 's'} · your turn on {stats.mine} · their turn on {stats.theirs}</p>
           <div className="profile-actions">
             <button type="button" onClick={() => setShowCard(true)}>View card</button>
             <button type="button" onClick={() => setEditingCard(true)}>Edit card</button>

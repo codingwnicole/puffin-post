@@ -116,6 +116,26 @@ function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot
 }
 
 describe('tracking refresh runner', () => {
+  it('still refreshes a character’s threads when its first blog is disconnected or backing off', async () => {
+    const { env, dispose } = await makeEnv()
+    const db = env.DB
+    const ws = 'w-lead'
+    await seedBase(db, ws, 'conn-live', 'side.tumblr.com', 'c-lead')
+    // The character's lowest-id blog sits on a disconnected Tumblr account; only the sideblog can refresh.
+    await db.prepare("INSERT INTO tumblr_connections (id, workspace_id, token_encrypted, token_secret_encrypted, account_metadata_json, status) VALUES ('conn-old',?,'','','{}','disconnected')").bind(ws).run()
+    await db.prepare("INSERT INTO character_blogs (id, workspace_id, character_id, tumblr_connection_id, blog_identifier, display_label) VALUES ('cb-0-old',?,'c-lead','conn-old','main.tumblr.com','main')").bind(ws).run()
+    await addStarter(db, ws, 'c-lead', 's-lead', 'root-lead', 'main.tumblr.com')
+    await addPartner(db, ws, 'p-lead', 'partner.tumblr.com')
+    await addBranch(db, ws, 's-lead', 'p-lead', 'partner.tumblr.com')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+    const mock = mockTumblr(fetchSpy, {})
+    await runRefreshBatch(env, new Date('2026-11-15T12:00:00Z'), 100)
+    expect(mock.notesCalls()).toBe(1)
+    expect((await db.prepare("SELECT last_refresh_at AS t FROM reply_branches WHERE id='b-s-lead'").first<{ t: string | null }>())?.t).not.toBeNull()
+    fetchSpy.mockRestore()
+    await dispose()
+  })
+
   it('sends exactly one summary push per workspace when many mentions arrive, and stays under 50 subrequests', async () => {
     const { env, dispose } = await makeEnv()
     const db = env.DB

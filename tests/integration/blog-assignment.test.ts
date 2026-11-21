@@ -70,3 +70,14 @@ describe('B04: idempotent blog assignment', () => {
     expect(clash.status).toBe(409)
   })
 })
+
+it('re-assigning a blog through another Tumblr account moves the assignment to that account', async () => {
+  const db = fixture.env.DB
+  // The old account was disconnected; a second account that also manages a.tumblr.com is connected.
+  await db.prepare("UPDATE tumblr_connections SET status='disconnected', token_encrypted='', token_secret_encrypted='', account_metadata_json='{}' WHERE id='connection-a'").run()
+  await db.prepare("INSERT INTO tumblr_connections (id,workspace_id,token_encrypted,token_secret_encrypted,account_metadata_json) VALUES ('connection-a2','a','x','x',?)").bind(JSON.stringify({ blogs: ['a.tumblr.com'], refreshedAt: new Date().toISOString() })).run()
+  const saved = await fixture.request('/api/connections/connection-a2/blogs', 'POST', { characterId: 'character-a', blogIdentifier: 'a.tumblr.com' })
+  expect(saved.status).toBeLessThan(300)
+  const row = await db.prepare("SELECT tumblr_connection_id AS c FROM character_blogs WHERE workspace_id='a' AND character_id='character-a' AND blog_identifier='a.tumblr.com'").first<{ c: string }>()
+  expect(row?.c).toBe('connection-a2')
+})
