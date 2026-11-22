@@ -116,9 +116,26 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
     window.addEventListener('online', goOnline)
     return () => { window.removeEventListener('offline', goOffline); window.removeEventListener('online', goOnline) }
   }, [])
-  // Only a definite "no session" answer (401/403) signs the shell out; a 5xx or a dropped
-  // connection keeps the current state instead of flashing the guest page mid-session.
-  useEffect(() => { fetch('/api/auth/session').then(async response => { if (response.status === 401 || response.status === 403) setSignedIn(false); else if (response.ok) setSignedIn(true); if(response.ok) { const session = (await response.json().catch(() => ({}))) as { userId?: string; workspaceId?: string }; const identity = String(session.userId ?? 'default') + ':' + String(session.workspaceId ?? 'default'); if (lastIdentity.current !== undefined && lastIdentity.current !== identity) clearApiCache(); lastIdentity.current = identity; void fetch('/api/tumblr-activity/unread-count').then(value=>value.ok?value.json():{count:0}).then(value=>setActivityUnread((value as {count?:number}).count??0)) } }).catch(() => undefined) }, [page])
+  useEffect(() => {
+    fetch('/api/auth/session').then(async response => {
+      if (response.status === 401 || response.status === 403) {
+        setSignedIn(false)
+        document.querySelector('meta[name="robots"]')?.remove()
+      } else if (response.ok) {
+        setSignedIn(true)
+        const robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]')
+          ?? document.head.appendChild(Object.assign(document.createElement('meta'), { name: 'robots' }))
+        robots.content = 'noindex, nofollow'
+      }
+      if (response.ok) {
+        const session = (await response.json().catch(() => ({}))) as { userId?: string; workspaceId?: string }
+        const identity = String(session.userId ?? 'default') + ':' + String(session.workspaceId ?? 'default')
+        if (lastIdentity.current !== undefined && lastIdentity.current !== identity) clearApiCache()
+        lastIdentity.current = identity
+        void fetch('/api/tumblr-activity/unread-count').then(value => value.ok ? value.json() : { count: 0 }).then(value => setActivityUnread((value as { count?: number }).count ?? 0))
+      }
+    }).catch(() => undefined)
+  }, [page])
 
   return <div className={`app-shell${signedIn ? '' : ' app-shell-guest'}`}>
     <a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus() }}>Skip to content</a>

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import worker, { type Env } from '../../src/worker'
+import worker, { createApp, type Env } from '../../src/worker'
 
 describe('domain migration routing', () => {
   it('301 redirects legacy requests while preserving paths and query parameters', async () => {
@@ -21,5 +21,13 @@ describe('domain migration routing', () => {
 
     expect(response).toBe(assetResponse)
     expect(fetchAsset).toHaveBeenCalledOnce()
+  })
+
+  it('marks private API responses as non-indexable', async () => {
+    const env = { APP_ORIGIN: 'https://rpthreadbuddy.app', SESSION_SECRET: 'test-session-secret-with-at-least-32-chars' } as Env
+    const response = await createApp(env).request('/api/auth/session', {}, env)
+
+    expect(response.status).toBe(401)
+    expect(response.headers.get('x-robots-tag')).toBe('noindex, nofollow')
   })
 })

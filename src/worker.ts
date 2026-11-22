@@ -48,6 +48,7 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   const app = new Hono<{ Bindings: Env }>()
   app.use('/api/*', async (c, next) => {
     c.header('Cache-Control', 'no-store')
+    c.header('X-Robots-Tag', 'noindex, nofollow')
     c.header('Referrer-Policy', 'no-referrer')
     c.header('X-Build-Revision', BUILD_REVISION)
     c.header('X-Frame-Options', 'DENY')
