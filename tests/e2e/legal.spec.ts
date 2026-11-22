@@ -33,7 +33,7 @@ for (const { hash, heading } of EXPECTED) {
     // Direct navigation: the legal page renders standalone (App.tsx intercepts before InboxPage).
     await page.goto(`/${hash}`)
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText('Effective date: November 17, 2026')).toBeVisible()
+    await expect(page.getByText('Effective date: November 21, 2026')).toBeVisible()
     await expect(page.getByText('privacy@rpthreadbuddy.app').first()).toBeVisible()
   })
 }
@@ -65,7 +65,7 @@ test('signed-in: nav footer links reach each legal page', async ({ page }) => {
   for (const { hash, heading } of EXPECTED) {
     await page.goto(`/${hash}`)
     await expect(page.getByRole('heading', { name: heading, exact: true })).toBeVisible()
-    await expect(page.getByText('Effective date: November 17, 2026')).toBeVisible()
+    await expect(page.getByText('Effective date: November 21, 2026')).toBeVisible()
     await expect(page.getByText('privacy@rpthreadbuddy.app').first()).toBeVisible()
   }
 })

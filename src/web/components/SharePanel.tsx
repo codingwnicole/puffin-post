@@ -132,7 +132,7 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
           <fieldset className="share-options">
             <legend>Options</legend>
             <label><input type="checkbox" checked={indexable} onChange={e => setIndexable(e.target.checked)} /> Let search engines show this page</label>
-            <p className="share-hint">Off keeps the page out of Google and other search results. Anyone with the link can still open it. Playlist, moodboard and stats show automatically when you've filled them in on the card.</p>
+            <p className="share-hint">Off asks search engines not to show the page; updates can take time. Anyone with the link can still open it. Playlist, moodboard and stats show automatically when you've filled them in on the card.</p>
           </fieldset>
 
           <div className="share-actions">
