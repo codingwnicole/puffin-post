@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useDialogFocus } from '../lib/focus'
+import { useNativeDialog } from '../lib/dialog'
 
 // Command menu (Ctrl/⌘K). A filter box plus a list of destinations/actions.
 // Navigates via hash routes so the existing router picks them up.
@@ -12,8 +12,8 @@ export default function CommandMenu({ open, onClose }:{ open: boolean; onClose: 
   const [query, setQuery] = useState('')
   const [active, setActive] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
-  const dialogRef = useRef<HTMLDivElement>(null)
-  useDialogFocus(dialogRef, open)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  useNativeDialog(dialogRef, open)
 
   const commands: Command[] = useMemo(() => [
     { kind: 'route', id: 'add-thread', label: 'Add thread', route: 'quick-add' },
@@ -39,11 +39,32 @@ export default function CommandMenu({ open, onClose }:{ open: boolean; onClose: 
 
   function activate(command: Command) {
     window.location.hash = '#' + command.route
-    onClose()
+    dismiss()
+  }
+
+  function dismiss() { dialogRef.current?.close(); onClose() }
+
+  function trapDialogTab(event: React.KeyboardEvent<HTMLDialogElement>) {
+    if (event.key !== 'Tab') return
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+      'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+    )).filter(element => element.getClientRects().length > 0)
+    if (!focusable.length) { event.preventDefault(); return }
+
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+      event.preventDefault()
+      first.focus()
+    }
   }
 
   function onKeyDown(event: React.KeyboardEvent) {
-    if (event.key === 'Escape') { event.preventDefault(); onClose(); return }
     if (event.key === 'ArrowDown') { event.preventDefault(); setActive(a => Math.min(a + 1, filtered.length - 1)); return }
     if (event.key === 'ArrowUp') { event.preventDefault(); setActive(a => Math.max(a - 1, 0)); return }
     if (event.key === 'Enter') {
@@ -55,8 +76,8 @@ export default function CommandMenu({ open, onClose }:{ open: boolean; onClose: 
   }
 
   return (
-    <div className="modal-overlay command-overlay" role="presentation" onClick={() => onClose()}>
-      <div ref={dialogRef} className="modal-card command-card" role="dialog" aria-modal="true" aria-label="Command menu" onClick={e => e.stopPropagation()}>
+    <dialog ref={dialogRef} className="modal-overlay command-overlay" aria-label="Command menu" onKeyDown={trapDialogTab} onCancel={event => { event.preventDefault(); dismiss() }} onClick={event => { if (event.target === event.currentTarget) dismiss() }}>
+      <div className="modal-card command-card" onClick={e => e.stopPropagation()}>
         <input
           ref={inputRef}
           className="command-input"
@@ -77,6 +98,6 @@ export default function CommandMenu({ open, onClose }:{ open: boolean; onClose: 
           {filtered.length === 0 && <li className="command-empty">No matching commands</li>}
         </ul>
       </div>
-    </div>
+    </dialog>
   )
 }

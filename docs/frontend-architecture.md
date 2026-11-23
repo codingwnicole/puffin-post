@@ -41,7 +41,7 @@ No router, state, styling, or animation library is installed. Dependencies the b
 | Inbox | On an empty inbox, the "+ Add a thread" link and the onboarding pointed at a form that wasn't rendered, so a new user couldn't add a thread from the Inbox. | The form renders on an empty inbox too. |
 | Inbox | Filtering down to zero results hid the filter bar (showing onboarding instead), so there was no way to clear the filter. | Filters stay visible, with a "No scenes match these filters" message. |
 | Dialogs | Escape in the card editor discarded unsaved edits without asking. | Escape and Cancel ask first when the card changed. |
-| Dialogs | No modal kept focus inside or returned it on close. The character delete dialog had no keyboard exit. | `useDialogFocus()` (`lib/focus.ts`) on all five modals; Escape closes the delete dialog. |
+| Dialogs | No modal kept focus inside or returned it on close. The character delete dialog had no keyboard exit. | Native `<dialog>.showModal()` on all five modals; `cancel` handles Escape and preserves the unsaved-card prompt. |
 | Shell | The phone More sheet's "Quick note" field was never saved. | Enter saves it to the Parking Lot as a note. |
 | Inbox | Branch autosave wrote both records and reloaded the whole inbox on every blur, even with no change. | Skips the write when nothing changed. |
 | Shell | Nested `<p>` in the sidebar footer (invalid HTML, React warning). | Inner element is a `<span>` with the same spacing. |
@@ -52,7 +52,7 @@ No router, state, styling, or animation library is installed. Dependencies the b
 
 - **CSS is append-only.** `styles.css` (82 KB) has four `:root` token blocks, oklch values overridden by hex on the next line, and many rules re-declared further down. `landing-fixes.css` (40 KB) is a second override layer. Untangling it would change rendering in small ways, and the redesign replaces it anyway. Don't refactor it; replace it.
 - **Dense one-line JSX.** Several pages (`InboxPage`, `ConnectionsPage`, `SettingsPage`, `AppShell`) are written as very long lines. Reformat them only when the redesign rebuilds that page's markup, to keep diffs reviewable.
-- **Hand-rolled modals.** They now trap and restore focus, but the redesign should replace them with one Dialog primitive on native `<dialog>`.
+- **Repeated dialog markup.** The five dialogs use native focus trapping, Escape handling, and focus restoration. Extract a shared Dialog component only if the redesign removes more code than it adds.
 - **Duplicated local types.** `Character`, `ArchivedCharacter` and `blogLabel` are redeclared in several pages.
 - **`settings` uses `any`** for its API data.
 - **Two visual checks fail on purpose:** `layout.spec.ts` "first branch card on screen at 390px" (the always-expanded filter bar is 304px tall on phones, so the first card sits at ~1040px against a 1000px budget) and `visual-system.spec.ts` "dark depth" (the phone More sheet uses the same surface tone as cards in dark mode). Both are layout and color decisions for the redesign.
@@ -61,7 +61,7 @@ No router, state, styling, or animation library is installed. Dependencies the b
 ## Implementing the redesign
 
 1. **Tokens first.** Write a new token sheet (color, type scale, spacing, radius, shadow, motion) as one `:root` block plus a `[data-theme="dark"]` block, and load it before everything else. Keep `--motion-*`/`--ease-*` and their reduced-motion override. Keep `data-theme` and `lib/theme.ts`; they already work.
-2. **Primitives next**, in `src/web/components/ui/`: Button, Field (label + help + error), Select, Card, Dialog, Sheet, Badge, Skeleton, EmptyState. Build Dialog on native `<dialog>` + `showModal()` to get focus trapping, Escape, and the top layer for free, then move all five modals onto it.
+2. **Primitives next**, in `src/web/components/ui/`: Button, Field (label + help + error), Select, Card, Sheet, Badge, Skeleton, EmptyState. Keep the existing dialogs native; extract a shared Dialog component only if it reduces duplicated behavior.
 3. **Page by page**: swap each page's markup to the primitives and delete the CSS that page used from `styles.css`/`landing-fixes.css` in the same commit. When both files are empty, delete them and the imports in `main.tsx`.
 4. **Behavior stays put.** Data loading, optimistic updates, draft safety nets, routing, and the undo toast are independent of the markup. Pages keep their handlers and state; only the JSX and classes change.
 5. **Tests.** Most e2e specs select by role and label. Specs that select by class (`.mobile-more-menu`, `.rp-groups`, `.tcard-*`, `.sheet-note`) must move to roles or `data-testid` when that markup changes.
