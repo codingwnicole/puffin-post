@@ -105,4 +105,21 @@ describe('B03: character archive/restore + safe delete', () => {
       await fixture.dispose()
     }
   })
+
+  it('a character on hiatus can be archived, and archiving twice is a 404', async () => {
+    const fixture = await trackingFixture()
+    try {
+      const paused = await fixture.request('/api/characters/character-a', 'PATCH', { state: 'hiatus' }, 'a')
+      expect(paused.status).toBe(200)
+      const archiveRes = await fixture.request('/api/characters/character-a/archive', 'POST', undefined, 'a')
+      expect(archiveRes.status).toBe(200)
+      expect(await archiveRes.json()).toEqual({ id: 'character-a', state: 'archived' })
+      const archived = await (await fixture.request('/api/characters/archived', 'GET', undefined, 'a')).json() as { id: string }[]
+      expect(archived.map(c => c.id)).toContain('character-a')
+      const again = await fixture.request('/api/characters/character-a/archive', 'POST', undefined, 'a')
+      expect(again.status).toBe(404)
+    } finally {
+      await fixture.dispose()
+    }
+  })
 })
