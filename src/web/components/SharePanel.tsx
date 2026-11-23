@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useDialogFocus } from '../lib/focus'
-import { createPortal } from 'react-dom'
+import { useNativeDialog } from '../lib/dialog'
 import { api, apiUpload } from '../lib/api'
 import { cardPreviewBlob, type CardStats } from './TradingCard'
 import { statsCardBlob } from '../lib/stats-card'
@@ -23,7 +22,7 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
   close: () => void
   onChanged?: () => void
 }) {
-  const [share, setShare] = useState<ShareSettings>(undefined as unknown as ShareSettings)
+  const [share, setShare] = useState<ShareSettings | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -31,8 +30,9 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
 
   const [style, setStyle] = useState<'card' | 'stats'>('card')
   const [indexable, setIndexable] = useState(false)
-  const dialogRef = useRef<HTMLDivElement>(null)
-  useDialogFocus(dialogRef)
+  const dialogRef = useRef<HTMLDialogElement>(null)
+  useNativeDialog(dialogRef)
+  const dismiss = () => { dialogRef.current?.close(); close() }
 
   useEffect(() => {
     api<ShareSettings>(`/characters/${character.id}/share`).then(data => {
@@ -40,8 +40,6 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
       if (data) { setStyle(data.style); setIndexable(data.indexable) }
     }).catch(problem => setError((problem as Error).message)).finally(() => setLoading(false))
   }, [character.id])
-
-  useEffect(() => { const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') close() }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey) }, [close])
 
   const renderAndUploadPreview = async (currentStyle: 'card' | 'stats', currentShowStats: boolean) => {
     const blob = currentStyle === 'card' && cardRef.current
@@ -113,8 +111,8 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
       hint: 'Flippable card for carrd (Embed element, Pro plan), personal websites and custom Tumblr themes. Doesn\'t work in Tumblr posts or Discord; use the link or image there.' },
   ] : []
 
-  return createPortal(<div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="share-panel-title" onClick={e => { if (e.target === e.currentTarget) close() }}>
-    <div ref={dialogRef} className="modal-card share-panel">
+  return <dialog ref={dialogRef} className="modal-overlay" aria-labelledby="share-panel-title" onCancel={event => { event.preventDefault(); dismiss() }} onClick={event => { if (event.target === event.currentTarget) dismiss() }}>
+    <div className="modal-card share-panel">
       <h2 id="share-panel-title">Share {character.name}</h2>
       {loading ? <p>Loading…</p> : <>
         <label className="share-toggle">
@@ -155,8 +153,8 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
         </>}
 
         {error && <p className="share-error" role="alert">{error}</p>}
-        <button type="button" className="text-button" onClick={close}>Close</button>
+        <button type="button" className="text-button" onClick={dismiss}>Close</button>
       </>}
     </div>
-  </div>, document.body)
+  </dialog>
 }

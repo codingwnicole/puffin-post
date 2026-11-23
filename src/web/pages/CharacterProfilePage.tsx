@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
 import { api, apiUpload, staleGet } from '../lib/api'
-import { useDialogFocus } from '../lib/focus'
+import { useNativeDialog } from '../lib/dialog'
 import TradingCard, { downloadCard, emptyCard, normalizeCard, THEMES, type CardProfile, type CardStats } from '../components/TradingCard'
 import CardEditor from '../components/CardEditor'
 import SharePanel from '../components/SharePanel'
@@ -27,11 +27,12 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   const [downloading, setDownloading] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [pinUrl, setPinUrl] = useState('')
-  const overlayRef = useRef<HTMLDivElement>(null)
+  const overlayRef = useRef<HTMLDialogElement>(null)
   const cardAreaRef = useRef<HTMLDivElement>(null)
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
-  useDialogFocus(overlayRef, showCard)
+  useNativeDialog(overlayRef, showCard)
+  const closeProfileCard = () => { overlayRef.current?.close(); setShowCard(false) }
 
   // One reload re-reads everything the page owns: the cast (to find this character), its RP
   // sections and thread counts (on the character), the card, and the moodboard tiles.
@@ -53,7 +54,6 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   }
 
   useEffect(() => { reload() }, [id])
-  useEffect(() => { if (!showCard) return; const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowCard(false) }; document.addEventListener('keydown', handler); return () => document.removeEventListener('keydown', handler) }, [showCard])
 
   const act = async (run: () => Promise<void>) => {
     setBusy(true)
@@ -151,15 +151,15 @@ export default function CharacterProfilePage({ id }: { id: string }) {
         </div>
       </header>
 
-      {showCard && <div className="profile-overlay" role="dialog" aria-label={`${row.name}'s card`} ref={overlayRef} onClick={e => { if (e.target === e.currentTarget) setShowCard(false) }}>
+      {showCard && <dialog className="profile-overlay" aria-label={`${row.name}'s card`} ref={overlayRef} onCancel={event => { event.preventDefault(); closeProfileCard() }} onClick={event => { if (event.target === event.currentTarget) closeProfileCard() }}>
         <div className="profile-overlay-card">
           <TradingCard name={row.name} profile={profile} stats={stats} portrait={portrait} moodboard={moodUrls} />
           <div className="profile-overlay-actions">
             <button type="button" disabled={downloading} onClick={async () => { try { setDownloading(true); await downloadCard(overlayRef.current!, row.name) } catch (problem) { setError(problem instanceof Error ? problem.message : 'Could not download the card') } finally { setDownloading(false) } }}>{downloading ? 'Preparing…' : 'Download'}</button>
-            <button type="button" onClick={() => setShowCard(false)}>Close</button>
+            <button type="button" onClick={closeProfileCard}>Close</button>
           </div>
         </div>
-      </div>}
+      </dialog>}
 
       <div className="profile-content">
         <div className="profile-side">

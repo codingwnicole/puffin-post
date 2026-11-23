@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react'
 import { api, apiUpload, peekCache, staleGet } from '../lib/api'
-import { useDialogFocus } from '../lib/focus'
+import { useNativeDialog } from '../lib/dialog'
 import { downloadBlob, fileSlug, statsCardBlob, type Counts } from '../lib/stats-card'
 import { IMAGE_ACCEPT, IMAGE_HINT, PORTRAIT_HINT, squareIcon } from '../lib/uploads'
 import { toast, undoCharacterArchive, undoReturnToPlanner } from '../lib/toast'
@@ -100,9 +100,9 @@ export default function CharactersPage() {
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; threads: number } | null>(null)
   const [deleteStep, setDeleteStep] = useState<'choose' | 'confirm'>('choose')
   const [deleteBusy, setDeleteBusy] = useState(false)
-  const deleteDialogRef = useRef<HTMLDivElement>(null)
-  useDialogFocus(deleteDialogRef, Boolean(deleteTarget))
-  useEffect(() => { if (!deleteTarget || deleteBusy) return; const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { setDeleteTarget(null); setDeleteStep('choose') } }; window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey) }, [deleteTarget, deleteBusy])
+  const deleteDialogRef = useRef<HTMLDialogElement>(null)
+  useNativeDialog(deleteDialogRef, Boolean(deleteTarget))
+  const closeDeleteDialog = () => { deleteDialogRef.current?.close(); setDeleteTarget(null); setDeleteStep('choose') }
   const [view, setViewState] = useState<'details' | 'cards'>(() => { try { return localStorage.getItem(VIEW_KEY) === 'cards' ? 'cards' : 'details' } catch { return 'details' } })
   const setView = (next: 'details' | 'cards') => { setViewState(next); try { localStorage.setItem(VIEW_KEY, next) } catch { /* per-viewer convenience only */ } }
   // Moodboard image URLs per character — fetched only in the Cards view (the card's mood side
@@ -118,8 +118,8 @@ export default function CharactersPage() {
   async function upload(id: string, file: File) { try { setError(''); const form = new FormData(); form.set('icon', await squareIcon(file)); await apiUpload('/characters/' + id + '/icon', form); setIconVersions(current => ({ ...current, [id]: Date.now() })); await load() } catch (problem) { setError((problem as Error).message) } }
   async function addToGroup(groupId: string, characterId: string) { try { setBusy(true); setError(''); await api('/rp-groups/' + groupId + '/characters', 'POST', { characterId }); await load() } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) } }
   async function remove(id: string) { const row = rows.find(r => r.id === id); if (!row) return; setDeleteTarget({ id, name: row.name, threads: counts[id]?.total ?? 0 }); setDeleteStep('choose') }
-  async function archiveCharacter(id: string) { const row = rows.find(r => r.id === id); if (!row) return; try { setError(''); setDeleteBusy(true); await api('/characters/' + id + '/archive', 'POST'); setDeleteTarget(null); setDeleteStep('choose'); await load(); toast(`Archived ${row.name}.`, undoCharacterArchive(id)) } catch (problem) { setError((problem as Error).message) } finally { setDeleteBusy(false) } }
-  async function confirmDelete() { if (!deleteTarget) return; try { setError(''); setDeleteBusy(true); await api('/characters/' + deleteTarget.id, 'DELETE'); setDeleteTarget(null); setDeleteStep('choose'); await load() } catch (problem) { setError((problem as Error).message) } finally { setDeleteBusy(false) } }
+  async function archiveCharacter(id: string) { const row = rows.find(r => r.id === id); if (!row) return; try { setError(''); setDeleteBusy(true); await api('/characters/' + id + '/archive', 'POST'); closeDeleteDialog(); await load(); toast(`Archived ${row.name}.`, undoCharacterArchive(id)) } catch (problem) { setError((problem as Error).message) } finally { setDeleteBusy(false) } }
+  async function confirmDelete() { if (!deleteTarget) return; try { setError(''); setDeleteBusy(true); await api('/characters/' + deleteTarget.id, 'DELETE'); closeDeleteDialog(); await load() } catch (problem) { setError((problem as Error).message) } finally { setDeleteBusy(false) } }
   async function returnToPlanner(id:string){const row=rows.find(r=>r.id===id);if(!row)return;try{setBusy(true);setError('');const moved=await api<{created?:boolean}>('/characters/'+id+'/return-to-planner','POST');toast('Moved '+row.name+' to the planner.',undoReturnToPlanner(id,row.state,moved.created!==false));await load();window.location.hash='planner'}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
   const cardStats = (row: Character): CardStats => ({ ...(counts[row.id] ?? { total: 0, mine: 0, theirs: 0 }), rps: groups.filter(group => group.characterIds.includes(row.id)).map(group => group.name) })
   const editing = rows.find(row => row.id === editingId)
@@ -143,8 +143,8 @@ export default function CharactersPage() {
     )}
     {editing && <CardEditor row={editing} stats={cardStats(editing)} portrait={portraitFor(editing, iconVersions[editing.id])} upload={async file => { const form = new FormData(); form.set('image', file); await apiUpload('/characters/' + editing.id + '/portrait', form); setIconVersions(v => ({ ...v, [editing.id]: Date.now() })); await load() }} close={() => setEditingId(null)} saved={load} />}
     {deleteTarget && (
-      <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
-        <div className="modal-card" ref={deleteDialogRef}>
+      <dialog ref={deleteDialogRef} className="modal-overlay" aria-labelledby="delete-dialog-title" onCancel={event => { event.preventDefault(); if (!deleteBusy) closeDeleteDialog() }}>
+        <div className="modal-card">
           {deleteStep === 'choose' ? (
             <>
               <h3 id="delete-dialog-title">What would you like to do with {deleteTarget.name}?</h3>
@@ -152,7 +152,7 @@ export default function CharactersPage() {
               <div className="modal-actions">
                 <button className="secondary-button" disabled={deleteBusy} onClick={() => void archiveCharacter(deleteTarget.id)}>{deleteBusy ? 'Working…' : 'Archive'}</button>
                 <button className="danger-button" disabled={deleteBusy} onClick={() => setDeleteStep('confirm')}>Delete</button>
-                <button className="text-button" onClick={() => { setDeleteTarget(null); setDeleteStep('choose') }}>Cancel</button>
+                <button className="text-button" onClick={closeDeleteDialog}>Cancel</button>
               </div>
             </>
           ) : (
@@ -163,12 +163,12 @@ export default function CharactersPage() {
               <div className="modal-actions">
                 <button className="secondary-button" disabled={deleteBusy} onClick={() => void archiveCharacter(deleteTarget.id)}>{deleteBusy ? 'Working…' : 'Archive instead'}</button>
                 <button className="danger-button" disabled={deleteBusy} onClick={() => void confirmDelete()}>{deleteBusy ? 'Deleting…' : 'Delete permanently'}</button>
-                <button className="text-button" disabled={deleteBusy} onClick={() => { setDeleteTarget(null); setDeleteStep('choose') }}>Cancel</button>
+                <button className="text-button" disabled={deleteBusy} onClick={closeDeleteDialog}>Cancel</button>
               </div>
             </>
           )}
         </div>
-      </div>
+      </dialog>
     )}
   </section>
 }
