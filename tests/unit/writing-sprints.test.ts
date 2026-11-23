@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { countWords, creditedWordCount, sprintTotals, updateCreditMask, type ReplySegment } from '../../src/shared/writing-sprints'
+import { SprintRoom } from '../../src/sprints/room'
 
 function segment(overrides: Partial<ReplySegment> = {}): ReplySegment {
   return {
@@ -47,5 +48,40 @@ describe('writing sprint word credit', () => {
       segment({ id: 'two', text: 'second reply', creditMask: '111111111111' }),
     ]
     expect(sprintTotals(replies)).toEqual({ editorWords: 4, creditedWords: 4, repliesCompleted: 1 })
+  })
+})
+
+describe('sprint room pending sockets', () => {
+  function fakeRoom(sockets: Array<{ openedAt: number; closed?: number }>) {
+    const room = { appOrigin: 'https://app.test', expiresAt: Date.now() + 60_000, participantLimit: 2 }
+    const live = sockets.map(state => ({
+      deserializeAttachment: () => ({ authenticated: false, openedAt: state.openedAt }),
+      close: (code: number) => { state.closed = code },
+    }))
+    const ctx = { storage: { get: async () => room }, getWebSockets: () => live, acceptWebSocket: () => undefined }
+    return new SprintRoom(ctx as unknown as DurableObjectState, {} as never)
+  }
+  const request = () => new Request('https://room.internal/socket', { headers: { origin: 'https://app.test', upgrade: 'websocket' } })
+
+  it('refuses new sockets while fresh unauthenticated ones fill the pending slots', async () => {
+    const sockets = Array.from({ length: 6 }, (): { openedAt: number; closed?: number } => ({ openedAt: Date.now() }))
+    expect((await fakeRoom(sockets).fetch(request())).status).toBe(429)
+    expect(sockets.every(socket => socket.closed === undefined)).toBe(true)
+  })
+
+  it('closes stale unauthenticated sockets so they cannot hold the room', async () => {
+    const sockets = Array.from({ length: 6 }, (): { openedAt: number; closed?: number } => ({ openedAt: Date.now() - 60_000 }))
+    const original = (globalThis as { WebSocketPair?: unknown }).WebSocketPair
+    ;(globalThis as { WebSocketPair?: unknown }).WebSocketPair = class { 0 = {}; 1 = { serializeAttachment: () => undefined } }
+    const OriginalResponse = globalThis.Response
+    // Node's Response rejects status 101; record the upgrade instead.
+    globalThis.Response = class extends OriginalResponse { constructor(body: BodyInit | null, init?: ResponseInit) { super(body, init?.status === 101 ? { status: 200 } : init) } } as typeof Response
+    try {
+      expect((await fakeRoom(sockets).fetch(request())).status).toBe(200)
+    } finally {
+      ;(globalThis as { WebSocketPair?: unknown }).WebSocketPair = original
+      globalThis.Response = OriginalResponse
+    }
+    expect(sockets.every(socket => socket.closed === 1008)).toBe(true)
   })
 })

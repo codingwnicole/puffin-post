@@ -94,6 +94,7 @@ export default function WritingSprintsPage({ roomId = '', inviteToken = '' }: { 
   const [participantId, setParticipantId] = useState('')
   const participantIdRef = useRef('')
   const [roomConnected, setRoomConnected] = useState(false)
+  const [reconnectFailed, setReconnectFailed] = useState(false)
   const [roomBusy, setRoomBusy] = useState(false)
   const [roomLimitInput, setRoomLimitInput] = useState(15)
   const [roomGoalInput, setRoomGoalInput] = useState('')
@@ -283,18 +284,29 @@ export default function WritingSprintsPage({ roomId = '', inviteToken = '' }: { 
       url.protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       const socket = new WebSocket(url)
       socketRef.current = socket
+      let authenticated = false
       socket.onopen = () => socket.send(JSON.stringify({ type: 'authenticate', participantToken: token }))
       socket.onmessage = event => {
         let packet: { type?: string; state?: RoomState; participantId?: string; message?: string }
         try { packet = JSON.parse(String(event.data)) as typeof packet } catch { return }
         if (packet.type === 'joined') { if (packet.participantId === participantIdRef.current) setRoomConnected(true); return }
-        if (packet.type === 'state' && packet.state) { setRoomConnected(true); void applyRoomState(packet.state) }
+        if (packet.type === 'state' && packet.state) { authenticated = true; setRoomConnected(true); setReconnectFailed(false); void applyRoomState(packet.state) }
         if (packet.type === 'error') setRoomError(packet.message ?? 'The room did not accept that update.')
       }
       socket.onclose = event => {
+        if (socketRef.current !== socket) return
         setRoomConnected(false)
-        if (event.code === 4003) setRoomError('The host removed you from this room.')
-        if (reconnectEnabled.current && attempt < 8) reconnectTimer.current = window.setTimeout(() => connect(attempt + 1), Math.min(1000 * (2 ** attempt), 10_000))
+        // Terminal closes: retrying cannot succeed, so stop instead of looping.
+        const terminal: Record<number, string> = {
+          4001: 'This room is open in another tab, so this tab disconnected.',
+          4003: 'The host removed you from this room.',
+          1008: 'Your room access expired or is no longer valid.',
+          1001: 'This room has expired.',
+        }
+        if (terminal[event.code]) { reconnectEnabled.current = false; setRoomError(terminal[event.code]); return }
+        const next = authenticated ? 0 : attempt + 1
+        if (reconnectEnabled.current && next < 8) reconnectTimer.current = window.setTimeout(() => connect(next), Math.min(1000 * (2 ** next), 10_000))
+        else if (reconnectEnabled.current) setReconnectFailed(true)
       }
       socket.onerror = () => setRoomConnected(false)
     }
@@ -573,11 +585,11 @@ export default function WritingSprintsPage({ roomId = '', inviteToken = '' }: { 
       </section>
     </div>
 
-    {isRoom && <section className="tracking-card sprint-room-panel"><div className="sprint-section-head"><div><p className="eyebrow">Room progress</p><h2>Writers</h2></div><span role="status">{roomConnected ? 'Connected' : 'Reconnecting…'}</span></div><p className="field-help">Only aggregate counts are shared. Reply text, titles, character names, and tracked threads stay private.</p>{roomError && <p role="alert" className="profile-error">{roomError}</p>}
+    {isRoom && <section className="tracking-card sprint-room-panel"><div className="sprint-section-head"><div><p className="eyebrow">Room progress</p><h2>Writers</h2></div><span role="status">{roomConnected ? 'Connected' : reconnectFailed ? 'Disconnected' : 'Reconnecting…'}</span></div><p className="field-help">Only aggregate counts are shared. Reply text, titles, character names, and tracked threads stay private.</p>{roomError && <p role="alert" className="profile-error">{roomError}</p>}
       <ul className="sprint-participants">{roomState?.participants.map(person => <li key={person.id}><div><strong>{person.name}{person.isHost ? ' · host' : ''}</strong><span>{person.connected ? 'Connected' : 'Reconnecting'} · {person.wordsCredited.toLocaleString()} words · {person.repliesCompleted} replies</span></div>{roomHost && !person.isHost && <button type="button" className="secondary-button" disabled={!roomConnected || draftReadOnly} onClick={() => roomSend({ type: 'action', action: 'remove-participant', participantId: person.id })}>Remove</button>}</li>)}</ul>
       {roomHost && roomState?.status === 'waiting' && <form className="sprint-room-config" onSubmit={event => { event.preventDefault(); roomSend({ type: 'action', action: 'configure', durationSeconds: roomLimitInput * 60, goalWords: roomGoalInput.trim() ? Number(roomGoalInput) : null }) }}><label className="sprint-field">Next round minutes<input type="number" min="1" max="360" value={roomLimitInput} onChange={event => setRoomLimitInput(Number(event.target.value))} /></label><label className="sprint-field">Word goal<input type="number" min="1" max="1000000" value={roomGoalInput} onChange={event => setRoomGoalInput(event.target.value)} placeholder="No goal" /></label><button type="submit" disabled={!roomConnected || draftReadOnly}>Update round settings</button></form>}
       {rounds.length > 0 && <details className="sprint-round-history"><summary>Completed rounds ({rounds.length})</summary><ul>{rounds.map(round => <li key={round.number}><strong>Round {round.number}</strong><span>{round.durationSeconds} active seconds · {round.participants.map(person => `${person.name}: ${person.wordsCredited} words, ${person.repliesCompleted} replies`).join(' · ')}</span></li>)}</ul></details>}
-      <button type="button" className="secondary-button" onClick={leaveRoom}>Leave room</button>
+      <div className="actions">{reconnectFailed && !roomConnected && <button type="button" onClick={() => { const token = readSession(sessionKey(SESSION_PREFIX, activeRoomId)) ?? (fallbackToken.current?.roomId === activeRoomId ? fallbackToken.current.token : null); setReconnectFailed(false); setRoomError(''); if (token) connectRoomSocket(activeRoomId, token); else setRoomError('Room access is unavailable in this tab. Open the invitation link again.') }}>Reconnect</button>}<button type="button" className="secondary-button" onClick={leaveRoom}>Leave room</button></div>
     </section>}
 
     {draftReadOnly && <p className="offline-banner" role="status">This sprint is open in another tab. This tab is read-only to protect your local draft.</p>}
@@ -588,7 +600,7 @@ export default function WritingSprintsPage({ roomId = '', inviteToken = '' }: { 
     <div className="sprint-workspace-head"><div><p className="eyebrow">Private writing workspace</p><h2>Reply segments</h2></div><button type="button" className="secondary-button" disabled={draftReadOnly} onClick={addSegment}>Add reply</button></div>
     <p className="sprint-privacy-note">Each reply is separate, saved locally, and copied on its own. Clearing a completed reply keeps its credited snapshot. Reopening a completed reply removes its reply-complete mark; current typed words remain credited until you edit or clear them.</p>
     {activeSegments.map(segment => renderSegment(segment, false))}
-    {completedSegments.length > 0 && <section className="sprint-completed-list" aria-labelledby="completed-replies-title"><div className="sprint-section-head"><div><p className="eyebrow">Finished in this sprint</p><h2 id="completed-replies-title">Completed replies</h2></div><span>{completedSegments.length} reply{completedSegments.length === 1 ? '' : 'ies'}</span></div>{completedSegments.map(segment => renderSegment(segment, true))}</section>}
+    {completedSegments.length > 0 && <section className="sprint-completed-list" aria-labelledby="completed-replies-title"><div className="sprint-section-head"><div><p className="eyebrow">Finished in this sprint</p><h2 id="completed-replies-title">Completed replies</h2></div><span>{completedSegments.length} {completedSegments.length === 1 ? 'reply' : 'replies'}</span></div>{completedSegments.map(segment => renderSegment(segment, true))}</section>}
     {draft.phase === 'finished' && <section className="tracking-card sprint-results"><p className="eyebrow">Sprint result</p><h2>{totals.creditedWords.toLocaleString()} words · {totals.repliesCompleted} replies</h2><p>{Math.floor((draft.durationSeconds * 1000 - draft.remainingMs) / 1000)} active seconds{draft.goalWords ? ` · ${Math.min(100, Math.round(totals.creditedWords / draft.goalWords * 100))}% of word goal` : ''}</p>{historyError && <p role="alert" className="profile-error">{historyError}</p>}{historySaving && <p role="status">Saving totals to account history…</p>}{draft.historySavedAt ? <p role="status">Totals saved to your account history. Reply text remains on this device.</p> : draft.startedAt && <button type="button" disabled={historySaving} onClick={() => void saveHistory(draft, undefined, true)}>Retry saving stats</button>}</section>}
   </section>
 }

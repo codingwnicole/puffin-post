@@ -22,7 +22,9 @@ This is a best-effort browser measure, not a tamper-proof proof of authorship. A
 - Creating a room requires a signed-in workspace and is rate-limited. Joining is guest-friendly and does not require an account; join attempts are rate-limited by a keyed client-IP-and-room value.
 - A room supports 2–32 participants. The host can start, pause, resume, end, configure, and advance rounds or remove guests. The room timer runs from the Durable Object's clock, not a participant browser clock.
 - Tokens are hashed before durable storage. Passwords use a per-room random salt with PBKDF2-SHA-256. Guest names are stripped of control characters and capped at 32 characters.
-- WebSocket connections require the configured app origin and a participant token. Messages are size-limited and validated; progress updates are rate-limited and accepted while a round is running or paused so the final browser count can flush after a pause. Counts cannot be lowered within a round. A disconnected host is transferred after 30 seconds.
+- WebSocket connections require the configured app origin and a participant token. Messages are size-limited and validated; progress updates are rate-limited and accepted while a round is running or paused so the final browser count can flush after a pause. Counts cannot be lowered within a round. A disconnected host is transferred after 30 seconds. A socket that has not authenticated within 10 seconds is closed when the next connection opens, so idle unauthenticated sockets cannot fill the room's pending-connection slots.
+- Browsers reconnect with exponential backoff (up to 10 seconds, reset after each successful connection). They stop retrying on terminal closes (removed by host, opened in another tab, expired or invalid access) and show the reason; after repeated failures the room shows a **Reconnect** button.
+- Known limits: progress typed in the last ~0.7 seconds before the server timer ends may not reach the room total (the browser keeps its own count). A removed guest can rejoin with the same invitation link as a new participant; share a new room to exclude someone permanently.
 - The API CSP permits a WebSocket connection only to the configured app origin. The route also checks the browser Origin before forwarding to the room object.
 
 ## Deployment
@@ -35,7 +37,7 @@ Apply D1 migration 0041 with the existing D1 migration command in `beta-runbook.
 
 Relevant checks:
 
-- `tests/unit/writing-sprints.test.ts`: counting, paste exclusion, frozen totals, and separate reply aggregation.
+- `tests/unit/writing-sprints.test.ts`: counting, paste exclusion, frozen totals, separate reply aggregation, and stale unauthenticated socket cleanup.
 - `tests/integration/sprints.test.ts`: D1 workspace scoping, strict aggregate-only payloads, idempotency, room password checks, token reconnect, and capacity.
 - `tests/e2e/writing-sprints.spec.ts`: solo persistence/history plus a two-client room check proving reply text stays private while progress is shared.
 - Run `npm test`, `npm run build`, and `npm run test:e2e` from the isolated feature worktree before merging. Multiplayer WebSocket behavior should also be smoke-tested in a staging deployment before enabling the feature for beta users.

@@ -65,6 +65,7 @@ const actionSchema = z.discriminatedUnion('action', [
 
 const ROOM_LIFETIME_MS = 24 * 60 * 60_000
 const HOST_TRANSFER_GRACE_MS = 30_000
+const AUTH_GRACE_MS = 10_000
 const encoder = new TextEncoder()
 
 function json(data: unknown, status = 200): Response {
@@ -96,7 +97,7 @@ function snapshot(room: RoomData) {
   }
 }
 
-function attachment(socket: WebSocket): { participantId?: string; authenticated?: boolean; lastProgressAt?: number } {
+function attachment(socket: WebSocket): { participantId?: string; authenticated?: boolean; lastProgressAt?: number; openedAt?: number } {
   try { return socket.deserializeAttachment() ?? {} } catch { return {} }
 }
 
@@ -187,12 +188,21 @@ export class SprintRoom extends DurableObject<Env> {
     if (origin !== room.appOrigin || request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
       return json({ error: 'Invalid room connection' }, 403)
     }
-    const pending = this.ctx.getWebSockets().filter(socket => !attachment(socket).authenticated).length
+    // ponytail: stale unauthenticated sockets are reaped when the next one opens, so a client
+    // that never authenticates cannot hold the pending slots; an alarm sweep is not needed.
+    const now = Date.now()
+    let pending = 0
+    for (const socket of this.ctx.getWebSockets()) {
+      const state = attachment(socket)
+      if (state.authenticated) continue
+      if (now - (state.openedAt ?? 0) > AUTH_GRACE_MS) socket.close(1008, 'Authentication timed out')
+      else pending++
+    }
     if (pending >= room.participantLimit + 4) return json({ error: 'Too many pending connections' }, 429)
     const pair = new WebSocketPair()
     const client = pair[0]
     const server = pair[1]
-    server.serializeAttachment({ authenticated: false, lastProgressAt: 0 })
+    server.serializeAttachment({ authenticated: false, lastProgressAt: 0, openedAt: now })
     this.ctx.acceptWebSocket(server)
     return new Response(null, { status: 101, webSocket: client })
   }
