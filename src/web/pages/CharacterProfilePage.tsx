@@ -4,6 +4,7 @@ import { useNativeDialog } from '../lib/dialog'
 import TradingCard, { downloadCard, emptyCard, normalizeCard, THEMES, type CardProfile, type CardStats } from '../components/TradingCard'
 import CardEditor from '../components/CardEditor'
 import SharePanel from '../components/SharePanel'
+import Icon from '../components/Icon'
 import { parsePlaylist } from '../../shared/embeds'
 import { fitImage, IMAGE_ACCEPT, IMAGE_HINT } from '../lib/uploads'
 
@@ -199,9 +200,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
 
           {profile.boardUrl && (
             <a className="profile-board" href={profile.boardUrl} target="_blank" rel="noopener noreferrer" style={{ '--board-a': theme.bg[0], '--board-b': theme.bg[1] } as CSSProperties}>
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
-                <path fill="currentColor" d="M12 2a5 5 0 0 0-5 5v2l-2 9h14l-2-9V7a5 5 0 0 0-5-5Zm0 2.2c1.6 0 2.8 1.2 2.8 2.8v2.2l1.9 7.8H7.3l1.9-7.8V7c0-1.6 1.2-2.8 2.8-2.8Z" />
-              </svg>
+              <Icon name="pin" />
               <span className="profile-board-text">
                 <strong>Full moodboard on Pinterest</strong>
                 <small>{boardName.replace(/-/g, ' ')} · by {new URL(profile.boardUrl).hostname}</small>
