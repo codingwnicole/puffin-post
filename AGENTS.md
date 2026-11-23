@@ -37,4 +37,4 @@ npm.cmd run build
 npm.cmd run test:e2e
 ```
 
-Known failures as of 2026-11-21: two visual e2e checks (`layout.spec.ts` 390px first card, `visual-system.spec.ts` dark depth) that wait on the redesign. Don't count them as regressions, and don't "fix" them by loosening the assertions.
+Known failures as of 2026-11-23: one visual e2e check (`visual-system.spec.ts` dark depth) that waits on the redesign. Don't count it as a regression, and don't "fix" it by loosening the assertion.
