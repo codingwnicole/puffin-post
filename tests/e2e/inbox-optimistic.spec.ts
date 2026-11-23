@@ -85,6 +85,7 @@ test.describe('inbox stale-while-revalidate (T4)', () => {
     // swap in) keeps the already-loaded content and only surfaces the error — it never
     // blanks the rows. Trigger a refresh by toggling a filter back to its default.
     failInbox = true
+    await page.locator('.filter-panel summary').click() // the filter panel starts collapsed
     const show = page.locator('.filter-bar select').first()
     await show.selectOption('your_turn')
     await show.selectOption('')
@@ -104,6 +105,7 @@ test.describe('inbox filter mirroring (T5)', () => {
     await page.route('**/api/inbox**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(inboxWith(['A Scene'])) }))
 
     await page.goto('/#/inbox')
+    await page.locator('.filter-panel summary').click() // the filter panel starts collapsed
     const search = page.locator('.filter-bar input[placeholder="Scene, character, partner"]')
     await expect(search).toBeVisible()
 
