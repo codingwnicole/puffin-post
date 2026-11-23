@@ -15,6 +15,8 @@ One Cloudflare Worker (Hono) serves the API and the built React single-page app.
 | `src/routes/starters.ts` | Add/resolve threads (reads the Tumblr post), titles, premise. |
 | `src/routes/branches.ts` | Inbox, per-partner reply branches, status, archive/restore. |
 | `src/routes/reply-drafts.ts` | Parking lot drafts and converting them to threads. |
+| `src/routes/sprints.ts`, `src/shared/writing-sprints.ts` | Account-scoped aggregate sprint history and shared word-credit rules; reply prose is not accepted by the history API. |
+| `src/routes/sprint-rooms.ts`, `src/sprints/room.ts` | Private room setup/join and a Durable Object per room for the authoritative timer, participant list, round totals, WebSockets, and 24-hour expiry. |
 | `src/routes/characters.ts`, `character-planner.ts` | Cast, archive/restore, icons, planner. |
 | `src/routes/connections.ts`, `tumblr.ts` | Tumblr OAuth connect, blog list, blog-to-character assignment, disconnect. |
 | `src/routes/tumblr-activity.ts` | Mentions and recent posts feed per blog. |
@@ -32,7 +34,8 @@ One Cloudflare Worker (Hono) serves the API and the built React single-page app.
 | `src/db/migrations` | Schema, applied in order by wrangler (additive changes only once live). |
 | `src/db/repositories` | Shared SQL for starters, branches, drafts, workspaces. |
 | `src/shared/redact.ts` | Strips tokens, emails and writing from log lines. |
-| `src/web/pages/*` | One page per hash route (Inbox, Parking lot, Characters, Planner, Connections, Activity, Settings, Support, Legal, thread page). |
+| `src/web/pages/*` | One page per hash route (Inbox, Parking lot, Characters, Planner, Connections, Activity, Writing Sprints, Settings, Support, Legal, thread page). |
+| `src/web/lib/sprint-drafts.ts` | Browser-only sprint draft persistence (IndexedDB with localStorage fallback) and cross-tab draft locks. |
 | `src/web/lib/api.ts` | Fetch wrapper, per-user GET cache (cleared on sign-out and workspace switch). |
 
 ## Secrets
@@ -48,6 +51,10 @@ New accounts are created through the email-link flow. Password sign-in is availa
 ## Cron sync
 
 Every 30 minutes `runRefreshBatch` takes up to 60 blogs: rank 1 of every workspace first (stalest first), then rank 2, so a big account cannot starve a small one. Blogs in backoff (`refresh_cursors.next_retry_at`) are skipped. Per blog: one notifications call, one notes call per thread (shared across the character's blogs), one post read per new reply. Budgets: Tumblr fetches (default 30, `REFRESH_FETCH_BUDGET`) and D1 calls (800). A Tumblr 429 stops the run and holds the next one until Retry-After. Ceiling: Tumblr allows 1,000 calls/hour and 5,000/day for the whole app.
+
+## Writing sprints
+
+See [writing-sprints.md](writing-sprints.md) for the privacy boundary, word attribution behavior, room protocol, retention, and deployment checklist. Sprint prose remains in browser storage; D1 history stores totals only. Private room state is isolated in a per-room Durable Object and expires within 24 hours.
 
 ## Duplicated rules
 
