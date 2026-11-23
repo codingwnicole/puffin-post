@@ -54,6 +54,31 @@ it('moves branch to their_turn when user reblogs partner reply to clear obligati
   expect(changes).toEqual([{ postId: 'user-reblog-1', status: 'their_turn' }])
 })
 
+it('continues syncing archived threads without returning them to active counts or creating duplicates', async () => {
+  await fixture.env.DB.prepare("UPDATE partners SET blog_identifier='friend.tumblr.com' WHERE id='partner-a'").run()
+  const starter = await (await fixture.request('/api/starters','POST',starterInput)).json() as { id:string }
+  const branch = await (await fixture.request(`/api/starters/${starter.id}/branches`,'POST',{partnerId:'partner-a',status:'their_turn'})).json() as { id:string }
+  await fixture.request(`/api/starters/${starter.id}/archive`,'POST',{})
+  ;(globalThis as any).__tumblrStubNotes={notes:[{type:'reblog',blog_name:'friend',post_id:'reply-archived',reblog_parent_blog_name:'a',timestamp:1763726400}]}
+  ;(globalThis as any).__tumblrStubPosts={'friend:reply-archived':{content:[{text:'A new reply arrives while this thread is archived.'}]}}
+  try {
+    const result=await runRefreshBatch(fixture.env,new Date('2026-11-21T12:00:00.000Z'),10)
+    expect(result.refreshed).toBe(2) // counts blogs: the fixture connects one in each of workspaces a and b
+    const active=await (await fixture.request('/api/inbox')).json() as {branches:Array<{id:string}>;yourTurnCount:number}
+    expect(active).toMatchObject({branches:[],yourTurnCount:0})
+    const archived=await (await fixture.request('/api/inbox?archivedOnly=true')).json() as {branches:Array<{id:string;status:string;latestPostId:string;latestReplyExcerpt:string;starterArchived:number}>}
+    expect(archived.branches).toHaveLength(1)
+    expect(archived.branches[0]).toMatchObject({id:branch.id,status:'your_turn',latestPostId:'reply-archived',latestReplyExcerpt:'A new reply arrives while this thread is archived.',starterArchived:1})
+    await fixture.request(`/api/starters/${starter.id}/restore`,'POST',{})
+    const restored=await (await fixture.request('/api/inbox')).json() as {branches:Array<{id:string}>;yourTurnCount:number}
+    expect(restored.branches.map(item=>item.id)).toEqual([branch.id])
+    expect(restored.yourTurnCount).toBe(1)
+  } finally {
+    delete (globalThis as any).__tumblrStubNotes
+    delete (globalThis as any).__tumblrStubPosts
+  }
+})
+
 it('keeps the last known branch state and records a refresh error when Tumblr fails', async () => {
   await fixture.env.DB.prepare("UPDATE partners SET blog_identifier='friend.tumblr.com' WHERE id='partner-a'").run()
   const starter = await (await fixture.request('/api/starters','POST',starterInput)).json() as { id:string }

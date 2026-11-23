@@ -8,6 +8,12 @@ import { endSession, requireWorkspace, startSession } from '../auth/sessions'
 import { hashPassword, validPassword, verifyPassword } from '../auth/passwords'
 import { checkRateLimit, opaqueRateLimitKey } from '../auth/rate-limits'
 
+function invalidMagicLinkPage(appOrigin:string){
+  return html`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>Sign-in link unavailable · RP Thread Buddy</title><style>
+    *{box-sizing:border-box}body{min-width:320px;min-height:100dvh;margin:0;display:grid;place-items:center;padding:1rem;background:#142027;color:#f8f3e9;font:1rem/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}main{width:min(100%,34rem);padding:clamp(1.5rem,6vw,2.5rem);border:1px solid #4c6670;border-radius:1.1rem;background:#213138;box-shadow:0 1.25rem 3rem #0003}p.eyebrow{color:#a9d4dc;font-size:.75rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}h1{margin:.4rem 0;font:600 clamp(2rem,7vw,3rem)/1 Georgia,"Times New Roman",serif;letter-spacing:-.04em}p{color:#d9e1dd}a{display:grid;place-items:center;min-height:3rem;margin-top:1.5rem;padding:.7rem 1rem;border-radius:.7rem;background:#a9d4dc;color:#17242a;font-weight:800;text-align:center;text-decoration:none}a:focus-visible{outline:3px solid #fff;outline-offset:3px}
+    </style></head><body><main><p class="eyebrow">RP Thread Buddy</p><h1>This sign-in link can’t be used.</h1><p>It may have expired or already been used. Request a fresh link to sign in; your account and saved threads are still here.</p><a href="${appOrigin}/">Return to sign in</a></main></body></html>`
+}
+
 async function provisionMagicLinkAccount(db: Env['DB'], email: string) {
   const userId=crypto.randomUUID(),workspaceId=crypto.randomUUID(),displayName=email.split('@')[0]
   // Keep concurrent first sign-ins atomic: a losing insert must never observe a user before its workspace exists.
@@ -40,7 +46,8 @@ export function authRoutes(env: Env, sender: MailSender) {
     const token = c.req.query('token') ?? ''
     let identity
     try { identity = await links.inspectMagicLink(token) } catch {
-      throw new HTTPException(400, { message: 'invalid magic link' })
+      c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'")
+      return c.html(invalidMagicLinkPage(env.APP_ORIGIN),400)
     }
     const confirmationUrl = new URL('/api/auth/verify', env.APP_ORIGIN).toString()
     // This confirmation intentionally stays script-free. Inline CSS is the only
@@ -61,7 +68,8 @@ export function authRoutes(env: Env, sender: MailSender) {
     const body = await c.req.parseBody()
     let identity
     try { identity = await links.consumeMagicLink(typeof body.token === 'string' ? body.token : '') } catch {
-      throw new HTTPException(400, { message: 'invalid magic link' })
+      c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'")
+      return c.html(invalidMagicLinkPage(env.APP_ORIGIN),400)
     }
     let userId: string
     let workspaceId = identity.workspaceId

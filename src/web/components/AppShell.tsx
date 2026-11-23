@@ -4,8 +4,9 @@ import { api, clearApiCache, prefetchNav } from '../lib/api'
 import { isEditableTarget } from '../lib/shortcuts'
 import CommandMenu from './CommandMenu'
 import ToastHost from './ToastHost'
+import OnboardingTour from './OnboardingTour'
 
-export type AppPage = 'inbox' | 'characters' | 'planner' | 'settings' | 'parking-lot' | 'connections' | 'tools' | 'activity' | 'support' | 'starter'
+export type AppPage = 'inbox' | 'characters' | 'planner' | 'settings' | 'parking-lot' | 'connections' | 'tools' | 'activity' | 'support' | 'roadmap' | 'starter'
 
 const navigation = [
   ['inbox', 'Inbox', 'inbox'],
@@ -17,6 +18,7 @@ const navigation = [
   ['connections', 'Connected accounts', 'connections'],
   ['settings', 'Settings', 'settings'],
   ['support', 'Support & feedback', 'more'],
+  ['roadmap', 'Site roadmap', 'planner'],
 ] as const
 
 // Swipe-to-close for the phone bottom sheet: pointer-down on the grabber, follow the
@@ -79,6 +81,7 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
   // on touch browsers, which made the sheet flash and immediately close.
   const closeMore = useCallback(() => setMenuOpen(false), [])
   const [commandOpen, setCommandOpen] = useState(false)
+  const [tourOpen,setTourOpen]=useState(()=>{try{return sessionStorage.getItem('rptb-tour-open')==='1'}catch{return false}})
   // Swipe-to-close: hasUnsaved reads the sheet's editable fields for unsent text.
   const sheetRef = useRef<HTMLDivElement>(null)
   const hasUnsaved = useCallback(() => Array.from(sheetRef.current?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input,textarea') ?? []).some(field => field.value.trim().length > 0), [])
@@ -108,6 +111,7 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+  useEffect(()=>{const open=()=>{try{sessionStorage.setItem('rptb-tour-open','1');sessionStorage.setItem('rptb-tour-step','0')}catch{}setTourOpen(true)};window.addEventListener('rptb:open-onboarding',open);return()=>window.removeEventListener('rptb:open-onboarding',open)},[])
   const shortcutKey = /Mac|iP/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K'
   useEffect(() => {
     const goOffline = () => setOffline(true)
@@ -142,11 +146,12 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
     <header className="brand"><a href={signedIn ? '#inbox' : '/'} className="brand-home"><span className="brand-mark" aria-hidden="true">RP</span><span>RP Thread Buddy</span></a>{signedIn && <span className="beta-label">Private beta</span>}</header>
     {signedIn && <nav className="primary-nav" aria-label="Primary"><p className="nav-label">Workspace</p>
       {navigation.map(([item, label, icon], index) => <a key={item} href={`#${item}`} data-secondary={index > 2 || undefined} aria-current={page === item ? 'page' : undefined} onPointerEnter={navPrefetch(item)} onFocus={navPrefetch(item)}><Icon name={icon}/><span>{label}{item==='activity'&&activityUnread>0?<b className="nav-unread" aria-label={`${activityUnread} unread activity items`}>{activityUnread>9?'9+':activityUnread}</b>:null}</span></a>)}
-      <div className={`mobile-more${menuOpen ? ' is-open' : ''}`}><button type="button" className="mobile-more-toggle" aria-expanded={menuOpen} aria-controls="mobile-more-menu" onClick={() => setMenuOpen(open => !open)}><Icon name="more"/><span>More</span></button>{menuOpen && <div id="mobile-more-menu" ref={sheetRef} className="mobile-more-menu" style={offset ? { transform: `translateY(${offset}px)`, transition: 'none' } : undefined}><span className="sheet-grabber" aria-hidden="true"></span><div className="sheet-menu-head"><span>More</span><button type="button" className="sheet-close" onClick={() => { closeMore(); clearNotice() }}>Close</button></div>{notice && <p className="sheet-notice" role="status">{notice}</p>}<label className="sheet-note-label"><span>Note</span><input className="sheet-note" type="text" placeholder="Quick note (Enter saves it)" aria-label="Quick note" enterKeyHint="done" maxLength={20000} readOnly={savingNote} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); saveQuickNote(event.currentTarget) } }} /></label><a href="#activity" onClick={() => { clearNotice(); closeMore() }}><Icon name="activity"/>Tumblr activity</a><a href="#tools" onClick={() => { clearNotice(); closeMore() }}><Icon name="tools"/>Writing tools</a><a href="#planner" onClick={() => { clearNotice(); closeMore() }}><Icon name="planner"/>Character planner</a><a href="#connections" onClick={() => { clearNotice(); closeMore() }}><Icon name="connections"/>Connected accounts</a><a href="#settings" onClick={() => { clearNotice(); closeMore() }}><Icon name="settings"/>Settings</a><a href="#support" onClick={() => { clearNotice(); closeMore() }}><Icon name="more"/>Support &amp; feedback</a></div>}</div>
+      <div className={`mobile-more${menuOpen ? ' is-open' : ''}`}><button type="button" className="mobile-more-toggle" aria-expanded={menuOpen} aria-controls="mobile-more-menu" onClick={() => setMenuOpen(open => !open)}><Icon name="more"/><span>More</span></button>{menuOpen && <div id="mobile-more-menu" ref={sheetRef} className="mobile-more-menu" style={offset ? { transform: `translateY(${offset}px)`, transition: 'none' } : undefined}><span className="sheet-grabber" aria-hidden="true"></span><div className="sheet-menu-head"><span>More</span><button type="button" className="sheet-close" onClick={() => { closeMore(); clearNotice() }}>Close</button></div>{notice && <p className="sheet-notice" role="status">{notice}</p>}<label className="sheet-note-label"><span>Note</span><input className="sheet-note" type="text" placeholder="Quick note (Enter saves it)" aria-label="Quick note" enterKeyHint="done" maxLength={20000} readOnly={savingNote} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); saveQuickNote(event.currentTarget) } }} /></label><a href="#activity" onClick={() => { clearNotice(); closeMore() }}><Icon name="activity"/>Tumblr activity</a><a href="#tools" onClick={() => { clearNotice(); closeMore() }}><Icon name="tools"/>Writing tools</a><a href="#planner" onClick={() => { clearNotice(); closeMore() }}><Icon name="planner"/>Character planner</a><a href="#connections" onClick={() => { clearNotice(); closeMore() }}><Icon name="connections"/>Connected accounts</a><a href="#settings" onClick={() => { clearNotice(); closeMore() }}><Icon name="settings"/>Settings</a><a href="#support" onClick={() => { clearNotice(); closeMore() }}><Icon name="more"/>Support &amp; feedback</a><a href="#roadmap" onClick={() => { clearNotice(); closeMore() }}><Icon name="planner"/>Site roadmap</a></div>}</div>
       <p className="nav-note"><button type="button" className="shortcut-hint" onClick={() => setCommandOpen(true)} aria-keyshortcuts="Control+K Meta+K"><Icon name="search" />Search / commands<kbd>{shortcutKey}</kbd></button>Track scenes, not spreadsheets.<button className="sign-out" disabled={signingOut} onClick={async () => { setSigningOut(true); clearApiCache(); await fetch('/api/auth/sign-out', { method:'POST', headers:{ origin:window.location.origin } }); window.history.replaceState(null, '', '/'); window.location.reload() }}>{signingOut ? 'Signing out.' : 'Sign out'}</button><span className="nav-legal"><a href="#terms">Terms</a> · <a href="#privacy">Privacy</a> · <a href="#cookies">Cookies</a></span></p>
     </nav>}
     <main id="main-content" tabIndex={-1}>{offline && <p className="offline-banner" role="status">You're offline. Changes can't be saved until you're back online.</p>}{children}</main>
     {signedIn && <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} />}
+    {signedIn&&tourOpen&&<OnboardingTour open onClose={()=>setTourOpen(false)}/>}
     <ToastHost />
   </div>
 }

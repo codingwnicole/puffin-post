@@ -5,14 +5,14 @@ import type { Env } from '../worker'
 import type { WorkspaceScope } from '../db/client'
 import { requireWorkspace } from '../auth/sessions'
 import { checkRateLimit } from '../auth/rate-limits'
-import { createStarter, findTrackedThread, getStarter, updateStarterTitle } from '../db/repositories/starters'
+import { createStarter, findTrackedThread, getStarter, updateAutomaticStarterFields, updateStarterTitle } from '../db/repositories/starters'
 import { createReplyBranch, listInboxBranches, upsertReplyBranch } from '../db/repositories/branches'
 import { branchSchema, starterSchema } from './tracking-validation'
 import { canonicalBlogIdentifier, normalizeTumblrTag, parseTumblrPostReference } from '../tumblr/normalize'
 import { createTumblrClient } from '../tumblr/client'
 import { decryptToken } from '../tumblr/oauth'
 import { latestDirectExchange } from '../tumblr/refresh'
-import { museNameFromProse, museNamesFromTags } from '../tumblr/muse'
+import { extractDirectReplyText, extractStablePremise, extractWhere, parsePartnerMuses } from '../tumblr/thread-parser'
 
 type Assignment = { id:string; characterId:string; characterTag:string|null; characterName:string }
 
@@ -119,9 +119,10 @@ export function starterRoutes() {
     if (canonicalBlogIdentifier(clickedPost.blogIdentifier) !== reference.blogIdentifier || clickedPost.id !== reference.postId) throw new HTTPException(400, { message:'Tumblr post could not be verified' })
     // Activity can point at the user's own reblog. Its wrapper often has no RP
     // header, so read the root starter for character/title extraction instead.
-    const post = clickedPost.rootPostId !== clickedPost.id || clickedPost.rootBlogIdentifier !== clickedPost.blogIdentifier
-      ? await client.getPost(clickedPost.rootBlogIdentifier, clickedPost.rootPostId).catch(() => clickedPost)
+    const rootPost = clickedPost.rootPostId !== clickedPost.id || clickedPost.rootBlogIdentifier !== clickedPost.blogIdentifier
+      ? await client.getPost(clickedPost.rootBlogIdentifier, clickedPost.rootPostId).catch(() => null)
       : clickedPost
+    const post = rootPost ?? clickedPost
     const tags = new Set([...clickedPost.tags, ...post.tags].map(normalizeTumblrTag))
     const candidates = rules.results.filter(rule => !rule.characterTag || tags.has(rule.characterTag)).map(rule => ({ characterId:rule.characterId, characterName:rule.characterName, characterTag:rule.characterTag }))
     const ownBlogs = characterId ? await scope.db.prepare('SELECT blog_identifier AS blogIdentifier FROM character_blogs WHERE workspace_id=? AND character_id=?').bind(scope.workspaceId,characterId).all<{blogIdentifier:string}>() : { results:[] as {blogIdentifier:string}[] }
@@ -142,39 +143,24 @@ export function starterRoutes() {
     const outside = [...participants].filter(blog => !workspaceBlogs.has(blog))
     const suggestedPartner = outside.length === 1 ? outside[0] : null
     const selectedCharacter = characterId ? await scope.db.prepare('SELECT name FROM characters WHERE workspace_id=? AND id=?').bind(scope.workspaceId, characterId).first<{name:string}>() : null
-    // Some groups put the RP header on the tagged reblog; others put it on the
-    // original starter. Read both, in that order, so neither convention loses.
-    const parserSource = [clickedPost.parserText ?? clickedPost.preview, post.parserText ?? post.preview].filter(Boolean).join('\n')
-    // Stop each capture at the first line break or the next RP-header label, so a
-    // "where:" value never swallows the paragraphs that follow the header.
-    const whoCaptured = parserSource?.match(/\bwho\s*:\s*(.+?)(?=\bwho\s*:|\bwhere\s*:|\bwhen\s*:|\btags\s*:|[\r\n]|$)/i)?.[1]?.trim()
-    const whereCaptured = parserSource?.match(/\bwhere\s*:\s*(.+?)(?=\bwho\s*:|\bwhere\s*:|\bwhen\s*:|\btags\s*:|[\r\n]|$)/i)?.[1]?.trim()
-    const whoDisplay = whoCaptured ? capAtWordBoundary(whoCaptured.replace(/@[^\s,]+/g, '').replace(/\bft\.?\b/i, '').replace(/\s+/g, ' ').replace(/^\W+|\W+$/g, ''), 60) || 'writing partner' : undefined
-    const whereDisplay = whereCaptured ? capAtWordBoundary(whereCaptured, 60) : undefined
-    const capTitle = (title: string) => capAtWordBoundary(title, 120)
-    // A header usually names the RECIPIENT's muse ("Who: @you ft. Ilyas"). A who-name only stands for the
-    // partner when it is not the user's own character and is not next to an @mention of the user's blogs.
     const ownName = selectedCharacter?.name
-    const isOwnMuse = (name: string) => Boolean(ownName) && firstWord(name) === firstWord(ownName ?? '')
-    const whoMentionsOwnBlog = Boolean(whoCaptured) && [...workspaceBlogs].some(blog => (whoCaptured ?? '').toLowerCase().includes('@' + blog.replace(/\.tumblr\.com$/, '')))
-    const whoForPartner = whoDisplay && !whoMentionsOwnBlog && !isOwnMuse(whoDisplay) ? whoDisplay : undefined
-    // No usable header: the partner's blog name stands in for their character, never the raw post text.
-    const partnerLabel = whoForPartner ?? (suggestedPartner ? suggestedPartner.replace(/\.tumblr\.com$/, '') : null)
-    const suggestedTitle = ownName ? capTitle(`${ownName}${partnerLabel ? ` × ${partnerLabel}` : ''}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : post.title
-    const parsedCharacterNames = parseDeclaredCharacterNames(parserSource)
-    // Partner posts carry the partner's muse in their tags ("chayton threads"); the user's own posts never count.
-    const partnerTags = [clickedPost, post].filter(item => !workspaceBlogs.has(canonicalBlogIdentifier(item.blogIdentifier))).flatMap(item => item.tags)
-    const declaredPartners = parsedCharacterNames.filter(name => !isOwnMuse(name))
-    // Last resort before the blog name: the partner's own prose ("mateo recognizes him…"), checked against the user's replies.
-    const voices = [...(clickedPost.voices ?? []), ...(post === clickedPost ? [] : post.voices ?? [])]
-    const isWorkspaceBlog = (blog: string) => workspaceBlogs.has(canonicalBlogIdentifier(blog))
-    const textBy = (partner: boolean) => voices.filter(v => isWorkspaceBlog(v.blogIdentifier) !== partner).map(v => v.text).join('\n')
-    const proseMuse = () => museNameFromProse(textBy(true), textBy(false), isOwnMuse)
-    const tagMuses = declaredPartners.length ? [] : museNamesFromTags(partnerTags, parserSource, isOwnMuse)
-    const partnerNames = declaredPartners.length ? declaredPartners : tagMuses.length ? tagMuses : [proseMuse()].filter((name): name is string => Boolean(name))
-    const parsedTitle = ownName && partnerNames.length ? capTitle(`${ownName} × ${partnerNames.join(' × ')}${whereDisplay ? ` — ${whereDisplay}` : ''}`) : undefined
-    const summary = setupSummary(post.parserText ?? post.preview, whereCaptured)
-    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:ownName, suggestedTitle:parsedTitle ?? suggestedTitle, titleNeedsPartner: !parsedTitle && !whoForPartner, parsedCharacterNames, preview:post.preview, summary, sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [...clickedPost.threadPostIds, ...post.threadPostIds, reference.postId]) }
+    const structuralTexts = [...(clickedPost.voices??[]), ...(rootPost?.voices??[])].map(voice=>voice.text).filter(Boolean)
+    const partnerMuses = parsePartnerMuses(structuralTexts, [...tags], ownName ?? '')
+    // The selected post may be a late reply with a different scene header. The
+    // premise and setting belong to the root starter, so only read its voices.
+    const rootTexts = (rootPost?.voices ?? []).map(voice => voice.text).filter(Boolean)
+    const where = extractWhere(rootTexts)
+    const rootDirectText = rootPost ? extractDirectReplyText(rootPost.voices, rootPost.blogIdentifier) : null
+    const premise = extractStablePremise(rootDirectText, where.value)
+    const partnerHandle = suggestedPartner?.replace(/\.tumblr\.com$/i, '') ?? null
+    const confirmedPartnerNames = partnerMuses.value ?? []
+    const titlePartner = confirmedPartnerNames.length ? confirmedPartnerNames.join(' × ') : partnerHandle ?? 'Tumblr thread'
+    const autoTitle = ownName ? capAtWordBoundary(`${ownName} × ${titlePartner}`, 120) : (partnerHandle ?? 'Tumblr thread')
+    const titleField = { value:autoTitle, source:partnerMuses.value?.length?partnerMuses.source:partnerHandle?'blog_fallback':ownName?'confirmed_character_assignment':'unresolved', confidence:partnerMuses.value?.length?partnerMuses.confidence:partnerHandle?'medium':ownName?'low':'none', evidence:partnerMuses.evidence??(partnerHandle?`Tumblr blog ${partnerHandle}`:ownName?`Character assignment ${characterId}`:null) }
+    const userMuse = { value:ownName??null, source:ownName?'confirmed_character_assignment':'unresolved', confidence:ownName?'high':'none', evidence:ownName?`Character assignment ${characterId}`:null }
+    const previewText = extractDirectReplyText(clickedPost.voices,clickedPost.blogIdentifier)
+    const latestReplyPreview = { value:previewText, source:previewText?'structured_metadata':'unresolved', confidence:previewText?'high':'none', evidence:previewText?`Post ${clickedPost.id} by ${clickedPost.blogIdentifier}`:null }
+    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:ownName, userMuse, titleField, suggestedTitle:autoTitle, titleNeedsPartner: !confirmedPartnerNames.length && !partnerHandle, parsedCharacterNames:confirmedPartnerNames, partnerMuses, premise, latestReplyPreview, preview:previewText, summary:premise.value ?? '', sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [...clickedPost.threadPostIds, ...post.threadPostIds, reference.postId]) }
   }
 
   async function findOrCreatePartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, blogIdentifier:string) {
@@ -233,11 +219,34 @@ export function starterRoutes() {
     const manualId=crypto.randomUUID()
     // Already tracked (any blog, any character): reuse that thread, never a second copy.
     const existing = found?.existingStarterId ? await getStarter(scope, found.existingStarterId) : null
-    const starter = existing ?? await createStarter({ ...scope, characterId:input.characterId, groupId, title:input.title || (found?.titleNeedsPartner && found.characterName && partnerBlog ? capAtWordBoundary(`${found.characterName} × ${partnerBlog.replace(/\.tumblr\.com$/, '')}`, 120) : null) || found?.suggestedTitle || characterTitle(found?.characterName, found?.parsedCharacterNames) || found?.title || (found ? 'Tumblr thread' : 'Untitled scene'), rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId, threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual', description:input.description?.trim() || found?.summary || compactThreadSummary(latestPost?.preview ?? found?.preview) })
+    const manualTitle = Boolean(input.title?.trim())
+    const manualDescription = Boolean(input.description?.trim())
+    const autoTitleSource = found?.partnerMuses.value?.length ? found.partnerMuses.source : partnerBlog ? 'blog_fallback' : found?.characterName ? 'confirmed_character_assignment' : 'unresolved'
+    const autoTitleConfidence = found?.partnerMuses.value?.length ? found.partnerMuses.confidence : partnerBlog ? 'medium' : found?.characterName ? 'low' : 'none'
+    const description = input.description?.trim() ?? found?.summary ?? ''
+    const starter = existing ?? await createStarter({ ...scope, characterId:input.characterId, groupId,
+      title:input.title?.trim() || found?.suggestedTitle || 'Untitled scene',
+      titleSource:manualTitle ? 'manual' : autoTitleSource, titleConfidence:manualTitle ? 'high' : autoTitleConfidence,
+      titleEvidence:manualTitle ? 'Entered by the writer' : found?.partnerMuses.evidence ?? (partnerBlog ? `Tumblr blog ${partnerBlog}` : found?.characterName ? `Character assignment ${input.characterId}` : ''),
+      rootBlogId:found?.reference.blogIdentifier ?? 'manual', rootPostId:found?.reference.postId ?? manualId,
+      threadRootId:found?.threadRootId ?? manualId, threadRootBlogId:found?.threadRootBlogId ?? 'manual',
+      description, premise:description,
+      descriptionSource:manualDescription ? 'manual' : found?.premise.source ?? 'unresolved',
+      descriptionConfidence:manualDescription ? 'high' : found?.premise.confidence ?? 'none',
+      descriptionEvidence:manualDescription ? 'Entered by the writer' : found?.premise.evidence ?? '',
+      premiseSource:manualDescription ? 'manual' : found?.premise.source ?? 'unresolved',
+      premiseConfidence:manualDescription ? 'high' : found?.premise.confidence ?? 'none',
+      premiseEvidence:manualDescription ? 'Entered by the writer' : found?.premise.evidence ?? '',
+    })
     const partnerId=partnerBlog ? await findOrCreatePartner(scope,partnerBlog) : input.partnerName?.trim() ? await findOrCreateManualPartner(scope,input.partnerName) : null
     if (found?.tags?.length) await applyPostTags(scope, starter.id, found.tags)
+    const directReply = latestPost && latest ? extractDirectReplyText(latestPost.voices, latest.activity.blogIdentifier) : null
+    const latestReplyExcerpt = directReply ? directReply.replace(/\s+/gu, ' ').trim().slice(0, 500) : null
     const branch = (partnerId || !found)
-      ? await upsertReplyBranch({ ...scope, starterId: starter.id, partnerId, status: latest?.status ?? 'your_turn', latestPostId: latest?.activity.postId, lastPoster: latest?.activity.blogIdentifier, lastActivityAt: latest?.activity.timestamp })
+      ? await upsertReplyBranch({ ...scope, starterId: starter.id, partnerId, status: latest?.status ?? 'your_turn', latestPostId: latest?.activity.postId, lastPoster: latest?.activity.blogIdentifier, lastActivityAt: latest?.activity.timestamp, latestReplyExcerpt,
+          latestReplySource: latestReplyExcerpt ? 'structured_metadata' : 'unresolved', latestReplyConfidence: latestReplyExcerpt ? 'high' : 'none',
+          latestReplyEvidence: latest?.activity ? `Post ${latest.activity.postId} by ${latest.activity.blogIdentifier}` : '',
+          partnerMuses: found?.partnerMuses.value ?? [], partnerMusesSource: found?.partnerMuses.source ?? 'unresolved', partnerMusesConfidence: found?.partnerMuses.confidence ?? 'none', partnerMusesEvidence: found?.partnerMuses.evidence })
       : null
     return c.json({ ...starter, branch }, 201)
   })
@@ -251,8 +260,8 @@ export function starterRoutes() {
   })
   app.patch('/:starterId', async c => {
     const scope = await requireWorkspace(c)
-    const body = z.object({ title:z.string().trim().min(1).max(300), description:z.string().max(20000).optional() }).strict().parse(await c.req.json())
-    return c.json(await updateStarterTitle(scope, c.req.param('starterId'), body.title, body.description ?? ''))
+    const body = z.object({ title:z.string().trim().min(1).max(300).optional(), description:z.string().max(20000).optional() }).strict().refine(value=>value.title!==undefined||value.description!==undefined).parse(await c.req.json())
+    return c.json(await updateStarterTitle(scope, c.req.param('starterId'), body.title, body.description))
   })
   app.get('/:starterId', async c => { const scope = await requireWorkspace(c), id = c.req.param('starterId'); return c.json({ starter:await getStarter(scope,id), branches:await listInboxBranches({ ...scope,starterId:id,includeArchived:true }) }) })
 
@@ -277,8 +286,11 @@ export function starterRoutes() {
     const starterId=c.req.param('starterId')
     const body=premiseSchema.parse(await c.req.json().catch(()=>({})))
     if(!await scope.db.prepare('SELECT id FROM starters WHERE workspace_id=? AND id=?').bind(scope.workspaceId,starterId).first()) throw new HTTPException(404,{message:'Starter not found'})
-    // One scene summary: the writer's text replaces the summary Puffin read from the post, so cards show it too.
-    await scope.db.prepare('UPDATE starters SET premise=?, description=? WHERE workspace_id=? AND id=?').bind(body.premise,body.premise,scope.workspaceId,starterId).run()
+    const editedAt = new Date().toISOString()
+    await scope.db.prepare(`UPDATE starters SET premise=?, description=?,
+      premise_source='manual', premise_confidence='high', premise_evidence='Edited by the writer', premise_manual_override_at=?,
+      description_source='manual', description_confidence='high', description_evidence='Edited by the writer', description_manual_override_at=?
+      WHERE workspace_id=? AND id=?`).bind(body.premise,body.premise,editedAt,editedAt,scope.workspaceId,starterId).run()
     return c.json(await getStarter(scope,starterId),200)
   })
   app.post('/:starterId/reparse', async c => {
@@ -287,8 +299,15 @@ export function starterRoutes() {
     const starter = await getStarter(scope, c.req.param('starterId'))
     if (starter.rootBlogId === 'manual') throw new HTTPException(400, { message:'Manual scenes do not have a Tumblr post to read' })
     const found = await findPost(scope, c.env, `https://www.tumblr.com/${starter.rootBlogId.replace(/\.tumblr\.com$/i, '')}/${starter.rootPostId}`, starter.characterId)
-    if (!found.parsedCharacterNames.length) throw new HTTPException(400, { message:'Puffin could not find declared character names in this post yet' })
-    return c.json(await updateStarterTitle(scope, starter.id, found.suggestedTitle || starter.title, starter.premise || found.summary || compactThreadSummary(found.preview) || starter.description))
+    if (!found.suggestedTitle && !found.premise.value) throw new HTTPException(400, { message:'No reliable title or root starter details were available to refresh' })
+    return c.json(await updateAutomaticStarterFields(scope, starter.id, {
+      title:found.suggestedTitle ?? null,
+      titleSource:found.partnerMuses.value?.length ? found.partnerMuses.source : found.suggestedPartner ? 'blog_fallback' : 'confirmed_character_assignment',
+      titleConfidence:found.partnerMuses.value?.length ? found.partnerMuses.confidence : found.suggestedPartner ? 'medium' : 'low',
+      titleEvidence:found.partnerMuses.evidence ?? (found.suggestedPartner ? `Tumblr blog ${found.suggestedPartner}` : found.characterName ? `Character assignment ${starter.characterId}` : ''),
+      description:found.premise.value, descriptionSource:found.premise.source, descriptionConfidence:found.premise.confidence, descriptionEvidence:found.premise.evidence,
+      premise:found.premise.value, premiseSource:found.premise.source, premiseConfidence:found.premise.confidence, premiseEvidence:found.premise.evidence,
+    }))
   })
   app.delete('/:starterId', async c => {
     const scope=await requireWorkspace(c),id=c.req.param('starterId')

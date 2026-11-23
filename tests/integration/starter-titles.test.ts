@@ -23,25 +23,23 @@ afterEach(async () => {
 })
 
 
-// Each field stops at the next header label (when:) or the end of its text block.
-it('stops who/where at the next label, strips @-mentions and "ft.", keeps the title short', async () => {
+// Titles are "<your muse> × <partner muse>"; the setting belongs to the premise, not the title.
+it('reads the partner muse from the header, strips @-mentions and "ft.", keeps the setting out of the title', async () => {
   const body = 'The rain had not stopped for three days, and the lighthouse beam cut through it every forty seconds until someone finally came down the cliff road carrying a lamp that was far too bright for a night this wet, and Nora held the door open without a single word because she already knew what the letter on the table would say, and the whole town could hear it even though nobody spoke, and the gulls went quiet one by one as the boat slipped past the breakwater into the dark water.'
-  stubPost('a:12345', { trail: [{ content: [{ text: `who: @partner ft. Nora\nwhere: the lighthouse\nwhen: night\n\n${body}` }] }] })
+  stubPost('a:12345', { trail: [{ blog: { name: 'partner' }, content: [{ text: `who: @partner ft. Nora\nwhere: the lighthouse\nwhen: night\n\n${body}` }] }] })
   const title = await resolveTitle('https://a.tumblr.com/post/12345')
-  expect(title).toBe('Character a × Nora — the lighthouse')
+  expect(title).toBe('Character a × Nora')
   expect(title.length).toBeLessThanOrEqual(120)
 })
 
-// A 300+ char single-line where value with no labels or line breaks to stop it
-// must be truncated at the 60-char word boundary, so the whole title stays ≤120.
-it('caps a 300-char where line so the whole suggested title stays under 120 chars', async () => {
+// A 300+ char single-line where value must never leak into or lengthen the title.
+it('keeps a 300-char where line out of the title', async () => {
   const where = 'the cliff road where the salt wind never stopped and the light turned every forty seconds all through the worst of the storm and nobody in the town slept for a single night because they all heard the bell and none of them dared to go and see what it meant for them'
   expect(where.length).toBeGreaterThan(250)
   stubPost('a:11111', { trail: [{ content: [{ text: `where: ${where}` }] }] })
   const title = await resolveTitle('https://a.tumblr.com/post/11111')
   expect(title.length).toBeLessThanOrEqual(120)
-  // The word-boundary cap means the truncated where field ends with an ellipsis.
-  expect(title.endsWith('…')).toBe(true)
+  expect(title).not.toContain('cliff road')
 })
 
 async function resolveFull(postUrl: string) {
@@ -59,9 +57,8 @@ it('a header naming your own muse is not your partner; the partner muse comes fr
   stubPost('a:901', { reblogged_root_id: '900', reblogged_root_name: 'lav', content: [{ text: 'character a follows chayton into the dark.' }],
     trail: [{ blog: { name: 'lav' }, post: { id: '899' }, content: [{ text: 'chayton turned back for a moment.' }] }] })
   const found = await resolveFull('https://a.tumblr.com/post/901')
-  expect(found.suggestedTitle).toMatch(/^Character a × Chayton — The Brig/)
-  expect(found.suggestedTitle).not.toMatch(/Character a × Character a/)
-  expect(found.summary).toBe('The Brig, sneaking to where Character a is imprisoned. The Crown was always on the tail of the crew.')
+  expect(found.suggestedTitle).toBe('Character a × Chayton')
+  expect(found.summary).toMatch(/^The Brig, sneaking to where Character a is imprisoned\. The Crown was always on the tail of the crew\./)
 })
 
 it('"closed starter for @you (your muse)" never makes a title with your muse twice, and its header stays out of the summary', async () => {
@@ -73,10 +70,11 @@ it('"closed starter for @you (your muse)" never makes a title with your muse twi
   expect(found.summary).toBe('the sun is just setting on the sixth day at the docks. gulls circle overhead.')
 })
 
-it('with no header or tag naming the partner muse, the partner\'s own prose supplies it', async () => {
+// Prose is never mined for a muse name (see src/tumblr/thread-parser.ts); the partner's blog stands in.
+it('with no header or tag naming the partner muse, the title falls back to the partner blog', async () => {
   stubPost('stx:700', { tags: ['w. character a 01'], content: [{ text: 'closed starter for @a (character a)' }, { text: 'the sun is just setting at the docks. mateo waits by the rail.' }] })
   stubPost('a:701', { reblogged_root_id: '700', reblogged_root_name: 'stx', content: [{ text: 'relief at seeing mateo washes over him.' }],
     trail: [{ blog: { name: 'stx' }, post: { id: '699' }, content: [{ text: 'mateo recognizes him by voice. he steps closer.' }] }] })
   const found = await resolveFull('https://a.tumblr.com/post/701')
-  expect(found.suggestedTitle).toBe('Character a × Mateo')
+  expect(found.suggestedTitle).toBe('Character a × stx')
 })

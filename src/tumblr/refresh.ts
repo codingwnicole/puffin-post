@@ -6,6 +6,7 @@ export interface RefreshBranch {
   latestPostId: string | null
   status: string
   statusManualOverrideAt: string | null
+  archivedAt?: string | null
 }
 
 export interface RefreshInput {

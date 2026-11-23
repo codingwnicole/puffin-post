@@ -15,7 +15,7 @@ test('shows the RP Thread Buddy app shell', async ({ page }) => {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/')
-  await expect(page).toHaveTitle('RP Thread Buddy')
+  await expect(page).toHaveTitle('RP Thread Buddy | Roleplay Thread Tracker')
   await expect(page.getByRole('link', { name: 'RP Thread Buddy', exact: true })).toBeVisible()
   await expect(page.getByRole('main')).toContainText('Your turn')
 })

@@ -6,6 +6,8 @@ export const branchSchema = z.object({
   partnerId: reference.nullable().optional(),
   status: z.enum(['your_turn', 'their_turn', 'queued', 'archived']).optional(),
   notes: z.string().max(20000).optional(),
+  partnerMuses: z.array(z.string().trim().min(1).max(80)).max(8).optional(),
+  userRecap: z.string().max(1000).optional(),
   nextCheckAt: z.iso.datetime({ offset: true }).transform(value => new Date(value).toISOString()).nullable().optional(),
 }).strict()
 export const starterSchema = z.object({

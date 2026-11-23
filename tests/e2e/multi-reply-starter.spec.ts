@@ -14,9 +14,12 @@ async function signedIn(page: Page) {
   })
 }
 
-// Branch cards are collapsed by default; the trigger button expands one.
+// Branch cards are collapsed by default and remember being opened, so expand only a collapsed one.
 const card = (page: Page, partner: string) => page.locator('article.branch-card').filter({ has: page.locator('.branch-meta', { hasText: partner }) })
-const expand = (page: Page, partner: string) => card(page, partner).locator('.scene-card-trigger').click()
+const expand = async (page: Page, partner: string) => {
+  const trigger = card(page, partner).locator('.scene-card-trigger')
+  if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click()
+}
 
 test('three participants are actionable independently from inbox and starter detail', async ({ page }) => {
   const starter = { id:'s',title:'Open starter',characterId:'c',description:'Shared scene',rootPostId:'123',rootBlogId:'writer.tumblr.com' }
@@ -29,6 +32,12 @@ test('three participants are actionable independently from inbox and starter det
     if (path === '/api/inbox') return route.fulfill({ json:{ branches:rows.filter(r => r.status !== 'archived'),yourTurnCount:rows.filter(r => r.status === 'your_turn').length,overdueDraftCount:0,dueSoonCount:0 } })
     if (path === '/api/starters/s' && method === 'PATCH') return route.fulfill({ json:starter })
     if (path === '/api/starters/s') return route.fulfill({ json:{ starter,branches:rows } })
+    if (path.endsWith('/archive') && method === 'POST') {
+      const row = rows.find(r => path === `/api/branches/${r.id}/archive`)!
+      patched.push(row.id)
+      row.status = 'archived'
+      return route.fulfill({ json:row })
+    }
     if (path.startsWith('/api/branches/') && method === 'PATCH') {
       const row = rows.find(r => path === `/api/branches/${r.id}`)!
       patched.push(row.id)
@@ -40,12 +49,9 @@ test('three participants are actionable independently from inbox and starter det
   await page.goto('/')
   await expect(page.getByRole('heading',{ name:/Your turn/ })).toBeVisible()
   await expect(page.locator('article.branch-card')).toHaveCount(3)
-  // Archive only the first participant; the editor autosaves when focus leaves it.
+  // Archive only the first participant.
   await expand(page,'One')
-  const status = card(page,'One').getByLabel('Status')
-  await status.focus()
-  await status.selectOption('archived')
-  await status.blur()
+  await card(page,'One').getByRole('button',{ name:'Archive reply' }).click()
   await expect(page.locator('.reply-donut strong')).toHaveText('2')
   await expect(page.locator('article.branch-card')).toHaveCount(2)
   expect([...new Set(patched)]).toEqual(['b0'])
@@ -53,9 +59,9 @@ test('three participants are actionable independently from inbox and starter det
   await page.evaluate(() => { location.hash = 'starter/s' })
   await expect(page.getByText('Shared scene',{ exact:true })).toBeVisible()
   await expect(page.locator('article.branch-card')).toHaveCount(3)
-  await expect(card(page,'One').locator('.status-badge')).toHaveText('Archived')
-  await expect(card(page,'Two').locator('.status-badge')).toHaveText('Your turn')
-  await expect(card(page,'Three').locator('.status-badge')).toHaveText('Your turn')
+  await expect(card(page,'One').locator('.turn-badge')).toHaveText('Archived')
+  await expect(card(page,'Two').locator('.turn-badge')).toHaveText('Your turn')
+  await expect(card(page,'Three').locator('.turn-badge')).toHaveText('Your turn')
 })
 
 test('creates a shared starter and adds a participant without duplicating it', async ({ page }) => {

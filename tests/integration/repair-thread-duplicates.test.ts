@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import { getPlatformProxy } from 'wrangler'
 import type { Env } from '../../src/worker'
 import { buildRepairPlan, applyPlan, repairThreadDuplicates } from '../../scripts/repair-thread-duplicates'
+import { sqlStatements } from './sql-statements'
 
 /**
  * B10 — dry-run (default) / apply repair for duplicate thread starters.
@@ -19,8 +20,7 @@ const MIGRATIONS_DIR = path.join(ROOT, 'src/db/migrations')
 async function migrate(db: Env['DB']): Promise<void> {
   for (const file of readdirSync(MIGRATIONS_DIR).sort()) {
     const sql = readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8')
-    const stmts = sql
-      .split(';')
+    const stmts = sqlStatements(sql)
       .map((s) => s.trim())
       .filter((s) => s.length > 0)
       // The test seeds two starters sharing a thread root (the duplicate

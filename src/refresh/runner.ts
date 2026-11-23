@@ -5,6 +5,7 @@ import { canonicalBlogIdentifier } from '../tumblr/normalize'
 import { refreshStarterBranches, type RefreshBranch } from '../tumblr/refresh'
 import { sendWorkspacePush } from '../routes/push'
 import { redact } from '../shared/redact'
+import { extractDirectReplyText } from '../tumblr/thread-parser'
 
 export interface RefreshBatchResult { selected: number; refreshed: number; failed: number; skipped?: number; fetchesUsed?: number; d1Used?: number; rateLimited?: boolean }
 
@@ -19,7 +20,7 @@ export function replyExcerpt(preview: string | null | undefined): string | null 
   return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()
 }
 interface RefreshTarget { leadsCharacter: number; id: string; workspaceId: string; characterId: string; blogIdentifier: string; connectionId: string; tokenEncrypted: string; tokenSecretEncrypted: string }
-interface StarterRow { id: string; rootPostId: string; rootBlogId: string }
+interface StarterRow { id: string; rootPostId: string; rootBlogId: string; archived: number }
 interface BranchRow extends RefreshBranch { starterId: string; lastRefreshAt: string | null }
 
 // Cloudflare free plan: 50 fetch subrequests per invocation AND a SEPARATE
@@ -181,13 +182,14 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
       // Every active starter's branches in ONE query, stalest branch first so
       // each run reaches different threads.
       const branches = await db.prepare(`SELECT b.id, b.starter_id AS starterId, b.latest_post_id AS latestPostId, b.status, b.status_manual_override_at AS statusManualOverrideAt,
+          b.archived_at AS archivedAt,
           b.last_refresh_at AS lastRefreshAt,
           p.blog_identifier AS partnerBlogIdentifier
         FROM reply_branches b LEFT JOIN partners p ON p.workspace_id=b.workspace_id AND p.id=b.partner_id
         JOIN starters s ON s.workspace_id=b.workspace_id AND s.id=b.starter_id
-        WHERE b.workspace_id=? AND b.archived_at IS NULL AND s.archived=0 AND s.source='tumblr'
+        WHERE b.workspace_id=? AND s.source='tumblr'
         ORDER BY b.last_refresh_at IS NULL DESC, b.last_refresh_at ASC, b.id ASC`).bind(target.workspaceId).all<BranchRow>()
-      const starterRows = await db.prepare('SELECT id, root_post_id AS rootPostId, root_blog_id AS rootBlogId FROM starters WHERE workspace_id=? AND archived=0 AND character_id=?').bind(target.workspaceId, target.characterId).all<StarterRow>()
+      const starterRows = await db.prepare('SELECT id, root_post_id AS rootPostId, root_blog_id AS rootBlogId, archived FROM starters WHERE workspace_id=? AND character_id=?').bind(target.workspaceId, target.characterId).all<StarterRow>()
       const branchesByStarter = new Map<string, BranchRow[]>()
       for (const branch of branches.results) {
         const list = branchesByStarter.get(branch.starterId) ?? []
@@ -254,29 +256,34 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
         const updatedBranchIds = new Set<string>()
         await refreshStarterBranches({ workspaceId: target.workspaceId, starterId: starter.id, rootBlogIdentifier: root, ownBlogIdentifiers: ownBlogSet, branches: starter.branches, activities, now }, async (branch, activity, status) => {
           updatedBranchIds.add(branch.id)
+          const starterArchived = starter.archived === 1
+          const branchArchived = Boolean(branch.archivedAt) || branch.status === 'archived'
           // A manual "Your turn"/"Their turn" choice holds only until Tumblr
           // activity newer than it arrives; then the detected status wins and
           // the override clears. Otherwise the manual status is preserved.
-          const overrideWins = branch.statusManualOverrideAt !== null && !(activity.timestamp > branch.statusManualOverrideAt)
-          const finalStatus = overrideWins ? branch.status : status
-          const clearedOverride = branch.statusManualOverrideAt !== null && !overrideWins
+          const overrideWins = branchArchived || branch.statusManualOverrideAt !== null && !(activity.timestamp > branch.statusManualOverrideAt)
+          const finalStatus = branchArchived ? branch.status : overrideWins ? branch.status : status
+          const clearedOverride = !branchArchived && branch.statusManualOverrideAt !== null && !overrideWins
           // The notes carry no text; fetch the reply post once per distinct post
           // (cached) to read its preview. A failure never sinks the refresh — the
           // branch still records the new reply, just without an excerpt.
           let excerpt = excerptCache.get(activity.postId)
           if (excerpt === undefined && budget.remaining() > FINAL_WRITE_HEADROOM + 1) { // ponytail: never spend the final-write headroom on an excerpt
-            try { excerpt = replyExcerpt((await client.getPost(activity.blogIdentifier, activity.postId)).preview) } catch (e) { if (e instanceof TumblrRateLimitedError) throw e; excerpt = null }
+            try {
+              const reply = await client.getPost(activity.blogIdentifier, activity.postId)
+              excerpt = replyExcerpt(extractDirectReplyText(reply.voices, activity.blogIdentifier))
+            } catch (e) { if (e instanceof TumblrRateLimitedError) throw e; excerpt = null }
             excerptCache.set(activity.postId, excerpt)
           }
           writes.push(
-            db.prepare(`UPDATE reply_branches SET latest_post_id=?,last_poster=?,last_activity_at=?,latest_reply_excerpt=?,last_refresh_at=?,refresh_error=NULL,status=?,status_manual_override_at=? WHERE workspace_id=? AND id=?`)
-              .bind(activity.postId, activity.blogIdentifier, activity.timestamp, excerpt ?? null, now.toISOString(), finalStatus, clearedOverride ? null : branch.statusManualOverrideAt, target.workspaceId, branch.id),
+            db.prepare(`UPDATE reply_branches SET latest_post_id=?,last_poster=?,last_activity_at=?,latest_reply_excerpt=?,latest_reply_source=?,latest_reply_confidence=?,latest_reply_evidence=?,last_refresh_at=?,refresh_error=NULL,status=?,status_manual_override_at=? WHERE workspace_id=? AND id=?`)
+              .bind(activity.postId, activity.blogIdentifier, activity.timestamp, excerpt ?? null, excerpt ? 'structured_metadata' : 'unresolved', excerpt ? 'high' : 'none', `Post ${activity.postId} by ${activity.blogIdentifier}`, now.toISOString(), finalStatus, clearedOverride ? null : branch.statusManualOverrideAt, target.workspaceId, branch.id),
             db.prepare(`INSERT INTO activities (id,workspace_id,starter_id,reply_branch_id,type,actor,source,metadata_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)`)
               .bind(crypto.randomUUID(), target.workspaceId, starter.id, branch.id, 'tumblr_reply_detected', activity.blogIdentifier, 'tumblr', JSON.stringify({ postId: activity.postId }), now.toISOString()),
           )
           // Count instead of pushing per branch; one summary push per
           // workspace goes out after the target loop.
-          if (finalStatus === 'your_turn' && branch.status !== 'your_turn') {
+          if (!starterArchived && !branchArchived && finalStatus === 'your_turn' && branch.status !== 'your_turn') {
             const counts = summary.get(target.workspaceId) ?? { tagCount: 0, replyCount: 0 }
             summary.set(target.workspaceId, { tagCount: counts.tagCount, replyCount: counts.replyCount + 1 })
           }

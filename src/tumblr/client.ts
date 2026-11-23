@@ -4,7 +4,8 @@ import { canonicalBlogIdentifier } from './normalize'
 
 function postText(content?: Array<{ text?: string }>, trail?: Array<{ content?: Array<{ text?: string }> }>, fallback?: string) {
   const text = [...(content ?? []), ...(trail?.flatMap(item => item.content ?? []) ?? [])]
-    .map(item => (item.text ?? '').replace(/\s+/g, ' ').trim())
+    // Keep soft line breaks inside a block: the thread parser reads RP headers line by line.
+    .map(item => (item.text ?? '').replace(/[^\S\n]+/g, ' ').replace(/ *\n[\s]*/g, '\n').trim())
     .filter(Boolean)
     // One line per text block, so an RP header ("Where: …") never runs into the story.
     .join('\n')

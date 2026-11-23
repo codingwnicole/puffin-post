@@ -26,6 +26,7 @@ import { featureSuggestionRoutes } from './routes/feature-suggestions'
 import { supportRoutes } from './routes/support'
 import { clientErrorRoutes } from './routes/client-errors'
 import { publicShareRoutes, shareAdminRoutes } from './routes/public-share'
+import { roadmapRoutes } from './routes/roadmap'
 
 export interface Env {
   DB: D1Database
@@ -96,13 +97,14 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
       const response = error.getResponse()
       response.headers.set('Cache-Control', 'no-store')
       response.headers.set('Referrer-Policy', 'no-referrer')
+      response.headers.set('X-Robots-Tag', 'noindex, nofollow')
       response.headers.set('X-Build-Revision', BUILD_REVISION)
       return response
     }
     if (error instanceof SyntaxError) { const response = c.json({ error: 'Invalid request body' }, 400); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
     if (error instanceof ZodError) { const response = c.json({ error: 'Invalid request body or query' },400); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
     if (['Starter not found','Branch not found','Draft not found','Character not found','Partner not found'].includes(error.message)) { const response = c.json({ error: error.message },404); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
-    if (['Draft is archived','Draft is already converted'].includes(error.message)) { const response = c.json({ error: error.message },409); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
+    if (['Draft is archived','Draft is already converted','Restore the archived thread before restoring this reply'].includes(error.message)) { const response = c.json({ error: error.message },409); response.headers.set('X-Build-Revision', BUILD_REVISION); return response }
     // Never expose or log the raw error message: a DB/OAuth error could carry a token or email.
     console.error('Unhandled request error', { path:c.req.path, method:c.req.method, name:error instanceof Error ? error.name : 'unknown' })
     const response = c.json({ error: 'Request failed' }, 500); response.headers.set('X-Build-Revision', BUILD_REVISION); return response
@@ -127,6 +129,7 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   app.route('/api/character-planner',characterPlannerRoutes())
   app.route('/api/feature-suggestions',featureSuggestionRoutes())
   app.route('/api/support',supportRoutes())
+  app.route('/api/roadmap',roadmapRoutes())
   app.route('/api/client-errors',clientErrorRoutes(BUILD_REVISION))
   app.route('/api/share-admin',shareAdminRoutes())
   app.route('/c',publicShareRoutes())

@@ -4,13 +4,14 @@ import { Hono } from 'hono'
 import { startSession } from '../../src/auth/sessions'
 import { createApp, type Env } from '../../src/worker'
 import { encryptToken } from '../../src/tumblr/oauth'
+import { sqlStatements } from './sql-statements'
 
 export async function trackingFixture() {
   const originalFetch = globalThis.fetch
   globalThis.fetch = async (input: RequestInfo | URL) => {
     const url = String(input)
     // Single-post reads use the list endpoint filtered by id (with reblog_info).
-    const match = /\/blog\/([^/]+)\/posts\?id=(\d+)/.exec(url)
+    const match = /\/blog\/([^/]+)\/posts\?id=([^&]+)/.exec(url)
     if (match) {
       const blog = decodeURIComponent(match[1]).replace(/\.tumblr\.com$/,'')
       const id = match[2]
@@ -36,7 +37,7 @@ export async function trackingFixture() {
   const env = { ...platform.env, APP_ORIGIN: 'https://threadums.test', SESSION_SECRET: 'test-only-session-secret-with-32-characters', TOKEN_ENCRYPTION_KEY:'test-only-encryption-key-with-32-chars', TUMBLR_CONSUMER_KEY:'key', TUMBLR_CONSUMER_SECRET:'secret' }
   for (const file of (await readdir('src/db/migrations')).sort()) {
     const sql = await readFile(`src/db/migrations/${file}`, 'utf8')
-    await env.DB.batch(sql.split(';').filter(s => s.trim()).map(s => env.DB.prepare(s)))
+    await env.DB.batch(sqlStatements(sql).map(s => env.DB.prepare(s)))
   }
   const cookies: Record<string, string> = {}
   for (const id of ['a', 'b']) {

@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { getPlatformProxy } from 'wrangler'
 import { createApp, type Env } from '../../src/worker'
 import { createMagicLinks, type MailSender } from '../../src/auth/magic-links'
+import { hashToken } from '../../src/auth/sessions'
 import { createInvite } from '../../src/auth/invites'
+import { sqlStatements } from './sql-statements'
 
 describe('public magic-link sign-up and invites against local D1', () => {
   let env: Env
@@ -17,7 +19,7 @@ describe('public magic-link sign-up and invites against local D1', () => {
     dispose = platform.dispose
     for (const file of ['0001_initial.sql', '0002_auth.sql', '0029_rate_limits.sql']) {
       const sql = await readFile(`src/db/migrations/${file}`, 'utf8')
-      await env.DB.batch(sql.split(';').filter((part) => part.trim()).map((part) => env.DB.prepare(part)))
+      await env.DB.batch(sqlStatements(sql).map((part) => env.DB.prepare(part)))
     }
     await env.DB.prepare("INSERT INTO users (id,email,display_name,auth_identity) VALUES ('owner','owner@example.com','Owner','email:owner@example.com')").run()
     await env.DB.prepare("INSERT INTO workspaces (id,name,owner_user_id) VALUES ('home','Home','owner')").run()
@@ -98,7 +100,10 @@ describe('public magic-link sign-up and invites against local D1', () => {
     }, env)
     expect(replay.status).toBe(400)
     expect(replay.headers.get('set-cookie')).toBeNull()
-    expect((await request(`/api/auth/verify?token=${token}`)).status).toBe(400)
+    const replayPage = await request(`/api/auth/verify?token=${token}`)
+    expect(replayPage.status).toBe(400)
+    expect(replayPage.headers.get('set-cookie')).toBeNull()
+    expect(await replayPage.text()).toContain('It may have expired or already been used')
   })
 
   it('preserves no-store and no-referrer on successful callbacks and 400 401 403 errors', async () => {
@@ -127,8 +132,14 @@ describe('public magic-link sign-up and invites against local D1', () => {
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
     await expect(links.consumeMagicLink(token)).rejects.toThrow('invalid magic link')
     const expired = await links.issueMagicLink('owner@example.com')
-    await env.DB.prepare("UPDATE magic_links SET expires_at = '2000-01-01T00:00:00.000Z'").run()
+    await env.DB.prepare("UPDATE magic_links SET expires_at = '2000-01-01T00:00:00.000Z' WHERE token_hash = ?")
+      .bind(await hashToken(expired)).run()
     await expect(links.consumeMagicLink(expired)).rejects.toThrow('invalid magic link')
+    const expiredPage = await request(`/api/auth/verify?token=${expired}`)
+    expect(expiredPage.status).toBe(400)
+    expect(expiredPage.headers.get('referrer-policy')).toBe('no-referrer')
+    expect(expiredPage.headers.get('cache-control')).toBe('no-store')
+    expect(await expiredPage.text()).toContain('Request a fresh link to sign in')
   })
 
   it('registers any email via magic link without disclosing which emails exist', async () => {

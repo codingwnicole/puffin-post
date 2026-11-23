@@ -4,6 +4,7 @@ import { getPlatformProxy } from 'wrangler'
 import { encryptToken } from '../../src/tumblr/oauth'
 import { runRefreshBatch } from '../../src/refresh/runner'
 import type { Env } from '../../src/worker'
+import { sqlStatements } from './sql-statements'
 
 const ENC_KEY = 'test-only-encryption-key-with-32-chars'
 
@@ -22,7 +23,7 @@ async function makeEnv(overrides: Partial<Env> = {}) {
   }
   for (const file of (await readdir('src/db/migrations')).sort()) {
     const sql = await readFile(`src/db/migrations/${file}`, 'utf8')
-    await env.DB.batch(sql.split(';').filter(s => s.trim()).map(s => env.DB.prepare(s)))
+    await env.DB.batch(sqlStatements(sql).map(s => env.DB.prepare(s)))
   }
   return { env, dispose: async () => { globalThis.fetch = originalFetch; await platform.dispose() }, originalFetch }
 }
@@ -99,7 +100,8 @@ function mockTumblr(fetchSpy: any, opts: { mentionsPerBlog?: number; notesByRoot
         const postId = new URL(url).searchParams.get('id') || ''
         const preview = postId in postPreviews ? postPreviews[postId] : null
         const raw: any = post(postId, 'partner', 'root', 'main')
-        raw.blog_name = 'partner'
+        // A post fetched from /blog/X/posts was written by X.
+        raw.blog_name = decodeURIComponent(/\/blog\/([^/]+)\//.exec(path)?.[1] ?? 'partner').replace(/\.tumblr\.com$/, '')
         raw.id_string = postId
         if (preview) raw.content = [{ text: preview }]
         return new Response(JSON.stringify({ response: { posts: [raw] } }), { status: 200, headers: { 'content-type': 'application/json' } })

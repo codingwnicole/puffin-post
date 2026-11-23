@@ -14,6 +14,7 @@ import CharacterShortcutPage from './pages/CharacterShortcutPage'
 import CharacterProfilePage from './pages/CharacterProfilePage'
 import SupportPage from './pages/SupportPage'
 import { LegalPage } from './pages/LegalPage'
+import RoadmapPage from './pages/RoadmapPage'
 
 const LEGAL_ROUTES = ['terms', 'privacy', 'cookies'] as const
 type LegalRoute = (typeof LEGAL_ROUTES)[number]
@@ -31,6 +32,7 @@ const PAGES: Partial<Record<AppPage, () => ReactNode>> = {
   tools: () => <WritingToolsPage />,
   activity: () => <TumblrActivityPage />,
   support: () => <SupportPage />,
+  roadmap: () => <RoadmapPage />,
   settings: () => <SettingsPage />,
 }
 

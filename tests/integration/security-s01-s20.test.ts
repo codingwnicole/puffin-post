@@ -4,6 +4,7 @@ import { getPlatformProxy } from 'wrangler'
 import { createApp, type Env } from '../../src/worker'
 import { startSession } from '../../src/auth/sessions'
 import { Hono } from 'hono'
+import { sqlStatements } from './sql-statements'
 
 // S01/S06: protected /api routes must refuse unauthenticated requests and
 // cross-origin state changes, no matter what headers the caller spoofs.
@@ -18,7 +19,7 @@ describe('S01/S06 unauthenticated API access', () => {
     dispose = platform.dispose
     for (const file of ['0001_initial.sql', '0002_auth.sql']) {
       const sql = await readFile(`src/db/migrations/${file}`, 'utf8')
-      await env.DB.batch(sql.split(';').filter(part => part.trim()).map(part => env.DB.prepare(part)))
+      await env.DB.batch(sqlStatements(sql).map(part => env.DB.prepare(part)))
     }
     await env.DB.prepare("INSERT INTO users (id,email,display_name,auth_identity) VALUES ('u1','u1@example.com','u1','email:u1@example.com')").run()
     await env.DB.prepare("INSERT INTO workspaces (id,name,owner_user_id) VALUES ('w1','w1','u1')").run()
@@ -72,7 +73,7 @@ describe('S14 push endpoint allowlist', () => {
     dispose = platform.dispose
     for (const file of ['0001_initial.sql', '0002_auth.sql', '0010_push_subscriptions.sql']) {
       const sql = await readFile(`src/db/migrations/${file}`, 'utf8')
-      await env.DB.batch(sql.split(';').filter(part => part.trim()).map(part => env.DB.prepare(part)))
+      await env.DB.batch(sqlStatements(sql).map(part => env.DB.prepare(part)))
     }
     await env.DB.prepare("INSERT INTO users (id,email,display_name,auth_identity) VALUES ('u1','u1@example.com','u1','email:u1@example.com')").run()
     await env.DB.prepare("INSERT INTO workspaces (id,name,owner_user_id) VALUES ('w1','w1','u1')").run()

@@ -150,22 +150,20 @@ describe('B12: Unsorted group fallback', () => {
 })
 
 describe('B15 sync safety', () => {
-  it('refreshing an archived starter leaves it untouched', async () => {
+  // Archived threads keep syncing (so a restore shows the latest reply; see refresh.test.ts),
+  // but a refresh must never pull one back into the active inbox or un-archive it.
+  it('refreshing an archived starter keeps it archived and out of the active inbox', async () => {
     const created = await fixture.request('/api/starters', 'POST', starterInput)
     const starter = await created.json() as Starter
     await fixture.request(`/api/starters/${starter.id}/branches`, 'POST', { partnerId: 'partner-a' })
     await fixture.request(`/api/starters/${starter.id}/archive`, 'POST')
 
-    const originalFetch = globalThis.fetch
-    globalThis.fetch = vi.fn().mockRejectedValue(new Error('Tumblr fetch must not run for archived threads'))
-    try {
-      await runRefreshBatch(fixture.env, new Date('2026-01-01T00:00:00Z'), 10)
-    } finally {
-      globalThis.fetch = originalFetch
-    }
-    const inbox = (await (await fixture.request('/api/inbox?includeArchived=true')).json()) as { branches: { starterId: string; lastRefreshAt: string | null; refreshError: string | null }[] }
+    await runRefreshBatch(fixture.env, new Date('2026-01-01T00:00:00Z'), 10)
+    const active = (await (await fixture.request('/api/inbox')).json()) as { branches: { starterId: string }[] }
+    expect(active.branches.some(b => b.starterId === starter.id)).toBe(false)
+    const inbox = (await (await fixture.request('/api/inbox?includeArchived=true')).json()) as { branches: { starterId: string; starterArchived: number; refreshError: string | null }[] }
     const branch = inbox.branches.find(b => b.starterId === starter.id)!
-    expect(branch.lastRefreshAt).toBeNull()
+    expect(branch.starterArchived).toBe(1)
     expect(branch.refreshError).toBeNull()
   })
 

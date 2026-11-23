@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { getPlatformProxy } from 'wrangler'
 import type { Env } from '../../src/worker'
 import { requireMembership } from '../../src/db/repositories/workspaces'
-import { createStarter } from '../../src/db/repositories/starters'
-import { createReplyBranch, listInboxBranches } from '../../src/db/repositories/branches'
+import { createStarter, getStarter, updateAutomaticStarterFields, updateStarterTitle } from '../../src/db/repositories/starters'
+import { createReplyBranch, listInboxBranches, restoreReplyBranch, updateReplyBranch, upsertReplyBranch } from '../../src/db/repositories/branches'
+import { sqlStatements } from './sql-statements'
 
 describe('tenant-safe repositories against local D1', () => {
   let db: Env['DB']
@@ -16,7 +17,7 @@ describe('tenant-safe repositories against local D1', () => {
     dispose = platform.dispose
     for (const file of (await readdir('src/db/migrations')).sort()) {
       const sql = await readFile(`src/db/migrations/${file}`, 'utf8')
-      await db.batch(sql.split(';').filter((s) => s.trim()).map((s) => db.prepare(s)))
+      await db.batch(sqlStatements(sql).map((s) => db.prepare(s)))
     }
     for (const tenant of ['a', 'b']) {
       await db.prepare('INSERT INTO users (id, email, display_name, auth_identity) VALUES (?, ?, ?, ?)')
@@ -89,6 +90,67 @@ describe('tenant-safe repositories against local D1', () => {
     expect(await listInboxBranches(scope)).toHaveLength(2)
     expect(await listInboxBranches({ ...scope, status: 'queued' })).toHaveLength(1)
     expect(await listInboxBranches({ ...scope, status: 'archived' })).toHaveLength(1)
+  })
+
+  it('restores a reply branch to its previous turn state', async () => {
+    const branch = await seedBranch('a')
+    const scope = { db, workspaceId: 'a', userId: 'member-a' }
+    await updateReplyBranch(scope, branch.id, { status: 'their_turn' })
+    await updateReplyBranch(scope, branch.id, { status: 'archived' })
+
+    const archived = await listInboxBranches({ ...scope, archivedOnly: true })
+    expect(archived[0]).toMatchObject({ id: branch.id, status: 'archived' })
+    const restored = await restoreReplyBranch(scope, branch.id)
+    expect(restored).toMatchObject({ id: branch.id, status: 'their_turn', archivedAt: null })
+    expect(await restoreReplyBranch(scope, branch.id)).toMatchObject({ id: branch.id, status: 'their_turn', archivedAt: null })
+  })
+
+  it('keeps archive state across synchronization and restores the same thread without duplicates', async () => {
+    const branch = await seedBranch('a')
+    const scope = { db, workspaceId: 'a', userId: 'member-a' }
+    const archivedAt = new Date().toISOString()
+    await db.prepare('UPDATE starters SET archived=1,archived_at=? WHERE workspace_id=? AND id=?')
+      .bind(archivedAt, 'a', branch.starterId).run()
+
+    expect(await listInboxBranches(scope)).toHaveLength(0)
+    const refreshed = await upsertReplyBranch({ ...scope, starterId: branch.starterId, partnerId: 'partner-a',
+      status: 'their_turn', latestPostId: 'new-reply-1', lastPoster: 'partner-a.tumblr.com',
+      lastActivityAt: '2026-11-21T12:00:00.000Z', latestReplyExcerpt: 'A new reply arrived.',
+      partnerMuses: ['Mara'], partnerMusesSource: 'explicit_header', partnerMusesConfidence: 'high',
+      partnerMusesEvidence: 'who: Ilyas & Mara' })
+    expect(refreshed.id).toBe(branch.id)
+    expect(await listInboxBranches(scope)).toHaveLength(0)
+    expect(await listInboxBranches({ ...scope, archivedOnly: true })).toHaveLength(1)
+
+    await db.prepare('UPDATE starters SET archived=0,archived_at=NULL WHERE workspace_id=? AND id=?')
+      .bind('a', branch.starterId).run()
+    const restored = await listInboxBranches(scope)
+    expect(restored).toHaveLength(1)
+    expect(restored[0]).toMatchObject({ id: branch.id, status: 'their_turn', latestPostId: 'new-reply-1', latestReplyExcerpt: 'A new reply arrived.', partnerMuses: ['Mara'] })
+  })
+
+  it('protects manually edited titles, premises, partner muses, and recaps from automatic refresh', async () => {
+    const scope = { db, workspaceId: 'a', userId: 'member-a' }
+    const starter = await createStarter({ ...scope, characterId: 'character-a', title: 'Ilyas × Mara',
+      titleSource: 'explicit_header', titleConfidence: 'high', titleEvidence: 'who: Ilyas & Mara',
+      description: 'The root setup.', descriptionSource: 'root_starter', descriptionConfidence: 'high',
+      premise: 'The root setup.', premiseSource: 'root_starter', premiseConfidence: 'high', rootPostId: 'manual-override', rootBlogId: 'a.tumblr.com' })
+    const branch = await createReplyBranch({ ...scope, starterId: starter.id, partnerId: 'partner-a',
+      partnerMuses: ['Mara'], partnerMusesSource: 'explicit_header', partnerMusesConfidence: 'high' })
+    await updateStarterTitle(scope, starter.id, 'My title', 'My premise')
+    await updateReplyBranch(scope, branch.id, { partnerMuses: ['M.'], userRecap: 'Answer the last question next.' })
+
+    const refreshed = await updateAutomaticStarterFields(scope, starter.id, {
+      title: 'Ilyas × Renamed', titleSource: 'explicit_header', titleConfidence: 'high',
+      description: 'Reparsed setup.', descriptionSource: 'root_starter', descriptionConfidence: 'high',
+      premise: 'Reparsed setup.', premiseSource: 'root_starter', premiseConfidence: 'high',
+    })
+    await upsertReplyBranch({ ...scope, starterId: starter.id, partnerId: 'partner-a', status: 'their_turn',
+      latestPostId: 'new-reply-2', latestReplyExcerpt: 'New direct reply.', partnerMuses: ['Different name'],
+      partnerMusesSource: 'explicit_header', partnerMusesConfidence: 'high' })
+    const refreshedBranch = (await listInboxBranches(scope))[0]
+    expect(refreshed).toMatchObject({ title: 'My title', description: 'My premise', premise: 'My premise', titleSource: 'manual', descriptionSource: 'manual', premiseSource: 'manual' })
+    expect(refreshedBranch).toMatchObject({ partnerMuses: ['M.'], partnerMusesSource: 'manual', userRecap: 'Answer the last question next.' })
   })
 
   it('enforces tenant links and status invariants in the schema', async () => {
