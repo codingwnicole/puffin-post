@@ -36,7 +36,7 @@ test('filters start collapsed, Clear filters wipes every filter in one click, an
   await clear.click()
   await expect(summary).toHaveText('Show filters')
   await expect(clear).toHaveCount(0)
-  await expect.poll(() => page.evaluate(() => location.hash)).toBe('#inbox')
+  await expect.poll(() => page.evaluate(() => location.hash)).toBe('#dashboard')
   await summary.click()
   await expect(show).toHaveValue('')
   await expect(page.getByPlaceholder('Scene, character, partner')).toHaveValue('')

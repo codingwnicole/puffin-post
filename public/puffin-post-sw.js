@@ -1,2 +1,2 @@
-self.addEventListener('push',event=>event.waitUntil((async()=>{const payload=event.data?.json?.()??{};await self.registration.showNotification(payload.title??'RP Thread Buddy',{body:payload.body??'You have RP threads or reminders ready to check.',icon:'/favicon.svg',data:{url:payload.url??'/#inbox'}})})()))
+self.addEventListener('push',event=>event.waitUntil((async()=>{const payload=event.data?.json?.()??{};await self.registration.showNotification(payload.title??'RP Thread Buddy',{body:payload.body??'You have RP threads or reminders ready to check.',icon:'/favicon.svg',data:{url:payload.url??'/#dashboard'}})})()))
 self.addEventListener('notificationclick',event=>{event.notification.close();event.waitUntil(clients.openWindow(event.notification.data.url))})

@@ -40,13 +40,13 @@ function routeFor(hash: string): { page: AppPage; render: () => ReactNode } {
   const [path] = hash.split('?')
   const param = (prefix: string) => path.startsWith(prefix) ? path.slice(prefix.length) : null
   const shortcutId = param('character-shortcut/'), profileId = param('character/'), starterId = param('starter/')
-  if (shortcutId !== null) return { page: 'inbox', render: () => <CharacterShortcutPage key={shortcutId} id={shortcutId} /> }
+  if (shortcutId !== null) return { page: 'dashboard', render: () => <CharacterShortcutPage key={shortcutId} id={shortcutId} /> }
   if (profileId !== null) return { page: 'characters', render: () => <CharacterProfilePage key={profileId} id={profileId} /> }
   if (starterId !== null) return { page: 'starter', render: () => <StarterPage key={starterId} id={starterId} /> }
   const page = path as AppPage
   const render = PAGES[page]
-  // Unknown routes (including '', 'inbox', and in-page anchors such as 'quick-add') show the Inbox.
-  return render ? { page, render } : { page: 'inbox', render: () => <InboxPage /> }
+  // Unknown routes (including '', 'dashboard', the old 'inbox', and in-page anchors such as 'quick-add') show the Dashboard.
+  return render ? { page, render } : { page: 'dashboard', render: () => <InboxPage /> }
 }
 
 export default function App() {

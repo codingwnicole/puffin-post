@@ -29,7 +29,7 @@ function ReplyRun({ branches }: { branches: InboxBranch[] }) {
 }
 
 function QuickAdd({options,busy,onSubmit}:{options:TrackingOptions;busy:boolean;onSubmit:(event:React.FormEvent<HTMLFormElement>)=>void}) {
-  return <aside className="quick-add-panel quick-add-panel-inline" id="quick-add" aria-labelledby="quick-add-title" tabIndex={-1}><div><p className="eyebrow">New scene</p><h3 id="quick-add-title">Add a thread</h3><p>Track Tumblr, Discord, or an entirely manual scene. Add a link when you want Thread Buddy to fill in the details.</p></div><form className="tracking-form" onSubmit={onSubmit}><StarterFields options={options}/><div className="actions"><button disabled={busy}>{busy?'Adding thread...':'Add thread'}</button><a className="button secondary-button" href="#inbox">Cancel</a></div></form><div className="quick-add-help"><strong>With a post link</strong><span>Thread Buddy reads the participants and opening text. Without one, it simply saves the scene you describe.</span></div></aside>
+  return <aside className="quick-add-panel quick-add-panel-inline" id="quick-add" aria-labelledby="quick-add-title" tabIndex={-1}><div><p className="eyebrow">New scene</p><h3 id="quick-add-title">Add a thread</h3><p>Track Tumblr, Discord, or an entirely manual scene. Add a link when you want Thread Buddy to fill in the details.</p></div><form className="tracking-form" onSubmit={onSubmit}><StarterFields options={options}/><div className="actions"><button disabled={busy}>{busy?'Adding thread...':'Add thread'}</button><a className="button secondary-button" href="#dashboard">Cancel</a></div></form><div className="quick-add-help"><strong>With a post link</strong><span>Thread Buddy reads the participants and opening text. Without one, it simply saves the scene you describe.</span></div></aside>
 }
 
 function GuestSignIn({busy,setBusy,sentLink,setSentLink,sentEmail,setSentEmail}:{busy:boolean;setBusy:(value:boolean)=>void;sentLink:boolean;setSentLink:(value:boolean)=>void;sentEmail:string;setSentEmail:(value:string)=>void}) {
@@ -59,7 +59,7 @@ export default function InboxPage() {
   // Back/Reload and deep-links land on the same view, and the view is shareable.
   // Only the view (filters, Do-next) goes in the address; limit/offset are for the API.
   const viewQs=(()=>{const view=new URLSearchParams(query);view.delete('limit');view.delete('offset');return view.toString()})()
-  useEffect(()=>{const raw=window.location.hash.slice(1).split('?')[0];if(!['inbox','/inbox'].includes(raw))return;const base='#inbox';window.history.replaceState(null,'',viewQs?`${base}?${viewQs}`:base)},[viewQs])
+  useEffect(()=>{const raw=window.location.hash.slice(1).split('?')[0];if(!['dashboard','inbox','/inbox'].includes(raw))return;const base='#dashboard';window.history.replaceState(null,'',viewQs?`${base}?${viewQs}`:base)},[viewQs])
   async function reload(){setInbox(await api(`/inbox?${query}`));setPageOffset(0)}
   async function createStarter(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setError('');setBusy(true);const payload:Record<string,FormDataEntryValue|null>=Object.fromEntries(new FormData(event.currentTarget));payload.groupId=payload.groupId||null;payload.partnerBlogIdentifier=payload.partnerBlogIdentifier||null;try{const starter=await api<{id:string}>('/starters','POST',payload);window.location.hash=`starter/${starter.id}`}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
   useEffect(()=>{let active=true;setError('');

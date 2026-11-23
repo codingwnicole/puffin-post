@@ -291,7 +291,7 @@ h1,h2,h3,.page-heading{text-wrap:balance}
 
 /* Audit #14: phones — text links and selects need 44px tap targets. */
 @media (max-width:760px){
-  .text-button,.text-action,.reminder-summary a,a[href="#inbox"],.planner-resources a,details>summary{display:inline-flex;align-items:center;min-height:2.75rem}
+  .text-button,.text-action,.reminder-summary a,a[href="#dashboard"],.planner-resources a,details>summary{display:inline-flex;align-items:center;min-height:2.75rem}
   select{min-height:2.75rem}
 }
 

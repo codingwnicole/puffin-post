@@ -6,10 +6,10 @@ import CommandMenu from './CommandMenu'
 import ToastHost from './ToastHost'
 import OnboardingTour from './OnboardingTour'
 
-export type AppPage = 'inbox' | 'characters' | 'planner' | 'settings' | 'parking-lot' | 'connections' | 'tools' | 'activity' | 'support' | 'roadmap' | 'starter'
+export type AppPage = 'dashboard' | 'characters' | 'planner' | 'settings' | 'parking-lot' | 'connections' | 'tools' | 'activity' | 'support' | 'roadmap' | 'starter'
 
 const navigation = [
-  ['inbox', 'Inbox', 'inbox'],
+  ['dashboard', 'Dashboard', 'inbox'],
   ['parking-lot', 'Parking', 'parking'],
   ['characters', 'Characters', 'characters'],
   ['activity', 'Tumblr activity', 'activity'],
@@ -143,7 +143,7 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
 
   return <div className={`app-shell${signedIn ? '' : ' app-shell-guest'}`}>
     <a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus() }}>Skip to content</a>
-    <header className="brand"><a href={signedIn ? '#inbox' : '/'} className="brand-home"><span className="brand-mark" aria-hidden="true">RP</span><span>RP Thread Buddy</span></a>{signedIn && <span className="beta-label">Private beta</span>}</header>
+    <header className="brand"><a href={signedIn ? '#dashboard' : '/'} className="brand-home"><span className="brand-mark" aria-hidden="true">RP</span><span>RP Thread Buddy</span></a>{signedIn && <span className="beta-label">Private beta</span>}</header>
     {signedIn && <nav className="primary-nav" aria-label="Primary"><p className="nav-label">Workspace</p>
       {navigation.map(([item, label, icon], index) => <a key={item} href={`#${item}`} data-secondary={index > 2 || undefined} aria-current={page === item ? 'page' : undefined} onPointerEnter={navPrefetch(item)} onFocus={navPrefetch(item)}><Icon name={icon}/><span>{label}{item==='activity'&&activityUnread>0?<b className="nav-unread" aria-label={`${activityUnread} unread activity items`}>{activityUnread>9?'9+':activityUnread}</b>:null}</span></a>)}
       <div className={`mobile-more${menuOpen ? ' is-open' : ''}`}><button type="button" className="mobile-more-toggle" aria-expanded={menuOpen} aria-controls="mobile-more-menu" onClick={() => setMenuOpen(open => !open)}><Icon name="more"/><span>More</span></button>{menuOpen && <div id="mobile-more-menu" ref={sheetRef} className="mobile-more-menu" style={offset ? { transform: `translateY(${offset}px)`, transition: 'none' } : undefined}><span className="sheet-grabber" aria-hidden="true"></span><div className="sheet-menu-head"><span>More</span><button type="button" className="sheet-close" onClick={() => { closeMore(); clearNotice() }}>Close</button></div>{notice && <p className="sheet-notice" role="status">{notice}</p>}<label className="sheet-note-label"><span>Note</span><input className="sheet-note" type="text" placeholder="Quick note (Enter saves it)" aria-label="Quick note" enterKeyHint="done" maxLength={20000} readOnly={savingNote} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); saveQuickNote(event.currentTarget) } }} /></label><a href="#activity" onClick={() => { clearNotice(); closeMore() }}><Icon name="activity"/>Tumblr activity</a><a href="#tools" onClick={() => { clearNotice(); closeMore() }}><Icon name="tools"/>Writing tools</a><a href="#planner" onClick={() => { clearNotice(); closeMore() }}><Icon name="planner"/>Character planner</a><a href="#connections" onClick={() => { clearNotice(); closeMore() }}><Icon name="connections"/>Connected accounts</a><a href="#settings" onClick={() => { clearNotice(); closeMore() }}><Icon name="settings"/>Settings</a><a href="#support" onClick={() => { clearNotice(); closeMore() }}><Icon name="more"/>Support &amp; feedback</a><a href="#roadmap" onClick={() => { clearNotice(); closeMore() }}><Icon name="planner"/>Site roadmap</a></div>}</div>

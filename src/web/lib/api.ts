@@ -53,7 +53,7 @@ export function clearDraftLocal(key: string) { try { sessionStorage.removeItem(D
 // Safe prefetch: warm the destination's main D1-backed GET on hover/focus so the
 // page seeds from cache. Only list-style, never-Tumblr GETs are eligible — starter
 // detail and Tumblr activity touch the Tumblr client, and refresh routes are off-limits.
-const PREFETCHABLE: Record<string, string> = { characters: '/characters', connections: '/connections', planner: '/character-planner', 'parking-lot': '/reply-drafts', tools: '/starters/options', settings: '/settings', support: '/support', inbox: '/inbox' }
+const PREFETCHABLE: Record<string, string> = { characters: '/characters', connections: '/connections', planner: '/character-planner', 'parking-lot': '/reply-drafts', tools: '/starters/options', settings: '/settings', support: '/support', dashboard: '/inbox' }
 const prefetchedAt = new Map<string, number>()
 export function prefetch(path: string) {
   const key = path, now = Date.now()

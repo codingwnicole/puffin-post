@@ -19,7 +19,7 @@ export default function CommandMenu({ open, onClose }:{ open: boolean; onClose: 
     { kind: 'route', id: 'add-thread', label: 'Add thread', route: 'quick-add' },
     { kind: 'route', id: 'characters', label: 'Characters', route: 'characters' },
     { kind: 'route', id: 'activity', label: 'Tumblr activity', route: 'activity' },
-    { kind: 'route', id: 'archived', label: 'Archived threads', route: 'inbox?archived=1' },
+    { kind: 'route', id: 'archived', label: 'Archived threads', route: 'dashboard?archived=1' },
     { kind: 'route', id: 'planner', label: 'Character planner', route: 'planner' },
     { kind: 'route', id: 'settings', label: 'Settings', route: 'settings' },
   ], [])

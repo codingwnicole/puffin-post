@@ -12,7 +12,7 @@ test('the homepage keeps a clean URL and direct inbox routes survive back and fo
 
   await page.goto('/#inbox?status=their_turn')
   await expect(page.getByRole('heading', { name: 'Keep track of what you owe.' })).toBeVisible()
-  expect(new URL(page.url()).hash).toBe('#inbox?status=their_turn')
+  expect(new URL(page.url()).hash).toBe('#inbox?status=their_turn') // signed out, old #inbox links are left as typed
   await page.goBack()
   await expect(page).toHaveURL(/\/$/)
   expect(new URL(page.url()).hash).toBe('')
@@ -20,7 +20,7 @@ test('the homepage keeps a clean URL and direct inbox routes survive back and fo
   await expect(page).toHaveURL(/#inbox\?status=their_turn$/)
 })
 
-test('Inbox address has no API paging params, and deleting the account returns to the signed-out homepage', async ({ browser }) => {
+test('Dashboard address has no API paging params, and deleting the account returns to the signed-out homepage', async ({ browser }) => {
   const ctx = await browser.newContext({ baseURL: APP, extraHTTPHeaders: { 'cf-connecting-ip': '10.4.' + Math.floor(Math.random() * 250) + '.' + Math.floor(Math.random() * 250), origin: APP } })
   const page = await ctx.newPage()
   await page.goto('/#inbox')
@@ -28,9 +28,9 @@ test('Inbox address has no API paging params, and deleting the account returns t
   await page.reload()
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
   await page.waitForTimeout(300)
-  expect(new URL(page.url()).hash).toBe('#inbox')
+  expect(new URL(page.url()).hash).toBe('#dashboard')
   await page.goto('/#inbox?status=your_turn'); await page.reload(); await page.waitForTimeout(300)
-  expect(new URL(page.url()).hash).toBe('#inbox?status=your_turn')
+  expect(new URL(page.url()).hash).toBe('#dashboard?status=your_turn')
   await page.goto('/#settings'); await page.reload()
   await page.getByPlaceholder('DELETE').fill('DELETE')
   await page.getByRole('button', { name: 'Delete account' }).click()
