@@ -86,7 +86,10 @@ main{max-width:94rem;margin-left:18rem;padding:2.5rem clamp(1.5rem,4vw,5rem) 5re
 .roadmap-item::before{content:counter(roadmap);position:absolute;top:1rem;left:calc(-1rem - var(--rm-dot));display:grid;place-items:center;width:var(--rm-dot);height:var(--rm-dot);border-radius:50%;background:var(--accent);color:var(--on-accent);font-weight:800;box-shadow:0 0 0 4px var(--canvas)}
 .roadmap-item::after{content:counter(roadmap,decimal-leading-zero);position:absolute;top:.75rem;right:1rem;font-size:2.5rem;font-weight:800;line-height:1;color:color-mix(in oklch,var(--muted) 25%,transparent);pointer-events:none}
 .roadmap-item .roadmap-item-heading{padding-right:3.5rem}
-.roadmap-item h2::after{content:"";display:block;width:3rem;height:3px;margin-top:.5rem;border-radius:3px;background:var(--accent)}
+.roadmap-icon{display:grid;flex:0 0 auto;place-items:center;width:2.25rem;height:2.25rem;border-radius:50%;background:var(--accent);color:var(--on-accent)}
+.roadmap-icon .icon{--icon-size:1.25rem}
+/* Icon beside the title (wrapped lines stay beside it), with a short accent bar underneath. */
+.roadmap-item h2{display:flex;align-items:center;gap:.6rem;padding-bottom:.65rem;background:linear-gradient(var(--accent),var(--accent)) left bottom/3rem 3px no-repeat}
 @media(min-width:760px){
   .roadmap-list{padding-left:0}
   .roadmap-list::before{left:calc(50% - 1px)}

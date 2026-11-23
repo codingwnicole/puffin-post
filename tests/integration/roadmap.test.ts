@@ -72,6 +72,19 @@ describe('site roadmap access and administration', () => {
     expect((await request(`/api/roadmap/${ids[1].id}`, 'DELETE', undefined, adminCookie)).status).toBe(204)
   })
 
+  it('stores an optional icon from the allowed set, and rejects unknown icons', async () => {
+    const adminCookie = await cookieFor('admin')
+    const created = await request('/api/roadmap', 'POST', { title: 'Discord bot', description: 'Post updates to Discord.', status: 'planned', icon: 'chat' }, adminCookie)
+    expect(created.status).toBe(201)
+    const { id } = await created.json() as { id: string }
+    const plain = await request('/api/roadmap', 'POST', { title: 'No icon yet', description: 'Older clients send no icon.', status: 'planned' }, adminCookie)
+    expect(plain.status).toBe(201)
+    expect((await request(`/api/roadmap/${id}`, 'PATCH', { icon: 'bot' }, adminCookie)).status).toBe(200)
+    expect((await request(`/api/roadmap/${id}`, 'PATCH', { icon: '<script>' }, adminCookie)).status).toBe(400)
+    const { items } = await (await request('/api/roadmap')).json() as { items: Array<{ title: string; icon: string | null }> }
+    expect(items.map(item => [item.title, item.icon])).toEqual([['Discord bot', 'bot'], ['No icon yet', null]])
+  })
+
   it('requires authentication for roadmap changes even though reading is public', async () => {
     const response = await request('/api/roadmap', 'POST', { title: 'Planned item', description: 'Must not be anonymous.', status: 'planned' })
     expect(response.status).toBe(401)

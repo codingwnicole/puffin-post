@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
 
 const items = ['Discord integration and bot', 'UI refresh', 'Dashboard and trading card skins', 'Buddy assistant'].map((title, index) => ({
-  id: `rm${index}`, title, description: 'Target: early December. A short description of the plan.', status: index < 3 ? 'in_progress' : 'planned',
+  id: `rm${index}`, title, description: 'Target: early December. A short description of the plan.', status: index < 3 ? 'in_progress' : 'planned', icon: index === 3 ? null : ['chat', 'palette', 'cards'][index],
   sortOrder: index * 10, createdAt: '2026-11-23', updatedAt: '2026-11-23',
 }))
 
@@ -15,6 +15,7 @@ async function openRoadmap(page: Page) {
   })
   await page.goto('/#roadmap')
   await expect(page.locator('.roadmap-item')).toHaveCount(4)
+  await expect(page.locator('.roadmap-item .roadmap-icon svg')).toHaveCount(4) // an item with no icon falls back to the sparkle
 }
 
 test('roadmap cards alternate around the timeline on wide screens and stack on phones', async ({ page }) => {
