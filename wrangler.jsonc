@@ -26,6 +26,14 @@
       "remote": false
     }
   ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "SPRINT_ROOMS", "class_name": "SprintRoom" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["SprintRoom"] }
+  ],
   "r2_buckets": [
     { "binding": "ICONS", "bucket_name": "threadums-icons", "remote": false }
   ],

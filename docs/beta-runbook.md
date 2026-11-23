@@ -28,6 +28,7 @@ Copy `wrangler.jsonc` to a private deployment-only configuration (or replace the
 
 - the production D1 `database_id` and `database_name`;
 - the production R2 `bucket_name`;
+- the `SPRINT_ROOMS` Durable Object binding and the `v1` SQLite class migration from the checked-in config. This migration is applied by Wrangler when the Worker is deployed to that environment;
 - `APP_ORIGIN` to `https://rpthreadbuddy.app`;
 - `MAIL_FROM` to the Resend-verified sender `RP Thread Buddy <hello@mail.rpthreadbuddy.app>`;
 - the Worker/custom-domain name chosen for the beta.
@@ -57,6 +58,8 @@ Apply every migration once, in order:
 ```powershell
 npx wrangler d1 migrations apply threadums-production --remote --config .\wrangler.production.jsonc
 ```
+
+This applies D1 schema changes, including `0041_writing_sprints.sql`. The room Durable Object class is a separate Worker migration: keep the `v1` entry in the private production config and confirm it appears in the deployment output. Do not remove that class migration from later configs.
 
 The scheduled refresh trigger is already configured for every 30 minutes. Confirm it appears in the Worker trigger list after deployment; do not add a second cron trigger by hand.
 
@@ -100,6 +103,8 @@ npx wrangler deploy --config .\wrangler.production.jsonc
 - [ ] Manual status override remains in place after refresh.
 - [ ] Character icon upload/fallback initials work and a different workspace cannot load the icon.
 - [ ] At 390px wide, navigation and combined filters remain usable.
+- [ ] Solo sprint replies stay separate across a reload; account history contains totals only, and deleting a local sprint removes its browser copy.
+- [ ] A private sprint room accepts its invitation/password, enforces its participant limit, keeps reply text private, and expires within 24 hours.
 - [ ] Light, dark, and each preset palette remain legible.
 - [ ] A deliberately failed refresh preserves old data and displays its branch-specific warning.
 - [ ] Archive/restore affects only one reply branch.

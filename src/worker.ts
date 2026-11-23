@@ -27,6 +27,10 @@ import { supportRoutes } from './routes/support'
 import { clientErrorRoutes } from './routes/client-errors'
 import { publicShareRoutes, shareAdminRoutes } from './routes/public-share'
 import { roadmapRoutes } from './routes/roadmap'
+import { sprintRoutes } from './routes/sprints'
+import { sprintRoomRoutes } from './routes/sprint-rooms'
+import type { SprintRoom } from './sprints/room'
+export { SprintRoom } from './sprints/room'
 
 export interface Env {
   DB: D1Database
@@ -43,6 +47,7 @@ export interface Env {
   PUSH_VAPID_PRIVATE_KEY?: string
   BOOTSTRAP_OWNER_EMAIL?: string
   REFRESH_FETCH_BUDGET?: string
+  SPRINT_ROOMS: DurableObjectNamespace<SprintRoom>
 }
 
 export function createApp(env: Env, options: { mailSender?: MailSender } = {}): Hono<{ Bindings: Env }> {
@@ -56,7 +61,9 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
     c.header('X-Content-Type-Options', 'nosniff')
     c.header('Strict-Transport-Security', 'max-age=31536000')
     c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
-    c.header('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tumblr.com; connect-src 'self' https://*.tumblr.com; font-src 'self' data:; frame-src https://open.spotify.com https://www.youtube-nocookie.com https://embed.music.apple.com https://assets.pinterest.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+    const socketOrigin = new URL(env.APP_ORIGIN)
+    socketOrigin.protocol = socketOrigin.protocol === 'https:' ? 'wss:' : 'ws:'
+    c.header('Content-Security-Policy', `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tumblr.com; connect-src 'self' https://*.tumblr.com ${socketOrigin.origin}; font-src 'self' data:; frame-src https://open.spotify.com https://www.youtube-nocookie.com https://embed.music.apple.com https://assets.pinterest.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'`)
     const maxBodyBytes = 5 * 1024 * 1024
     const contentLength = Number(c.req.header('content-length'))
     if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
@@ -130,6 +137,8 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   app.route('/api/feature-suggestions',featureSuggestionRoutes())
   app.route('/api/support',supportRoutes())
   app.route('/api/roadmap',roadmapRoutes())
+  app.route('/api/sprints', sprintRoutes())
+  app.route('/api/sprint-rooms', sprintRoomRoutes())
   app.route('/api/client-errors',clientErrorRoutes(BUILD_REVISION))
   app.route('/api/share-admin',shareAdminRoutes())
   app.route('/c',publicShareRoutes())

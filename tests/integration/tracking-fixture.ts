@@ -3,8 +3,50 @@ import { getPlatformProxy } from 'wrangler'
 import { Hono } from 'hono'
 import { startSession } from '../../src/auth/sessions'
 import { createApp, type Env } from '../../src/worker'
+import { SprintRoom } from '../../src/sprints/room'
 import { encryptToken } from '../../src/tumblr/oauth'
 import { sqlStatements } from './sql-statements'
+
+// getPlatformProxy intentionally does not run Durable Objects declared by the
+// same Worker. Keep route integration tests local by giving the real room class
+// a small in-memory storage implementation instead.
+function localSprintRoomNamespace(): DurableObjectNamespace<SprintRoom> {
+  const rooms = new Map<string, SprintRoom>()
+  const idFromName = (name: string) => name
+  return {
+    idFromName,
+    get(id: unknown) {
+      const name = String(id)
+      let room = rooms.get(name)
+      if (!room) {
+        const values = new Map<string, unknown>()
+        const state = {
+          storage: {
+            get: async (key: string) => values.get(key),
+            put: async (key: string, value: unknown) => { values.set(key, value) },
+            delete: async (key: string) => values.delete(key),
+            deleteAll: async () => values.clear(),
+            setAlarm: async (_scheduledTime: number | Date) => undefined,
+            transaction: async <T>(callback: (transaction: {
+              get: (key: string) => Promise<unknown>
+              put: (key: string, value: unknown) => Promise<void>
+              delete: (key: string) => Promise<boolean>
+            }) => Promise<T>) => callback({
+              get: async key => values.get(key),
+              put: async (key, value) => { values.set(key, value) },
+              delete: async key => values.delete(key),
+            }),
+          },
+          getWebSockets: () => [],
+          acceptWebSocket: () => undefined,
+        }
+        room = new SprintRoom(state as unknown as DurableObjectState, {} as Env)
+        rooms.set(name, room)
+      }
+      return { fetch: (input: RequestInfo | URL, init?: RequestInit) => room!.fetch(input instanceof Request ? input : new Request(input, init)) }
+    },
+  } as unknown as DurableObjectNamespace<SprintRoom>
+}
 
 export async function trackingFixture() {
   const originalFetch = globalThis.fetch
@@ -57,18 +99,19 @@ export async function trackingFixture() {
     login.get('/', async c => { await startSession(c,id,id); return c.text('ok') })
     cookies[id] = (await login.request('/', {}, env)).headers.get('set-cookie')!.split(';')[0]
   }
-  const app = createApp(env)
+  const testEnv = { ...env, SPRINT_ROOMS: localSprintRoomNamespace() }
+  const app = createApp(testEnv)
   // Fire-and-forget R2 cleanup (character/moodboard deletes) uses
   // c.executionCtx.waitUntil. The fixture has no real ExecutionContext, and
   // scheduling real R2 deletes makes them race platform.dispose() (ECONNRESET),
   // so give every request a no-op waitUntil. Cleanup is not part of correctness.
   const stubCtx = { waitUntil: (_p: unknown) => undefined, passThroughOnException: () => undefined } as unknown as ExecutionContext
   return {
-    env, cookies, dispose: async () => { globalThis.fetch = originalFetch; await platform.dispose() },
+    env: testEnv, cookies, dispose: async () => { globalThis.fetch = originalFetch; await platform.dispose() },
     async request(path: string, method = 'GET', body?: unknown, tenant = 'a') {
       return app.request(path, { method, headers: { origin: env.APP_ORIGIN,
         cookie: cookies[tenant] ?? '', 'content-type': 'application/json' },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }, env, stubCtx)
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}) }, testEnv, stubCtx)
     },
   }
 }
