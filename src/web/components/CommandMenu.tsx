@@ -44,6 +44,26 @@ export default function CommandMenu({ open, onClose }:{ open: boolean; onClose: 
 
   function dismiss() { dialogRef.current?.close(); onClose() }
 
+  function trapDialogTab(event: React.KeyboardEvent<HTMLDialogElement>) {
+    if (event.key !== 'Tab') return
+    const dialog = dialogRef.current
+    if (!dialog) return
+    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+      'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])',
+    )).filter(element => element.getClientRects().length > 0)
+    if (!focusable.length) { event.preventDefault(); return }
+
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+      event.preventDefault()
+      last.focus()
+    } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+      event.preventDefault()
+      first.focus()
+    }
+  }
+
   function onKeyDown(event: React.KeyboardEvent) {
     if (event.key === 'ArrowDown') { event.preventDefault(); setActive(a => Math.min(a + 1, filtered.length - 1)); return }
     if (event.key === 'ArrowUp') { event.preventDefault(); setActive(a => Math.max(a - 1, 0)); return }
@@ -56,7 +76,7 @@ export default function CommandMenu({ open, onClose }:{ open: boolean; onClose: 
   }
 
   return (
-    <dialog ref={dialogRef} className="modal-overlay command-overlay" aria-label="Command menu" onCancel={event => { event.preventDefault(); dismiss() }} onClick={event => { if (event.target === event.currentTarget) dismiss() }}>
+    <dialog ref={dialogRef} className="modal-overlay command-overlay" aria-label="Command menu" onKeyDown={trapDialogTab} onCancel={event => { event.preventDefault(); dismiss() }} onClick={event => { if (event.target === event.currentTarget) dismiss() }}>
       <div className="modal-card command-card" onClick={e => e.stopPropagation()}>
         <input
           ref={inputRef}
