@@ -29,7 +29,7 @@ Copy `wrangler.jsonc` to a private deployment-only configuration (or replace the
 - the production D1 `database_id` and `database_name`;
 - the production R2 `bucket_name`;
 - `APP_ORIGIN` to `https://rpthreadbuddy.app`;
-- `MAIL_FROM` to the Resend-verified sender `RP Thread Buddy <noreply@mail.rpthreadbuddy.app>`;
+- `MAIL_FROM` to the Resend-verified sender `RP Thread Buddy <hello@mail.rpthreadbuddy.app>`;
 - the Worker/custom-domain name chosen for the beta.
 
 `MAIL_FROM` is an ordinary non-secret Worker variable. In the private production configuration, it belongs beside `APP_ORIGIN`, never in a secret command:
@@ -37,10 +37,12 @@ Copy `wrangler.jsonc` to a private deployment-only configuration (or replace the
 ```jsonc
 "vars": {
   "APP_ORIGIN": "https://rpthreadbuddy.app",
-  "MAIL_FROM": "RP Thread Buddy <noreply@mail.rpthreadbuddy.app>",
+  "MAIL_FROM": "RP Thread Buddy <hello@mail.rpthreadbuddy.app>",
   "MODERATOR_USER_ID": "<existing-user-id>"
 }
 ```
+
+Every email also carries `Reply-To: support@rpthreadbuddy.app` (set in `src/mail.ts`), except support and feedback reports, whose Reply-To is the person who sent them. That inbox must be able to receive mail.
 
 Set `MODERATOR_USER_ID` to the existing operator account's user ID. Moderator actions fail closed when it is unset; do not grant this role by email address. To look up the ID, use a read-only query in the production D1 database before deployment:
 

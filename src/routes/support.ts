@@ -5,20 +5,13 @@ import { requireWorkspace } from '../auth/sessions'
 import { isModerator } from '../auth/moderator'
 import { checkRateLimit } from '../auth/rate-limits'
 import type { Env } from '../worker'
+import { SUPPORT_EMAIL, sendEmail } from '../mail'
 
 const statusSchema = z.enum(['reported', 'acknowledged', 'investigating', 'planned', 'fixed'])
 // Every support and feedback submission goes to the team inbox, never to the submitter's own workspace owner.
-export const SUPPORT_EMAIL = 'support@rpthreadbuddy.app'
-async function emailSupport(env: Env, from: string, kind: string, title: string, description: string) {
-  const recipient = SUPPORT_EMAIL
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-    redirect: 'manual',
-    signal: AbortSignal.timeout(10_000),
-    body: JSON.stringify({ from: env.MAIL_FROM, to: [recipient], subject: `New RP Thread Buddy ${kind} report: ${title}`, text: `From: ${from}\n\n${description}` }),
-  })
-  if (!response.ok) throw new Error('Unable to email the report')
-}
+// Reply-To is the submitter, so answering the email reaches them.
+const emailSupport = (env: Env, from: string, kind: string, title: string, description: string) =>
+  sendEmail(env, { to: [SUPPORT_EMAIL], replyTo: from, subject: `New RP Thread Buddy ${kind} report: ${title}`, text: `From: ${from}\n\n${description}` }, 'Unable to email the report')
 
 export function supportRoutes() {
   const app = new Hono<{ Bindings: Env }>()

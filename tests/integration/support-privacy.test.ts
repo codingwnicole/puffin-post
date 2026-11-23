@@ -34,14 +34,16 @@ it('caps support reports and feature suggestion emails per user', async () => {
 })
 
 it('sends support reports and feature suggestions to the support inbox, not the submitter', async () => {
-  const fixtureFetch = globalThis.fetch, sentTo: string[] = []
+  const fixtureFetch = globalThis.fetch, sent: Array<{ to: string[]; reply_to: string[] }> = []
   globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (String(input).includes('api.resend.com')) { sentTo.push(...(JSON.parse(String(init?.body)) as { to: string[] }).to); return new Response('{}') }
+    if (String(input).includes('api.resend.com')) { sent.push(JSON.parse(String(init?.body))); return new Response('{}') }
     return fixtureFetch(input, init)
   }
   try {
     expect((await fixture.request('/api/support', 'POST', { kind: 'feature', title: 'Dark mode', description: 'A sufficiently detailed idea.' }, 'a')).status).toBe(201)
     expect((await fixture.request('/api/feature-suggestions', 'POST', { message: 'A sufficiently detailed suggestion.' }, 'a')).status).toBe(201)
   } finally { globalThis.fetch = fixtureFetch }
-  expect(sentTo).toEqual(['support@rpthreadbuddy.app', 'support@rpthreadbuddy.app'])
+  expect(sent.map(mail => mail.to)).toEqual([['support@rpthreadbuddy.app'], ['support@rpthreadbuddy.app']])
+  // Replying to a report answers the person who sent it.
+  expect(sent.every(mail => mail.reply_to.length === 1 && mail.reply_to[0].includes('@') && mail.reply_to[0] !== 'support@rpthreadbuddy.app')).toBe(true)
 })

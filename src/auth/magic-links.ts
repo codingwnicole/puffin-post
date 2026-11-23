@@ -1,4 +1,5 @@
 import type { Env } from '../worker'
+import { sendEmail } from '../mail'
 import { findInvite, normalizeEmail } from './invites'
 import { hashToken, randomToken } from './sessions'
 
@@ -37,15 +38,8 @@ export function magicLinkEmail(url: string) {
 
 export function resendMailSender(env: Env): MailSender {
   return { async send({ to, url }) {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-    redirect: 'manual',
-      headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-      signal: AbortSignal.timeout(10_000),
-      body: JSON.stringify({ from: env.MAIL_FROM, to: [to], subject: 'Your RP Thread Buddy sign-in link',
-        text: `Sign in to RP Thread Buddy: ${url}\n\nThis link expires in 15 minutes and can be used once.`, html: magicLinkEmail(url) }),
-    })
-    if (!response.ok) throw new Error('Unable to send sign-in email')
+    await sendEmail(env, { to: [to], subject: 'Your RP Thread Buddy sign-in link',
+      text: `Sign in to RP Thread Buddy: ${url}\n\nThis link expires in 15 minutes and can be used once.`, html: magicLinkEmail(url) }, 'Unable to send sign-in email')
   } }
 }
 

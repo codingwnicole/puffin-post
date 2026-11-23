@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import type { Env } from '../worker'
+import { sendEmail } from '../mail'
 import { requireWorkspace } from '../auth/sessions'
 import { isModerator } from '../auth/moderator'
 import { checkRateLimit, opaqueRateLimitKey } from '../auth/rate-limits'
@@ -326,13 +327,7 @@ export function publicShareRoutes() {
     await c.env.DB.prepare('INSERT INTO share_reports (id,slug,reason,created_at) VALUES (?,?,?,?)').bind(crypto.randomUUID(), slug, reason, new Date().toISOString()).run()
     if (c.env.BOOTSTRAP_OWNER_EMAIL) {
       try {
-        const response = await fetch('https://api.resend.com/emails', {
-          method: 'POST', headers: { authorization: `Bearer ${c.env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-          redirect: 'manual',
-          signal: AbortSignal.timeout(10_000),
-          body: JSON.stringify({ from: c.env.MAIL_FROM, to: [c.env.BOOTSTRAP_OWNER_EMAIL], subject: `RP Thread Buddy share report: ${slug}`, text: `Reason: ${reason}\n\nLink: ${c.env.APP_ORIGIN}/c/${slug}` }),
-        })
-        if (!response.ok) throw new Error('Email provider rejected the report')
+        await sendEmail(c.env, { to: [c.env.BOOTSTRAP_OWNER_EMAIL], subject: `RP Thread Buddy share report: ${slug}`, text: `Reason: ${reason}\n\nLink: ${c.env.APP_ORIGIN}/c/${slug}` }, 'Email provider rejected the report')
       } catch {
         console.error('Share report saved but moderator notification failed')
       }

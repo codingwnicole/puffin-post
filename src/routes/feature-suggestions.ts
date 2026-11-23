@@ -4,23 +4,10 @@ import { z } from 'zod'
 import { requireWorkspace } from '../auth/sessions'
 import { checkRateLimit } from '../auth/rate-limits'
 import type { Env } from '../worker'
-import { SUPPORT_EMAIL } from './support'
+import { SUPPORT_EMAIL, sendEmail } from '../mail'
 
-async function emailOwner(env: Env, to: string, from: string, message: string) {
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    redirect: 'manual',
-    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
-    signal: AbortSignal.timeout(10_000),
-    body: JSON.stringify({
-      from: env.MAIL_FROM,
-      to: [to],
-      subject: 'New RP Thread Buddy feature suggestion',
-      text: `From: ${from}\n\n${message}`,
-    }),
-  })
-  if (!response.ok) throw new Error('Unable to email the suggestion')
-}
+const emailOwner = (env: Env, to: string, from: string, message: string) =>
+  sendEmail(env, { to: [to], replyTo: from, subject: 'New RP Thread Buddy feature suggestion', text: `From: ${from}\n\n${message}` }, 'Unable to email the suggestion')
 
 export function featureSuggestionRoutes() {
   const app = new Hono<{ Bindings: Env }>()
