@@ -89,6 +89,14 @@ export default function BranchRow({ branch, options, onChange }: { branch: Inbox
 
   const isManual = branch.rootBlogId === 'manual'
   const archived = branch.starterArchived === 1 || Boolean(branch.archivedAt) || branch.status === 'archived'
+  // The latest reply lives on whoever posted it; pairing its id with the starter's blog linked to a post that doesn't exist.
+  // Built only where the link renders (non-manual scenes), like the old inline expression.
+  const tumblrHref = () => {
+    const latest = branch.latestPostId && branch.lastPoster
+      ? { blog: branch.lastPoster, post: branch.latestPostId }
+      : { blog: branch.rootBlogId, post: branch.rootPostId }
+    return `https://www.tumblr.com/${encodeURIComponent(latest.blog.replace(/\.tumblr\.com$/, ''))}/${encodeURIComponent(latest.post)}`
+  }
   const partner = branch.partnerLabel ? cleanPartner(branch.partnerLabel) : 'writing partner'
   const displayTitle = /^(Tumblr thread|Untitled scene)$/i.test(branch.title) ? `${branch.characterName} × ${partner}` : branch.title
   const summary = branch.description || 'No scene summary yet — open this card to add one.'
@@ -103,7 +111,7 @@ export default function BranchRow({ branch, options, onChange }: { branch: Inbox
     {!archived&&<div className="branch-turn-actions"><button type="button" className={status === 'your_turn' ? 'turn-button is-current' : 'turn-button'} aria-pressed={status === 'your_turn'} onClick={() => void setTurn('your_turn')}>Your turn</button><button type="button" className={status === 'their_turn' ? 'turn-button is-current' : 'turn-button'} aria-pressed={status === 'their_turn'} onClick={() => void setTurn('their_turn')}>Their turn</button></div>}
     {expanded && <div className="scene-card-expanded" id={`scene-details-${branch.id}`}>
       <div className="branch-details">
-        {isManual ? <span className="manual-scene">Manual scene</span> : <><a className="open-tumblr button" href={`https://www.tumblr.com/${encodeURIComponent(branch.rootBlogId.replace(/\.tumblr\.com$/, ''))}/${encodeURIComponent(branch.latestPostId ?? branch.rootPostId)}`} target="_blank" rel="noopener noreferrer">Open on Tumblr</a><button type="button" className="secondary-button" disabled={busy} onClick={async () => { try { setBusy(true); setError(''); await api(`/starters/${branch.starterId}/reparse`, 'POST'); await onChange() } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) } }}>Refresh names</button></>}
+        {isManual ? <span className="manual-scene">Manual scene</span> : <><a className="open-tumblr button" href={tumblrHref()} target="_blank" rel="noopener noreferrer">Open on Tumblr</a><button type="button" className="secondary-button" disabled={busy} onClick={async () => { try { setBusy(true); setError(''); await api(`/starters/${branch.starterId}/reparse`, 'POST'); await onChange() } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) } }}>Refresh names</button></>}
         <span>{branch.lastActivityAt ? <>Updated <time dateTime={branch.lastActivityAt}>{new Date(branch.lastActivityAt).toLocaleString()}</time></> : 'Added manually'}</span>
         {branch.latestReplyExcerpt && <p className="preserve-lines branch-excerpt">{branch.latestReplyExcerpt}</p>}
         {(branch.partnerMuses??[]).length>0&&<span className="branch-muses">Partner muse{branch.partnerMuses!.length===1?'':'s'}: {branch.partnerMuses!.join(', ')}</span>}

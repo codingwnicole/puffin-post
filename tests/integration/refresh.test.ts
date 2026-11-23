@@ -89,3 +89,22 @@ it('keeps the last known branch state and records a refresh error when Tumblr fa
   const details = await (await fixture.request(`/api/starters/${starter.id}`)).json() as { branches:Array<any> }
   expect(details.branches.find(candidate => candidate.id===branch.id)).toMatchObject({status:'their_turn',refreshError:'Tumblr refresh failed (503)'})
 })
+
+it('"Check Tumblr now" refreshes only the caller\'s workspace, then waits 2 minutes before another', async () => {
+  await fixture.env.DB.prepare("UPDATE partners SET blog_identifier='friend.tumblr.com' WHERE id='partner-a'").run()
+  const starter = await (await fixture.request('/api/starters','POST',starterInput)).json() as { id:string }
+  const branch = await (await fixture.request(`/api/starters/${starter.id}/branches`,'POST',{partnerId:'partner-a',status:'their_turn'})).json() as { id:string }
+  ;(globalThis as any).__tumblrStubNotes={notes:[{type:'reblog',blog_name:'friend',post_id:'reply-now',reblog_parent_blog_name:'a',timestamp:1763726400}]}
+  try {
+    const first = await fixture.request('/api/refresh','POST')
+    expect(first.status).toBe(200)
+    expect(await first.json()).toEqual({ checked: 1, failed: 0 }) // workspace b's blog is left for the cron
+    const after = await (await fixture.request(`/api/starters/${starter.id}`)).json() as { branches:Array<{id:string;latestPostId:string|null;status:string}> }
+    expect(after.branches.find(b => b.id === branch.id)).toMatchObject({ latestPostId:'reply-now', status:'your_turn' })
+    const cursors = await fixture.env.DB.prepare('SELECT workspace_id AS ws FROM refresh_cursors').all<{ws:string}>()
+    expect(cursors.results.map(r => r.ws)).toEqual(['a'])
+    const again = await fixture.request('/api/refresh','POST')
+    expect(again.status).toBe(429)
+    expect(await again.text()).toMatch(/Try again in \d+ seconds/)
+  } finally { delete (globalThis as any).__tumblrStubNotes }
+})

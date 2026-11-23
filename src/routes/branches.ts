@@ -1,12 +1,27 @@
 import { Hono } from 'hono'
+import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
 import type { Env } from '../worker'
 import { requireWorkspace } from '../auth/sessions'
+import { checkRateLimit } from '../auth/rate-limits'
 import { listInboxBranches, restoreReplyBranch, updateReplyBranch } from '../db/repositories/branches'
+import { runRefreshBatch } from '../refresh/runner'
 import { branchSchema } from './tracking-validation'
 
 export function branchRoutes() {
   const app = new Hono<{ Bindings: Env }>()
+  // "Check Tumblr now": the same refresh the 30-minute cron runs, limited to the caller's workspace.
+  // ponytail: one check per 2 minutes per workspace; each spends up to REFRESH_FETCH_BUDGET of Tumblr's
+  // app-wide 1,000 calls/hour that every user shares. Lower the window only if Tumblr raises that limit.
+  app.post('/refresh', async c => {
+    const scope = await requireWorkspace(c)
+    const gate = await checkRateLimit(c.env.DB, `refresh-now:${scope.workspaceId}`, 1, 2 * 60_000)
+    if (!gate.allowed) throw new HTTPException(429, { message: `Tumblr was just checked. Try again in ${gate.retryAfterSeconds} seconds.` })
+    const result = await runRefreshBatch(c.env, new Date(), 60, { workspaceId: scope.workspaceId })
+    if (result.busy) throw new HTTPException(409, { message: 'A Tumblr check is already running. Your threads will update in a minute.' })
+    if (result.rateLimited) throw new HTTPException(503, { message: 'Tumblr asked us to slow down. Your threads will update on the next automatic check.' })
+    return c.json({ checked: result.refreshed, failed: result.failed })
+  })
   app.patch('/branches/:branchId', async c => {
     const scope = await requireWorkspace(c)
     return c.json(await updateReplyBranch(scope,c.req.param('branchId'),branchSchema.parse(await c.req.json())))

@@ -7,7 +7,7 @@ import { sendWorkspacePush } from '../routes/push'
 import { redact } from '../shared/redact'
 import { extractDirectReplyText } from '../tumblr/thread-parser'
 
-export interface RefreshBatchResult { selected: number; refreshed: number; failed: number; skipped?: number; fetchesUsed?: number; d1Used?: number; rateLimited?: boolean }
+export interface RefreshBatchResult { selected: number; refreshed: number; failed: number; skipped?: number; fetchesUsed?: number; d1Used?: number; rateLimited?: boolean; busy?: boolean }
 
 // Trim a reply's preview to at most 500 chars, breaking on a word boundary so
 // a stored excerpt never ends mid-word. Returns null for empty input.
@@ -78,7 +78,8 @@ function countingDB(db: D1Database, budget: SubrequestBudget): D1Database {
   return { ...db, prepare, batch: (stmts: D1PreparedStatement[]) => { budget.consumeD1(); return db.batch(stmts.map(s => (s as any).raw ?? s)) } } as unknown as D1Database
 }
 
-export async function runRefreshBatch(env: Env, now: Date, limit: number, options: { fetchBudget?: number; targetLimit?: number; runId?: string } = {}): Promise<RefreshBatchResult> {
+export async function runRefreshBatch(env: Env, now: Date, limit: number, options: { fetchBudget?: number; targetLimit?: number; runId?: string; workspaceId?: string } = {}): Promise<RefreshBatchResult> {
+  // workspaceId: a writer's "Check now" refreshes only their own blogs; the cron passes none and sweeps everyone.
   // Overlap guard: the caller (the scheduled handler) supplies a run id that
   // identifies the invocation. A second scheduled batch for the same workspace
   // while the first is still running sees the live lock and bails out, so the
@@ -88,7 +89,7 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   const runId = options.runId ?? crypto.randomUUID()
   const staleBefore = new Date(now.getTime() - 10 * 60_000).toISOString()
   const claimed = await env.DB.prepare('INSERT INTO refresh_runs (id,started_at,finished_at) SELECT ?,?,NULL WHERE NOT EXISTS (SELECT 1 FROM refresh_runs WHERE finished_at IS NULL AND started_at > ?)').bind(runId, now.toISOString(), staleBefore).run()
-  if (!claimed.meta.changes) return { selected: 0, refreshed: 0, failed: 0, skipped: 0, fetchesUsed: 0 }
+  if (!claimed.meta.changes) return { selected: 0, refreshed: 0, failed: 0, skipped: 0, fetchesUsed: 0, busy: true }
   await env.DB.prepare('DELETE FROM refresh_runs WHERE id<>? AND started_at < ?').bind(runId, new Date(now.getTime() - 86_400_000).toISOString()).run()
   // Declared at function scope so the finally can stamp due/refreshed even if
   // the run throws mid-batch.
@@ -127,7 +128,8 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
     LEFT JOIN refresh_cursors rc ON rc.workspace_id=cb.workspace_id AND rc.character_blog_id=cb.id
     WHERE c.state='active' AND tc.status='active'
       AND (rc.next_retry_at IS NULL OR rc.next_retry_at <= ?)
-  ) ORDER BY rn, lastAttempt, id LIMIT ?`).bind(now.toISOString(), now.toISOString(), effectiveLimit).all<RefreshTarget & { totalDue: number }>()
+      AND (? IS NULL OR cb.workspace_id = ?)
+  ) ORDER BY rn, lastAttempt, id LIMIT ?`).bind(now.toISOString(), now.toISOString(), options.workspaceId ?? null, options.workspaceId ?? null, effectiveLimit).all<RefreshTarget & { totalDue: number }>()
   const selected = candidates.results
   dueTargets = selected[0]?.totalDue ?? 0
   let failed = 0, skipped = 0
