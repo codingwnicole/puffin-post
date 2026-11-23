@@ -69,7 +69,7 @@ test('private room keeps guest reply text private while sharing progress', async
   await expect(guest.getByText('The room timer is running.')).toBeVisible()
   await guest.getByLabel('Reply text').first().pressSequentially('private guest reply')
   await guest.getByRole('button', { name: 'Finish & Copy' }).click()
-  await expect(host.getByText(/1 replies/)).toBeVisible()
+  await expect(host.getByText(/\b1 reply\b/)).toBeVisible()
   await expect(host.getByLabel('Reply text').first()).toHaveValue('')
   await expect(host.getByText('private guest reply')).toHaveCount(0)
 
