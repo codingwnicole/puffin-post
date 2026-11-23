@@ -32,3 +32,16 @@ it('caps support reports and feature suggestion emails per user', async () => {
   expect(suggestions.slice(0, 5).every(response => response.status === 201)).toBe(true)
   expect(suggestions[5].status).toBe(429)
 })
+
+it('sends support reports and feature suggestions to the support inbox, not the submitter', async () => {
+  const fixtureFetch = globalThis.fetch, sentTo: string[] = []
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input).includes('api.resend.com')) { sentTo.push(...(JSON.parse(String(init?.body)) as { to: string[] }).to); return new Response('{}') }
+    return fixtureFetch(input, init)
+  }
+  try {
+    expect((await fixture.request('/api/support', 'POST', { kind: 'feature', title: 'Dark mode', description: 'A sufficiently detailed idea.' }, 'a')).status).toBe(201)
+    expect((await fixture.request('/api/feature-suggestions', 'POST', { message: 'A sufficiently detailed suggestion.' }, 'a')).status).toBe(201)
+  } finally { globalThis.fetch = fixtureFetch }
+  expect(sentTo).toEqual(['support@rpthreadbuddy.app', 'support@rpthreadbuddy.app'])
+})

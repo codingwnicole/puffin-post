@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { requireWorkspace } from '../auth/sessions'
 import { checkRateLimit } from '../auth/rate-limits'
 import type { Env } from '../worker'
+import { SUPPORT_EMAIL } from './support'
 
 async function emailOwner(env: Env, to: string, from: string, message: string) {
   const response = await fetch('https://api.resend.com/emails', {
@@ -29,15 +30,10 @@ export function featureSuggestionRoutes() {
     if (!(await checkRateLimit(scope.db, `feature_suggestion:${scope.userId}`, 5, 60 * 60_000)).allowed) {
       throw new HTTPException(429, { message: 'Too many suggestions. Try again later.' })
     }
-    const owner = await scope.db.prepare(`
-      SELECT u.email FROM memberships m JOIN users u ON u.id=m.user_id
-      WHERE m.workspace_id=? AND m.role='owner' ORDER BY m.created_at LIMIT 1
-    `).bind(scope.workspaceId).first<{ email: string }>()
-    if (!owner) throw new HTTPException(404, { message: 'Workspace owner not found' })
     const createdAt = new Date().toISOString()
     await scope.db.prepare('INSERT INTO feature_suggestions (id,workspace_id,submitted_by_user_id,message,created_at) VALUES (?,?,?,?,?)')
       .bind(crypto.randomUUID(), scope.workspaceId, scope.userId, body.message, createdAt).run()
-    await emailOwner(c.env, owner.email, scope.email, body.message)
+    await emailOwner(c.env, SUPPORT_EMAIL, scope.email, body.message)
     return c.json({ ok: true }, 201)
   })
   return app

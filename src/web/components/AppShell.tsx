@@ -17,8 +17,8 @@ const navigation = [
   ['planner', 'Character planner', 'planner'],
   ['connections', 'Connected accounts', 'connections'],
   ['settings', 'Settings', 'settings'],
-  ['support', 'Support & feedback', 'more'],
   ['roadmap', 'Site roadmap', 'planner'],
+  ['support', 'Support & feedback', 'more'],
 ] as const
 
 // Swipe-to-close for the phone bottom sheet: pointer-down on the grabber, follow the

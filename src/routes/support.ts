@@ -7,11 +7,10 @@ import { checkRateLimit } from '../auth/rate-limits'
 import type { Env } from '../worker'
 
 const statusSchema = z.enum(['reported', 'acknowledged', 'investigating', 'planned', 'fixed'])
-async function emailWorkspaceOwner(env: Env, db: D1Database, workspaceId: string, from: string, kind: string, title: string, description: string) {
-  const owner = await db.prepare(`SELECT u.email FROM memberships m JOIN users u ON u.id=m.user_id
-    WHERE m.workspace_id=? AND m.role='owner' ORDER BY m.created_at LIMIT 1`).bind(workspaceId).first<{ email: string }>()
-  const recipient = env.BOOTSTRAP_OWNER_EMAIL ?? owner?.email
-  if (!recipient) return
+// Every support and feedback submission goes to the team inbox, never to the submitter's own workspace owner.
+export const SUPPORT_EMAIL = 'support@rpthreadbuddy.app'
+async function emailSupport(env: Env, from: string, kind: string, title: string, description: string) {
+  const recipient = SUPPORT_EMAIL
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST', headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
     redirect: 'manual',
@@ -43,7 +42,7 @@ export function supportRoutes() {
     const id = crypto.randomUUID(), now = new Date().toISOString()
     await scope.db.prepare('INSERT INTO support_items (id,kind,title,description,submitted_by_user_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
       .bind(id, body.kind, body.title, body.description, scope.userId, now, now).run()
-    await emailWorkspaceOwner(c.env, scope.db, scope.workspaceId, scope.email, body.kind, body.title, body.description)
+    await emailSupport(c.env, scope.email, body.kind, body.title, body.description)
     return c.json({ id }, 201)
   })
   app.post('/:id/vote', async c => {
