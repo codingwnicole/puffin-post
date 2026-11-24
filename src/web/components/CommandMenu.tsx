@@ -81,14 +81,19 @@ export default function CommandMenu({ open, onClose }:{ open: boolean; onClose: 
         <input
           ref={inputRef}
           className="command-input"
+          aria-label="Search commands"
+          role="combobox"
+          aria-expanded="true"
+          aria-controls="command-list"
+          aria-activedescendant={filtered[active] ? `command-${filtered[active].id}` : undefined}
           value={query}
           placeholder="Search / commands"
           onChange={e => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
         />
-        <ul className="command-list" role="listbox" aria-label="Commands">
+        <ul id="command-list" className="command-list" role="listbox" aria-label="Commands">
           {filtered.map((command, index) => (
-            <li key={command.id} role="option" aria-selected={index === active}
+            <li key={command.id} id={`command-${command.id}`} role="option" aria-selected={index === active}
               className={'command-item' + (index === active ? ' command-item-active' : '')}
               onMouseEnter={() => setActive(index)}
               onClick={() => activate(command)}>

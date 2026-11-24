@@ -1,4 +1,4 @@
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import AddThreadDialog, { starterPayload } from '../components/AddThreadDialog'
 import type { InboxBranch } from '../../db/repositories/branches'
 import { api, peekCache, staleGet, type TrackingOptions } from '../lib/api'
@@ -14,6 +14,15 @@ import { openOnboardingTour } from '../components/OnboardingTour'
 
 
 type GroupedBranches = Record<string, InboxBranch[]>
+
+// Signed-out landing: an RP thread between a writer and the app. Each answer names one of the four things PRODUCT.md
+// says set the tracker apart. Words only, by the owner's choice.
+const GUEST_THREAD: [worry: string, answer: string, detail: string][] = [
+  ['Three people replied to my open starter. Which of them do I owe?', 'Each partner gets their own branch.', 'One starter, three replies, three turns tracked separately, each with its own notes.'],
+  ['I always stop updating my tracker after a week.', 'It reads your Tumblr for you', 'and works out whose turn it is as new posts come in.'],
+  ['I want my partners to actually meet my characters.', 'Make each of them a trading card', 'and a public page, and share it only if you choose to.'],
+  ['Honestly, I just need to sit down and write.', "There's a desk for that.", 'Sprints alone or in a private room, a focus timer, and a Parking Lot for half-written replies.'],
+]
 
 // owedTotal: the server's count of every owed reply (the list is paged at 100); pass it only for the unfiltered view.
 // Waiting and queued come from the loaded page, so they show "+" when more pages exist.
@@ -45,7 +54,7 @@ function QuickAdd({options,busy,error,onSubmit}:{options:TrackingOptions;busy:bo
   return <AddThreadDialog id="quick-add" options={options} busy={busy} error={error} onSubmit={onSubmit} onClose={()=>{setOpen(false);window.history.replaceState(null,'','#dashboard')}}/>
 }
 
-function GuestSignIn({busy,setBusy,sentLink,setSentLink,sentEmail,setSentEmail}:{busy:boolean;setBusy:(value:boolean)=>void;sentLink:boolean;setSentLink:(value:boolean)=>void;sentEmail:string;setSentEmail:(value:string)=>void}) {
+function GuestSignIn({busy,setBusy,sentLink,setSentLink,sentEmail,setSentEmail,emailRef}:{emailRef?:React.Ref<HTMLInputElement>;busy:boolean;setBusy:(value:boolean)=>void;sentLink:boolean;setSentLink:(value:boolean)=>void;sentEmail:string;setSentEmail:(value:string)=>void}) {
   // Own state: the page shows this landing only while its error is the sign-in message, so clearing that here dropped visitors onto an empty inbox.
   const [error,setError]=useState('')
   async function requestLink(email:string) {
@@ -55,8 +64,8 @@ function GuestSignIn({busy,setBusy,sentLink,setSentLink,sentEmail,setSentEmail}:
     finally { setBusy(false) }
   }
   const submit=(path:string,after:()=>void)=>async(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();setBusy(true);setError('');const form=new FormData(event.currentTarget);try{await api(path,'POST',{email:form.get('email'),password:form.get('password')});after()}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
-  if(sentLink)return <div className="email-confirmation" aria-live="polite"><p className="eyebrow">One more step</p><h2>Check your email</h2><p>We sent a one-time sign-in link to <strong>{sentEmail}</strong>. It expires soon and works once.</p>{error&&<p role="alert">{error}</p>}<div className="email-confirmation-actions"><button type="button" disabled={busy} onClick={()=>void requestLink(sentEmail)}>{busy?'Sending...':'Resend sign-in link'}</button><button type="button" className="secondary-button" onClick={()=>{setSentLink(false);setSentEmail('');setError('')}}>Use a different email</button></div><p className="field-help">If it is not in your inbox, check spam or wait a moment before resending.</p><p className="guest-legal"><a href="#terms">Terms</a> · <a href="#privacy">Privacy</a> · <a href="#cookies">Cookies</a></p></div>
-  return <><h2>Sign in</h2><form className="tracking-form" onSubmit={async event=>{event.preventDefault();const email=String(new FormData(event.currentTarget).get('email')??'').trim();await requestLink(email)}}><label>Email address<input name="email" type="email" autoComplete="email" required/></label><button disabled={busy}>{busy?'Sending...':'Email me a sign-in link'}</button></form><details className="password-option"><summary>Use a password instead</summary><form className="tracking-form" onSubmit={submit('/auth/password-sign-in',()=>window.location.reload())}><label>Email address<input name="email" type="email" autoComplete="email" required/></label><label>Password<input name="password" type="password" minLength={8} autoComplete="current-password" required/></label><button disabled={busy}>Sign in</button></form></details><p className="field-help">New here? Start with an email sign-in link, then add a password in Settings if you prefer.</p><p className="guest-terms">By creating an account you agree to the <a href="#terms">Terms</a> and confirm you are 16 or older.</p>{error&&<p role="alert">{error}</p>}<p className="guest-legal"><a href="#terms">Terms</a> · <a href="#privacy">Privacy</a> · <a href="#cookies">Cookies</a> · <a href="#roadmap">Site roadmap</a></p></>
+  if(sentLink)return <div className="email-confirmation" aria-live="polite"><h2>Check your email</h2><p>We sent a one-time sign-in link to <strong>{sentEmail}</strong>. It expires soon and works once.</p>{error&&<p role="alert">{error}</p>}<div className="email-confirmation-actions"><button type="button" disabled={busy} onClick={()=>void requestLink(sentEmail)}>{busy?'Sending...':'Resend sign-in link'}</button><button type="button" className="secondary-button" onClick={()=>{setSentLink(false);setSentEmail('');setError('')}}>Use a different email</button></div><p className="field-help">If it is not in your inbox, check spam or wait a moment before resending.</p><p className="guest-legal"><a href="#terms">Terms</a> · <a href="#privacy">Privacy</a> · <a href="#cookies">Cookies</a></p></div>
+  return <><form className="tracking-form" onSubmit={async event=>{event.preventDefault();const email=String(new FormData(event.currentTarget).get('email')??'').trim();await requestLink(email)}}><label>Email address<input ref={emailRef} name="email" type="email" autoComplete="email" required/></label><button disabled={busy}>{busy?'Sending...':'Email me a sign-in link'}</button></form><details className="password-option"><summary>Use a password instead</summary><form className="tracking-form" onSubmit={submit('/auth/password-sign-in',()=>window.location.reload())}><label>Email address<input name="email" type="email" autoComplete="email" required/></label><label>Password<input name="password" type="password" minLength={8} autoComplete="current-password" required/></label><button disabled={busy}>Sign in</button></form></details><p className="guest-terms">By creating an account you agree to the <a href="#terms">Terms</a> and confirm you are 16 or older.</p>{error&&<p role="alert">{error}</p>}</>
 }
 export default function InboxPage() {
   const [inbox,setInbox]=useState<{branches:InboxBranch[];yourTurnCount:number;overdueDraftCount:number;dueSoonCount:number;hasMore?:boolean}>(()=>seedInbox()??{branches:[],yourTurnCount:0,overdueDraftCount:0,dueSoonCount:0})
@@ -91,7 +100,20 @@ export default function InboxPage() {
   const needsSignIn=error==='Sign in to see your writing space.'||error.includes("You've been signed out.")
   // Every hook must run before the sign-in early return below: React requires the same hook order on every render (the T8e crash).
   const entered=useEntered(loaded&&inbox.branches.length>0)
-  if(needsSignIn||sentLink)return <section className={`guest-landing${sentLink ? ' is-email-confirmation' : ''}`} aria-labelledby="sign-in-title"><div className="guest-copy"><span className="guest-monogram" aria-hidden="true">RP</span><p className="eyebrow">Your new favorite RP companion</p><h1 id="sign-in-title">Keep track of what you owe.</h1><p>Threads, starter ideas, character notes, and the little things that used to live in fifteen open tabs.</p><div className="guest-feature-preview" aria-label="RP Thread Buddy features"><div className="guest-preview-card"><p className="eyebrow">Your turn</p><strong>Two replies are waiting.</strong><span>Moonlight &middot; Juniper</span></div><ul><li><strong>Know what is next</strong><span>Replies are organized by character and RP.</span></li><li><strong>Save every good idea</strong><span>Park plotting notes, asks, and starters for later.</span></li><li><strong>Stay in your writing flow</strong><span>One calm place to check threads and plan what comes next.</span></li></ul></div></div><div className="guest-card"><GuestSignIn busy={busy} setBusy={setBusy} sentLink={sentLink} setSentLink={setSentLink} sentEmail={sentEmail} setSentEmail={setSentEmail}/></div></section>
+  const guestEmailRef=useRef<HTMLInputElement>(null)
+  if(needsSignIn||sentLink)return <section className={`guest-landing thread-landing${sentLink ? ' is-email-confirmation' : ''}`} aria-labelledby="sign-in-title">
+    <div className="guest-copy"><h1 id="sign-in-title">Know whose <span className="nowrap">turn it is,</span> <span className="nowrap">on every thread.</span></h1><p className="guest-lede">A free RP thread tracker and writing desk, in beta. It starts with Tumblr.</p></div>
+    {/* The last post in the thread is the writer's turn: signing in. */}
+    <div className="guest-card thread-slip">{!sentLink && <><h2><span className="thread-slip-turn">Your turn:</span> sign in or start free</h2><p className="thread-slip-note">We email you a one-time link. New accounts start the same way.</p></>}<GuestSignIn busy={busy} setBusy={setBusy} sentLink={sentLink} setSentLink={setSentLink} sentEmail={sentEmail} setSentEmail={setSentEmail} emailRef={guestEmailRef}/></div>
+    <ol className="guest-thread" aria-label="What RP Thread Buddy does">
+      {GUEST_THREAD.flatMap(([worry, answer, detail], index) => [
+        <li key={`you-${index}`} className="thread-post is-you" style={{ '--i': index * 2 } as CSSProperties}><span className="thread-who is-you">You</span><p>{worry}</p></li>,
+        <li key={`app-${index}`} className="thread-post is-app" style={{ '--i': index * 2 + 1 } as CSSProperties}><span className="thread-who is-app">Thread Buddy</span><p><strong>{answer}</strong> {detail}</p></li>,
+      ])}
+      {!sentLink && <li className="thread-post is-you is-last" style={{ '--i': GUEST_THREAD.length * 2 } as CSSProperties}><span className="thread-who is-you">You</span><p><button type="button" className="thread-turn" onClick={() => { guestEmailRef.current?.scrollIntoView({ block: 'center' }); guestEmailRef.current?.focus() /* focus is one of the allowed direct DOM uses */ }}>Your turn: sign in or start free</button></p></li>}
+    </ol>
+    {!sentLink && <p className="thread-foot">New here? Start with an email link, then add a password in Settings if you prefer. <span className="thread-foot-links"><a href="#terms">Terms</a> · <a href="#privacy">Privacy</a> · <a href="#cookies">Cookies</a> · <a href="#roadmap">Site roadmap</a></span></p>}
+  </section>
   const grouped=inbox.branches.reduce<GroupedBranches>((all,branch)=>{const name=branch.groupName??'Unsorted';(all[name]??=[]).push(branch);return all},{})
   const oldestOwedId=focusMode?inbox.branches.find(b=>b.status==='your_turn')?.id:null
   const unsortedBranches=grouped['Unsorted']??[]

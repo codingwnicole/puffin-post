@@ -7,11 +7,11 @@ test.use({ baseURL: APP })
 
 test('the homepage keeps a clean URL and direct inbox routes survive back and forward navigation', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'Keep track of what you owe.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Know whose turn it is, on every thread.' })).toBeVisible()
   expect(new URL(page.url()).hash).toBe('')
 
   await page.goto('/#inbox?status=their_turn')
-  await expect(page.getByRole('heading', { name: 'Keep track of what you owe.' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Know whose turn it is, on every thread.' })).toBeVisible()
   expect(new URL(page.url()).hash).toBe('#inbox?status=their_turn') // signed out, old #inbox links are left as typed
   await page.goBack()
   await expect(page).toHaveURL(/\/$/)

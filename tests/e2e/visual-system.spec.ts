@@ -142,7 +142,7 @@ test('OKLCH tokens: body text and large heading contrast meet WCAG in both theme
       const h = (0, eval)(src)
       const bg = getComputedStyle(document.querySelector('.tracking-card') as HTMLElement).backgroundColor
       const bodyFg = getComputedStyle(document.querySelector('.tracking-card p, .field-help') as HTMLElement).color
-      const headFg = getComputedStyle(document.querySelector('.tracking-card h3') as HTMLElement).color
+      const headFg = getComputedStyle(document.querySelector('.tracking-card :is(h2,h3)') as HTMLElement).color
       return [h.ratio(bodyFg, bg), h.ratio(headFg, bg)]
     }, HELPERS_SRC)
     expect(body, `${mode} body text contrast`).toBeGreaterThanOrEqual(4.5)
