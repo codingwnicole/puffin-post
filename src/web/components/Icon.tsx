@@ -3,10 +3,10 @@
 // (https://creativecommons.org/licenses/by/4.0/). Modified: viewBox cropped to each glyph,
 // fill set to currentColor. Source: svgrepo.com/svg/<id> noted per icon. more/search/star are
 // "Jumpicon Glyph Icons by Ayub Irawan" (https://www.svgrepo.com/collection/jumpicon-glyph-icons/), CC BY 4.0,
-// same modifications. chat is "Communication Glyphs Icons" by wishforge.games
-// (https://www.svgrepo.com/collection/communication-glyphs-icons/), CC BY 4.0, same modifications.
-// All are credited in-app in the nav footer. Icons with no match (bot, palette, cards) stay as
-// the original stroke paths.
+// same modifications. chat, palette and cards are by wishforge.games from "Communication Glyphs
+// Icons" and "Gui Glyphs Icons" (https://www.svgrepo.com/collection/communication-glyphs-icons/,
+// https://www.svgrepo.com/collection/gui-glyphs-icons/), CC BY 4.0, same modifications. All are
+// credited in-app in the nav footer. bot has no match in any reviewed collection and stays a stroke.
 // Icons an admin can pick for a roadmap item; keep in sync with ROADMAP_ICONS in src/routes/roadmap.ts.
 export const ROADMAP_ICONS = ['sparkle', 'chat', 'bot', 'palette', 'cards', 'megaphone', 'star'] as const
 export type RoadmapIcon = (typeof ROADMAP_ICONS)[number]
@@ -31,13 +31,13 @@ const glyphs: Partial<Record<IconName, [viewBox: string, d: string]>> = {
   'your-turn': ['25.1 51 105.4 105.4', 'M93.489 74.7192L70.284 70.3422C71.095 65.8822 71.798 62.4222 72.302 60.6232C75.082 50.6992 96.754 54.4662 94.837 66.2482C94.573 67.8672 94.098 70.8572 93.489 74.7192ZM83.917 135.973L68.75 152.518L60.713 131.043C60.713 131.043 65.416 98.7442 69.033 77.4752L92.364 81.8762C89.064 102.899 83.917 135.973 83.917 135.973Z'], // 441695 pencil
   'their-turn': ['26.6 56.9 96.8 96.8', 'M87.315 69.0018C99.025 49.7518 131.947 74.7258 115.132 91.2798C108.329 86.4188 93.936 74.0448 87.315 69.0018ZM105.835 134.438L110.86 143.65L106.292 147.52L98.455 142.321C93.203 146.246 86.422 148.637 78.109 148.637C68.153 148.637 60.136 146.197 53.963 142.204L45.95 147.519L41.382 143.649L46.038 135.115C28.61 113.708 40.167 74.4148 74.749 74.4148C109.634 74.4148 120.031 112.891 105.835 134.438ZM74.775 80.9138C34.616 80.9138 31.203 142.883 77.614 142.883C116.744 142.883 115.715 80.9138 74.775 80.9138ZM92.665 116.479L91.874 109.093H101.501V114.89L92.665 116.479ZM73.006 117.25L60.205 105.104L62.673 101.629L74.589 107.888L93.818 94.4498L95.72 96.8338L77.201 116.455L73.006 117.25ZM75.954 86.4048L81.485 85.9878L81.869 96.1498L75.326 95.8908L75.954 86.4048ZM68.695 86.4048H72.873L73.665 96.1498L67.904 95.3558L68.695 86.4048ZM49.261 117.621L48.469 109.651L59.237 111.156L58.998 116.59L49.261 117.621ZM78.546 138.037L72.766 138.831L71.183 130.204H78.546V138.037ZM62.685 69.0018C56.064 74.0438 41.672 86.4188 34.867 91.2798C18.052 74.7268 50.974 49.7518 62.685 69.0018Z'], // 441792 alarm
   chat: ['1 1 30 30', 'M24,4H8C5.2,4,3,6.2,3,9v19c0,0.4,0.2,0.7,0.6,0.9C3.7,29,3.9,29,4,29c0.2,0,0.5-0.1,0.7-0.2C9,25,14.5,23,20.2,23H24c2.8,0,5-2.2,5-5V9C29,6.2,26.8,4,24,4z M14,17h-3c-0.6,0-1-0.4-1-1s0.4-1,1-1h3c0.6,0,1,0.4,1,1S14.6,17,14,17z M17,13h-6c-0.6,0-1-0.4-1-1s0.4-1,1-1h6c0.6,0,1,0.4,1,1S17.6,13,17,13z'], // Communication Glyphs 385050 chat-message-sms-text
+  palette: ['0.5 0.5 31 31', 'M20.6,20.7c-0.3,0-0.5-0.1-0.7-0.3l-8.1-8.1c-0.2-0.2-0.3-0.4-0.3-0.7c0-0.3,0.1-0.5,0.3-0.7l0.7-0.7c1.3-1.3,3.2-1.5,4.7-0.6l6.1-6.1c0.8-0.8,2-1.2,3.1-1.1c1.2,0.1,2.2,0.7,2.8,1.7c1,1.5,0.8,3.6-0.6,5l-6,6c0.3,0.6,0.5,1.2,0.5,1.9c0,1-0.4,2-1.1,2.7l-0.7,0.7C21.1,20.6,20.8,20.7,20.6,20.7z M18.5,21.8l-8.1-8.1c-0.1-0.1-0.2-0.2-0.3-0.4c-2.3,1.9-5.3,3.2-8.2,3.6c-0.4,0.1-0.7,0.3-0.8,0.7c-0.1,0.4,0,0.8,0.2,1l11.5,11.5c0.2,0.2,0.4,0.3,0.7,0.3c0,0,0.1,0,0.1,0c0.3,0,0.6-0.2,0.7-0.5l4.9-7.6C19,22.3,18.7,22.1,18.5,21.8z'], // Gui Glyphs 389734 brush
+  cards: ['0.5 0.5 31 31', 'M25,6.6V12H30.4Z M13,2.6V8H18.4Z M17,10h-5c-0.6,0-1-0.4-1-1V2H3C2.4,2,2,2.4,2,3v22c0,0.6,0.4,1,1,1h15c0.6,0,1-0.4,1-1V12C19,10.9,18.1,10,17,10z M29,14h-5c-0.6,0-1-0.4-1-1V6h-2v6v2v11c0,1.7-1.3,3-3,3h-4v1c0,0.6,0.4,1,1,1h15c0.6,0,1-0.4,1-1V16C31,14.9,30.1,14,29,14z'], // Gui Glyphs 389755 copy
   pin: ['23.9 54.7 102.1 102.1', 'M98.729 112.527L49.785 107.771C51.203 97.4429 56.959 90.9329 64.066 87.8979L61.749 58.4409L100.215 62.9229L90.383 91.4599C95.933 95.9469 99.51 103.064 98.729 112.527ZM80.725 119.494L69.187 152.98L66.415 117.736L80.725 119.494Z'], // 441700 pin
 }
 
 const paths: Partial<Record<IconName, string>> = {
   bot: 'M5 9h14v10H5zM12 5v4M12 3h.01M9 13h.01M15 13h.01M9.5 16h5M3 13v2M21 13v2',
-  palette: 'M12 3a9 9 0 1 0 0 18c1.1 0 1.7-.9 1.4-1.9l-.3-.9a1.6 1.6 0 0 1 1.5-2.2H17a4 4 0 0 0 4-4c0-5-4-9-9-9ZM7.5 11h.01M10 7.5h.01M14.5 7.5h.01M17 11h.01',
-  cards: 'M9 3h11v15H9zM6 6v15h11',
 }
 
 export default function Icon({ name }: { name: IconName }) {
