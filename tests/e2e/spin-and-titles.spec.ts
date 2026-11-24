@@ -14,7 +14,7 @@ async function signedIn(browser: Browser) {
   return { context, page }
 }
 
-test('spin the wheel picks a your-turn thread, highlights it, and is disabled when nothing is your turn', async ({ browser }) => {
+test('spin the wheel opens a focused dialog, picks a your-turn thread, and opens parked plots', async ({ browser }) => {
   const { context, page } = await signedIn(browser)
   await page.goto('/#inbox')
   // An empty inbox shows onboarding, not the reply-run card, so there is no wheel yet.
@@ -28,11 +28,15 @@ test('spin the wheel picks a your-turn thread, highlights it, and is disabled wh
   await page.reload()
   await expect(page.locator('.turn-your_turn').first()).toBeVisible()
   await page.getByRole('button', { name: 'Spin the wheel' }).click()
-  const status = page.locator('.spin-wheel p')
-  await expect(status).toContainText('Reply to this one?')
-  const picked = (await status.locator('strong').textContent()) ?? ''
+  const wheel = page.getByRole('dialog', { name: 'Pick your next reply' })
+  await expect(wheel).toBeVisible()
+  await wheel.getByRole('button', { name: 'Spin', exact: true }).click()
+  const status = wheel.locator('.wheel-result')
+  await expect(status).toContainText('Your pick')
+  const picked = (await status.locator('h3').textContent()) ?? ''
   expect(titles).toContain(picked)
-  await expect(page.locator('.branch-card.is-picked')).toContainText(picked)
+  await expect(wheel.getByRole('link', { name: 'Open Thread' })).toHaveAttribute('href', /#starter\//)
+  await expect(page).toHaveURL(/#inbox$/)
   await page.setViewportSize({ width: 1280, height: 900 }); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: 'test-results/t9d-inbox-1280.png' })
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' }); await page.screenshot({ path: 'test-results/t9d-inbox-1280-dark.png' }); await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 375, height: 812 }); await page.screenshot({ path: 'test-results/t9d-inbox-375.png', fullPage: true })
@@ -41,7 +45,11 @@ test('spin the wheel picks a your-turn thread, highlights it, and is disabled wh
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.goto('/#parking-lot'); await page.reload()
   await page.getByRole('button', { name: 'Spin the wheel' }).click()
-  await expect(page.locator('.spin-wheel p')).toContainText('Reply to this one?')
+  const parkingWheel = page.getByRole('dialog', { name: 'Pick something from the Parking Lot' })
+  await parkingWheel.getByRole('button', { name: 'Spin', exact: true }).click()
+  await expect(parkingWheel.locator('.wheel-result')).toContainText('Your pick')
+  await parkingWheel.getByRole('button', { name: 'Open Plot', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Draft notes', exact: true }).first()).toBeVisible()
   await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: 'test-results/t9d-parking-1280.png' })
   await context.close()
 })

@@ -6,6 +6,7 @@ import { api, peekCache, staleGet, type TrackingOptions } from '../lib/api'
 // ponytail: instant seed only for the unfiltered inbox; filtered views wait for fresh data.
 const seedInbox=()=>window.location.hash.includes('?')?undefined:peekCache<{branches:InboxBranch[];yourTurnCount:number;overdueDraftCount:number;dueSoonCount:number}>('/inbox')
 import SpinWheel from '../components/SpinWheel'
+import { tumblrThreadHref } from '../lib/tumblr-links'
 import BranchRow from '../components/BranchRow'
 import CheckTumblrButton from '../components/CheckTumblrButton'
 import InitialsAvatar from '../components/InitialsAvatar'
@@ -37,7 +38,10 @@ function ReplyRun({ branches, owedTotal, partial }: { branches: InboxBranch[]; o
   const circumference = 2 * Math.PI * 36, total = Math.max(owed + waiting + queued, 1)
   const gap = owed && waiting ? 4 : 0
   const owedLength = Math.max(0, circumference * owed / total - gap), waitingLength = Math.max(0, circumference * waiting / total - gap)
-  const yours = active.filter(branch => branch.status === 'your_turn').map(branch => ({ id: branch.id, label: branch.title, href: `#starter/${branch.starterId}` }))
+  const yours = active.filter(branch => branch.status === 'your_turn').map(branch => {
+    const tumblr = tumblrThreadHref(branch)
+    return { id: branch.id, label: branch.title, context: `${branch.characterName} · ${branch.partnerLabel ?? 'Writing partner'}`, href: tumblr ?? `#starter/${branch.starterId}`, external: Boolean(tumblr), actionLabel: tumblr ? 'Open on Tumblr' : 'Open Thread' }
+  })
   return <section className="reply-run summary-card" aria-label={`${owed} replies owed, ${waiting}${more} waiting on a partner${queued ? `, ${queued}${more} queued` : ''}`}>
     <div className="reply-donut"><svg viewBox="0 0 84 84" aria-hidden="true"><circle className="ring-track" cx="42" cy="42" r="36" />{owed > 0 && <circle className="ring-owed" cx="42" cy="42" r="36" style={{ strokeDasharray: `${owedLength} ${circumference}` }} />}{waiting > 0 && <circle className="ring-waiting" cx="42" cy="42" r="36" style={{ strokeDasharray: `${waitingLength} ${circumference}`, strokeDashoffset: -(circumference * owed / total) }} />}</svg><strong>{owed}</strong><span>owed</span></div>
     <div><p className="eyebrow">Reply run</p><strong>{owed ? `${owed} scene${owed === 1 ? '' : 's'} on your desk` : 'Your desk is clear'}</strong><p className="summary-legend"><span className="legend-owed">{owed} your turn</span> <span className="legend-waiting">{waiting}{more} waiting on a partner</span>{queued > 0 && <> <span className="legend-queued">{queued}{more} queued</span></>}</p>
