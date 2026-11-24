@@ -16,7 +16,7 @@ async function signIn(page: Page) {
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/')
-  await expect(page.locator('.primary-nav').first()).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('.rd-side').first()).toBeVisible({ timeout: 15000 })
 }
 
 async function setMode(page: Page, mode: 'light' | 'dark') {
@@ -54,22 +54,23 @@ test('390px layout uses bottom navigation without horizontal scrolling', async (
   await signIn(page)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/')
-  const navigation = page.getByRole('navigation', { name: 'Primary' })
+  const navigation = page.getByRole('navigation', { name: 'Primary (phone)' })
   await expect(navigation).toBeVisible()
   const box = await navigation.boundingBox()
   expect(box!.y).toBeGreaterThan(700)
   expect(box!.width).toBe(390)
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390)
   await navigation.getByRole('button', { name: 'More' }).click()
-  await expect(navigation.getByRole('link', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'More' }).getByRole('link', { name: 'Settings' })).toBeVisible()
   await page.evaluate(() => {
     const a = document.querySelector<HTMLAnchorElement>('a[href="#settings"]')!
     a.click()
   })
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await page.setViewportSize({ width: 1280, height: 900 })
-  expect((await navigation.boundingBox())!.x).toBe(0)
-  expect((await navigation.boundingBox())!.width).toBeLessThan(300)
+  const sidebar = page.getByRole('navigation', { name: 'Primary', exact: true })
+  expect((await sidebar.boundingBox())!.x).toBe(0)
+  expect((await sidebar.boundingBox())!.width).toBeLessThan(300)
 })
 
 for (const mode of ['light', 'dark'] as const) {
@@ -87,7 +88,7 @@ for (const mode of ['light', 'dark'] as const) {
         })
         return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722
       }
-      return ['.page-heading', '.settings-section p', '.primary-nav a[aria-current="page"]', '.theme-menu select'].map(selector => {
+      return ['.page-heading', '.settings-section p', '.rd-side a[aria-current="page"]', '.theme-menu select'].map(selector => {
         const element = document.querySelector(selector)
         if (!element) return { selector, contrast: -1 }
         const style = getComputedStyle(element)

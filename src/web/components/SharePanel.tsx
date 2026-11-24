@@ -30,15 +30,21 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
 
   const [style, setStyle] = useState<'card' | 'stats'>('card')
   const [indexable, setIndexable] = useState(false)
+  const [showMoodboard, setShowMoodboard] = useState(true)
+  const [showPlaylist, setShowPlaylist] = useState(true)
+  const [showStats, setShowStats] = useState(true)
   const dialogRef = useRef<HTMLDialogElement>(null)
   useNativeDialog(dialogRef)
   const dismiss = () => { dialogRef.current?.close(); close() }
 
   useEffect(() => {
+    let active = true
     api<ShareSettings>(`/characters/${character.id}/share`).then(data => {
+      if (!active) return
       setShare(data)
-      if (data) { setStyle(data.style); setIndexable(data.indexable) }
-    }).catch(problem => setError((problem as Error).message)).finally(() => setLoading(false))
+      if (data) { setStyle(data.style); setIndexable(data.indexable); setShowMoodboard(data.showMoodboard); setShowPlaylist(data.showPlaylist); setShowStats(data.showStats) }
+    }).catch(problem => { if (active) setError((problem as Error).message) }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
   }, [character.id])
 
   const renderAndUploadPreview = async (currentStyle: 'card' | 'stats', currentShowStats: boolean) => {
@@ -60,10 +66,10 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
   const save = async () => {
     setSaving(true); setError('')
     try {
-      const body = { style, showMoodboard: true, showPlaylist: true, showStats: true, indexable }
+      const body = { style, showMoodboard, showPlaylist, showStats, indexable }
       const result = await api<NonNullable<ShareSettings>>(`/characters/${character.id}/share`, 'PUT', body)
       setShare(result)
-      await renderAndUploadPreview(style, true)
+      await renderAndUploadPreview(style, showStats)
       setShare(current => current ? { ...current, hasPreview: true } : current)
       onChanged?.()
     } catch (problem) { setError((problem as Error).message) }
@@ -111,8 +117,8 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
       hint: 'Flippable card for carrd (Embed element, Pro plan), personal websites and custom Tumblr themes. Doesn\'t work in Tumblr posts or Discord; use the link or image there.' },
   ] : []
 
-  return <dialog ref={dialogRef} className="modal-overlay" aria-labelledby="share-panel-title" onCancel={event => { event.preventDefault(); dismiss() }} onClick={event => { if (event.target === event.currentTarget) dismiss() }}>
-    <div className="modal-card share-panel">
+  return <dialog ref={dialogRef} className="modal-overlay rd-dialog rd-share-dialog" aria-labelledby="share-panel-title" onCancel={event => { event.preventDefault(); dismiss() }} onClick={event => { if (event.target === event.currentTarget) dismiss() }}>
+    <div className="modal-card share-panel rd-share-panel">
       <h2 id="share-panel-title">Share {character.name}</h2>
       {loading ? <p>Loading…</p> : <>
         <label className="share-toggle">
@@ -129,8 +135,11 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
 
           <fieldset className="share-options">
             <legend>Options</legend>
+            <label><input type="checkbox" checked={showMoodboard} onChange={e => setShowMoodboard(e.target.checked)} disabled={saving} /> Show moodboard</label>
+            <label><input type="checkbox" checked={showPlaylist} onChange={e => setShowPlaylist(e.target.checked)} disabled={saving} /> Show playlist</label>
+            <label><input type="checkbox" checked={showStats} onChange={e => setShowStats(e.target.checked)} disabled={saving} /> Show thread stats</label>
             <label><input type="checkbox" checked={indexable} onChange={e => setIndexable(e.target.checked)} /> Let search engines show this page</label>
-            <p className="share-hint">Off asks search engines not to show the page; updates can take time. Anyone with the link can still open it. Playlist, moodboard and stats show automatically when you've filled them in on the card.</p>
+            <p className="share-hint">Anyone with the link can still open this page when search indexing is off. Changes can take time to appear in search results.</p>
           </fieldset>
 
           <div className="share-actions">
@@ -138,6 +147,12 @@ export default function SharePanel({ character, counts, stats, cardRef, close, o
             <button type="button" className="text-button" onClick={rotateSlug} disabled={saving}>New link</button>
             <a href={pageUrl} target="_blank" rel="noopener noreferrer">Preview</a>
           </div>
+
+          <section className="rd-share-preview" aria-label="Share preview">
+            <div><h3>Public link</h3><p>Anyone with this link can view the character page.</p></div>
+            <div className="rd-share-link"><input type="url" readOnly value={pageUrl} onFocus={event => event.currentTarget.select()} aria-label="Public character link" /><button type="button" className="secondary-button" onClick={() => copy(pageUrl, 'Public link')}>{copied === 'Public link' ? 'Copied' : 'Copy link'}</button></div>
+            {share.hasPreview ? <img src={`${pageUrl}/card.png`} alt={`${character.name}'s public preview image`} /> : <p className="share-hint">Save settings to generate the PNG preview image.</p>}
+          </section>
 
           <section className="share-snippets">
             <h3>Embed snippets</h3>

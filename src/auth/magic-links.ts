@@ -13,24 +13,25 @@ function escapeHtml(value: string) {
 
 export function magicLinkEmail(url: string) {
   const safeUrl = escapeHtml(url)
+  // Email clients drop <style> and web fonts, so everything is inline with system fallbacks. Paper palette from
+  // src/web/redesign.css; marked light-only because client dark modes recolour it unpredictably.
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#142027;color:#f8f3e9;font-family:Arial,Helvetica,sans-serif;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#142027;"><tr><td style="padding:40px 16px;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:560px;margin:0 auto;">
-      <tr><td style="padding:0 12px 18px;color:#f8f3e9;font-family:Georgia,'Times New Roman',serif;font-size:23px;font-weight:bold;">
-        <span style="display:inline-block;width:30px;height:30px;line-height:30px;text-align:center;margin-right:9px;border-radius:50%;background:#dce8e9;color:#263d45;font-family:Georgia,'Times New Roman',serif;font-weight:bold;font-size:13px;letter-spacing:-1px;">RP</span>RP Thread Buddy
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head>
+<body style="margin:0;padding:0;background:#F3EEE5;color:#2D2925;font-family:'Segoe UI',Helvetica,Arial,sans-serif;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#F3EEE5;"><tr><td style="padding:40px 16px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:520px;margin:0 auto;">
+      <tr><td style="padding:0 4px 18px;color:#2D2925;font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif;font-size:18px;">
+        <span style="display:inline-block;width:32px;height:32px;line-height:32px;text-align:center;margin-right:10px;border-radius:9px;background:#56715B;color:#FBF8F2;font-family:'Segoe UI',Helvetica,Arial,sans-serif;font-weight:bold;font-size:12px;letter-spacing:.5px;vertical-align:middle;">RP</span><span style="vertical-align:middle;">RP Thread Buddy</span>
       </td></tr>
-      <tr><td style="padding:38px 34px 34px;border:1px solid #4c6670;border-radius:16px;background:#213138;">
-        <p style="margin:0 0 12px;color:#a9d4dc;font-size:11px;font-weight:bold;letter-spacing:1.8px;text-transform:uppercase;">Your writing space</p>
-        <h1 style="margin:0;color:#f8f3e9;font-family:Georgia,'Times New Roman',serif;font-size:32px;line-height:1.1;font-weight:normal;">Your sign-in link is ready.</h1>
-        <p style="margin:20px 0 26px;color:#d9e1dd;font-size:16px;line-height:1.6;">Open RP Thread Buddy and pick your story back up right where you left it.</p>
-        <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius:9px;background:#a9d4dc;">
-          <a href="${safeUrl}" style="display:inline-block;padding:14px 22px;border-radius:9px;color:#17242a;font-size:16px;font-weight:bold;line-height:1;text-decoration:none;">Open RP Thread Buddy</a>
+      <tr><td style="padding:34px 32px 30px;border:1px solid #E3DACC;border-radius:14px;background:#FBF8F2;">
+        <h1 style="margin:0;color:#2D2925;font-family:'Iowan Old Style','Palatino Linotype',Georgia,serif;font-size:30px;line-height:1.15;font-weight:normal;">Your sign-in link is ready.</h1>
+        <p style="margin:16px 0 26px;color:#5C544B;font-size:16px;line-height:1.6;">Open RP Thread Buddy and pick your story back up right where you left it.</p>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td style="border-radius:10px;background:#56715B;">
+          <a href="${safeUrl}" style="display:inline-block;padding:14px 22px;border-radius:10px;color:#FBF8F2;font-size:16px;font-weight:bold;line-height:1;text-decoration:none;">Open RP Thread Buddy</a>
         </td></tr></table>
-        <p style="margin:27px 0 0;padding-top:20px;border-top:1px solid #4c6670;color:#b9c8c7;font-size:13px;line-height:1.55;">This private link expires in 15 minutes and works once. If you did not request it, you can safely ignore this email.</p>
+        <p style="margin:26px 0 0;padding-top:18px;border-top:1px solid #E3DACC;color:#6B6156;font-size:13px;line-height:1.55;">This private link expires in 15 minutes and works once. If you did not request it, you can safely ignore this email.</p>
       </td></tr>
-      <tr><td style="padding:18px 12px 0;color:#9badad;font-size:12px;line-height:1.5;">Button giving you trouble? Copy this link into your browser:<br><a href="${safeUrl}" style="color:#a9d4dc;word-break:break-all;">${safeUrl}</a></td></tr>
+      <tr><td style="padding:18px 4px 0;color:#6B6156;font-size:12px;line-height:1.5;">Button giving you trouble? Copy this link into your browser:<br><a href="${safeUrl}" style="color:#56715B;word-break:break-all;">${safeUrl}</a></td></tr>
     </table>
   </td></tr></table>
 </body></html>`

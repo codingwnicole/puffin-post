@@ -120,7 +120,7 @@ test.describe('T7d safe prefetch', () => {
     })
 
     await page.goto('/#support', { waitUntil: 'networkidle' })
-    const nav = page.locator('.primary-nav a[href="#characters"]')
+    const nav = page.locator('.rd-side a[href="#characters"]')
     await expect(nav).toBeVisible()
 
     const before = charHits
@@ -150,7 +150,7 @@ test.describe('T7d safe prefetch', () => {
       return route.fulfill({ json })
     })
     await page.goto('/#support', { waitUntil: 'networkidle' })
-    const nav = page.locator('.primary-nav a[href="#characters"]')
+    const nav = page.locator('.rd-side a[href="#characters"]')
     await expect(nav).toBeVisible()
     const before = charHits
     await nav.hover()
@@ -164,14 +164,16 @@ test.describe('T7d swipe-to-close sheet', () => {
   async function openSheet(page: Page) {
     await lightSignedIn(page)
     await page.goto('/#support', { waitUntil: 'networkidle' })
-    const summary = page.locator('.mobile-more-toggle')
+    const summary = page.locator('.rd-more-toggle')
     await expect(summary).toBeVisible()
     await summary.click()
-    await expect(page.locator('.mobile-more-menu')).toBeVisible()
+    await expect(page.locator('.rd-more-sheet')).toBeVisible()
   }
 
   async function dragGrabber(page: Page, delta: number) {
-    const grabber = page.locator('.sheet-grabber')
+    const grabber = page.locator('.rd-grabber')
+    // The sheet slides in; grab the handle where it comes to rest, as a finger would.
+    await page.locator('.rd-more-sheet').evaluate(el => Promise.all(el.getAnimations().map(a => a.finished)))
     const box = await grabber.boundingBox()
     if (!box) throw new Error('grabber not found')
     const x = box.x + box.width / 2
@@ -189,7 +191,7 @@ test.describe('T7d swipe-to-close sheet', () => {
   test('10% snaps back, 60% closes, Close works, unsaved text blocks close', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 780 })
     await openSheet(page)
-    const menu = page.locator('.mobile-more-menu')
+    const menu = page.locator('.rd-more-sheet')
     const height = (await menu.boundingBox())!.height
     expect(height).toBeGreaterThan(0)
 
@@ -199,24 +201,24 @@ test.describe('T7d swipe-to-close sheet', () => {
     await expect(menu).not.toHaveCSS('transform', 'matrix(1, 0, 0, 1, 0, 30)')
 
     // The always-visible Close button dismisses the sheet.
-    await page.locator('.sheet-close').click()
+    await page.locator('.rd-sheet-close').click()
     await expect(menu).not.toBeVisible()
 
     // Reopen; 60% drag closes the sheet.
-    await page.locator('.mobile-more-toggle').click()
+    await page.locator('.rd-more-toggle').click()
     await expect(menu).toBeVisible()
     await dragGrabber(page, height * 0.60)
     await expect(menu).not.toBeVisible()
 
     // Reopen; type into the sheet's note field, then drag past 30%.
-    await page.locator('.mobile-more-toggle').click()
+    await page.locator('.rd-more-toggle').click()
     await expect(menu).toBeVisible()
-    const note = page.locator('.mobile-more-menu .sheet-note')
+    const note = page.locator('.rd-more-sheet .rd-sheet-note')
     await expect(note).toBeVisible()
     await note.fill('unsent draft')
     await dragGrabber(page, height * 0.60)
     // The sheet did NOT close; a status notice explains why.
     await expect(menu).toBeVisible()
-    await expect(page.locator('.sheet-notice')).toHaveText('You have unsaved text')
+    await expect(page.locator('.rd-sheet-notice')).toHaveText('You have unsaved text')
   })
 })

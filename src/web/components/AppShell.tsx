@@ -1,25 +1,26 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import Icon from './Icon'
 import { api, clearApiCache, prefetchNav } from '../lib/api'
 import { isEditableTarget } from '../lib/shortcuts'
 import CommandMenu from './CommandMenu'
 import ToastHost from './ToastHost'
+import DeskRail, { DeskBar } from './DeskRail'
 import OnboardingTour from './OnboardingTour'
 
 export type AppPage = 'dashboard' | 'characters' | 'planner' | 'settings' | 'parking-lot' | 'connections' | 'tools' | 'activity' | 'support' | 'roadmap' | 'starter'
 
-const navigation = [
-  ['dashboard', 'Dashboard', 'inbox'],
-  ['parking-lot', 'Parking', 'parking'],
-  ['characters', 'Characters', 'characters'],
-  ['activity', 'Tumblr activity', 'activity'],
-  ['tools', 'Writing tools', 'tools'],
-  ['planner', 'Character planner', 'planner'],
-  ['connections', 'Connected accounts', 'connections'],
-  ['settings', 'Settings', 'settings'],
-  ['roadmap', 'Site roadmap', 'roadmap'],
-  ['support', 'Support & feedback', 'support'],
-] as const
+type NavItem = readonly [page: AppPage, label: string, icon: 'inbox' | 'parking' | 'characters' | 'activity' | 'tools' | 'planner' | 'connections' | 'settings' | 'roadmap' | 'support']
+// Desktop groups the pages into folder drawers; the phone tab bar shows `tabs`, the rest live in the More sheet.
+const drawers: readonly { key: string; label: string; tint: string; items: readonly NavItem[] }[] = [
+  { key: 'threads', label: 'Threads', tint: 'var(--turn-t)', items: [['dashboard', 'Dashboard', 'inbox'], ['parking-lot', 'Parking lot', 'parking'], ['activity', 'Tumblr activity', 'activity']] },
+  { key: 'cast', label: 'Cast', tint: 'var(--peach-t)', items: [['characters', 'Characters', 'characters'], ['planner', 'Character planner', 'planner']] },
+  { key: 'desk', label: 'Desk', tint: 'var(--starter-t)', items: [['tools', 'Writing tools', 'tools']] },
+  { key: 'account', label: 'Account', tint: 'var(--wait-t)', items: [['connections', 'Connected accounts', 'connections'], ['settings', 'Settings', 'settings'], ['roadmap', 'Site roadmap', 'roadmap'], ['support', 'Support & feedback', 'support']] },
+]
+const tabs: readonly NavItem[] = [['dashboard', 'Dashboard', 'inbox'], ['parking-lot', 'Parking', 'parking'], ['characters', 'Characters', 'characters'], ['tools', 'Tools', 'tools']]
+const moreLinks: readonly NavItem[] = [['activity', 'Tumblr activity', 'activity'], ['planner', 'Character planner', 'planner'], ['connections', 'Connected accounts', 'connections'], ['settings', 'Settings', 'settings'], ['roadmap', 'Site roadmap', 'roadmap'], ['support', 'Support & feedback', 'support']]
+const drawerKey = 'rptb-nav-drawers'
+function readDrawers(): Record<string, boolean> { try { return JSON.parse(localStorage.getItem(drawerKey) ?? '{}') as Record<string, boolean> } catch { return {} } }
 
 // Swipe-to-close for the phone bottom sheet: pointer-down on the grabber, follow the
 // finger with a direct translateY (no transition while dragging), close past 30% of the
@@ -37,7 +38,7 @@ function useSwipeToClose(sheetRef: React.RefObject<HTMLDivElement | null>, open:
     if (!sheet) return
     let startY = 0, startX = 0, dragging = false, height = 0, lastY = 0, lastT = 0, tracking = false
     const onDown = (event: PointerEvent) => {
-      const grabber = sheet.querySelector<HTMLElement>('.sheet-grabber')
+      const grabber = sheet.querySelector<HTMLElement>('.rd-grabber')
       if (event.target instanceof Node && !grabber?.contains(event.target)) return
       startY = event.clientY; startX = event.clientX; dragging = true; tracking = false
       lastY = event.clientY; lastT = performance.now()
@@ -98,6 +99,15 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
       .finally(() => setSavingNote(false))
   }
   const navPrefetch = (item: string) => () => prefetchNav(item)
+  const [openDrawers, setOpenDrawers] = useState(readDrawers)
+  const toggleDrawer = (key: string) => setOpenDrawers(current => {
+    const next = { ...current, [key]: current[key] === false }
+    try { localStorage.setItem(drawerKey, JSON.stringify(next)) } catch { /* per-viewer convenience only */ }
+    return next
+  })
+  const signOut = async () => { setSigningOut(true); clearApiCache(); await fetch('/api/auth/sign-out', { method:'POST', headers:{ origin:window.location.origin } }); window.history.replaceState(null, '', '/'); window.location.reload() }
+  const closeSheet = () => { clearNotice(); closeMore() }
+  const unreadBadge = activityUnread > 0 ? <b className="rd-count" aria-label={`${activityUnread} unread activity items`}>{activityUnread > 9 ? '9+' : activityUnread}</b> : null
   const lastIdentity = useRef<string | null | undefined>(undefined)
   // Ctrl/⌘K opens the command menu. Must not fire while typing in an input.
   useEffect(() => {
@@ -141,15 +151,57 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
     }).catch(() => undefined)
   }, [page])
 
-  return <div className={`app-shell${signedIn ? '' : ' app-shell-guest'}`}>
+  const search = <button type="button" className="rd-search" aria-label="Search / commands" onClick={() => setCommandOpen(true)} aria-keyshortcuts="Control+K Meta+K"><Icon name="search" /><span>Search / commands</span><kbd>{shortcutKey}</kbd></button>
+  const brand = <div className="rd-brand"><a href={signedIn ? '#dashboard' : '/'} className="rd-brand-home" aria-label="RP Thread Buddy"><span className="rd-brand-mark" aria-hidden="true">RP</span><span className="rd-brand-name">RP Thread Buddy</span></a>{signedIn && <span className="rd-beta">Private beta</span>}</div>
+
+  return <div className={`rd-shell${signedIn ? '' : ' rd-guest'}`}>
     <a className="skip-link" href="#main-content" onClick={event => { event.preventDefault(); document.getElementById('main-content')?.focus() }}>Skip to content</a>
-    <header className="brand"><a href={signedIn ? '#dashboard' : '/'} className="brand-home"><span className="brand-mark" aria-hidden="true">RP</span><span>RP Thread Buddy</span></a>{signedIn && <span className="beta-label">Private beta</span>}</header>
-    {signedIn && <nav className="primary-nav" aria-label="Primary"><p className="nav-label">Workspace</p>
-      {navigation.map(([item, label, icon], index) => <a key={item} href={`#${item}`} data-secondary={index > 2 || undefined} aria-current={page === item ? 'page' : undefined} onPointerEnter={navPrefetch(item)} onFocus={navPrefetch(item)}><Icon name={icon}/><span>{label}{item==='activity'&&activityUnread>0?<b className="nav-unread" aria-label={`${activityUnread} unread activity items`}>{activityUnread>9?'9+':activityUnread}</b>:null}</span></a>)}
-      <div className={`mobile-more${menuOpen ? ' is-open' : ''}`}><button type="button" className="mobile-more-toggle" aria-expanded={menuOpen} aria-controls="mobile-more-menu" onClick={() => setMenuOpen(open => !open)}><Icon name="more"/><span>More</span></button>{menuOpen && <div id="mobile-more-menu" ref={sheetRef} className="mobile-more-menu" style={offset ? { transform: `translateY(${offset}px)`, transition: 'none' } : undefined}><span className="sheet-grabber" aria-hidden="true"></span><div className="sheet-menu-head"><span>More</span><button type="button" className="sheet-close" onClick={() => { closeMore(); clearNotice() }}>Close</button></div>{notice && <p className="sheet-notice" role="status">{notice}</p>}<label className="sheet-note-label"><span>Note</span><input className="sheet-note" type="text" placeholder="Quick note (Enter saves it)" aria-label="Quick note" enterKeyHint="done" maxLength={20000} readOnly={savingNote} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); saveQuickNote(event.currentTarget) } }} /></label><a href="#activity" onClick={() => { clearNotice(); closeMore() }}><Icon name="activity"/>Tumblr activity</a><a href="#tools" onClick={() => { clearNotice(); closeMore() }}><Icon name="tools"/>Writing tools</a><a href="#planner" onClick={() => { clearNotice(); closeMore() }}><Icon name="planner"/>Character planner</a><a href="#connections" onClick={() => { clearNotice(); closeMore() }}><Icon name="connections"/>Connected accounts</a><a href="#settings" onClick={() => { clearNotice(); closeMore() }}><Icon name="settings"/>Settings</a><a href="#support" onClick={() => { clearNotice(); closeMore() }}><Icon name="support"/>Support &amp; feedback</a><a href="#roadmap" onClick={() => { clearNotice(); closeMore() }}><Icon name="roadmap"/>Site roadmap</a></div>}</div>
-      <p className="nav-note"><button type="button" className="shortcut-hint" onClick={() => setCommandOpen(true)} aria-keyshortcuts="Control+K Meta+K"><Icon name="search" />Search / commands<kbd>{shortcutKey}</kbd></button>Track scenes, not spreadsheets.<button className="sign-out" disabled={signingOut} onClick={async () => { setSigningOut(true); clearApiCache(); await fetch('/api/auth/sign-out', { method:'POST', headers:{ origin:window.location.origin } }); window.history.replaceState(null, '', '/'); window.location.reload() }}>{signingOut ? 'Signing out.' : 'Sign out'}</button><span className="nav-legal"><a href="#terms">Terms</a> · <a href="#privacy">Privacy</a> · <a href="#cookies">Cookies</a> · <span>Icons by <a href="https://www.svgrepo.com/collection/chikin-variety-glyph-icons/" target="_blank" rel="noopener noreferrer">chikin icons</a>, <a href="https://www.svgrepo.com/collection/jumpicon-glyph-icons/" target="_blank" rel="noopener noreferrer">Ayub Irawan</a> and <a href="https://www.svgrepo.com/collection/communication-glyphs-icons/" target="_blank" rel="noopener noreferrer">wishforge.games</a> (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>, modified)</span></span></p>
+    {!signedIn && <header className="rd-guest-brand">{brand}</header>}
+    {signedIn && <nav className="rd-side" aria-label="Primary">
+      {brand}
+      {search}
+      {drawers.map(drawer => {
+        const open = openDrawers[drawer.key] !== false
+        return <div key={drawer.key} className="rd-drawer" data-open={open} style={{ '--dc': drawer.tint } as CSSProperties}>
+          <button type="button" className="rd-drawer-tab" aria-expanded={open} aria-controls={`nav-${drawer.key}`} title={drawer.label} onClick={() => toggleDrawer(drawer.key)}><i aria-hidden="true" /><span>{drawer.label}</span><span className="rd-chev"><Icon name="chevron" /></span></button>
+          <div className="rd-drawer-list" id={`nav-${drawer.key}`}><div>
+            {drawer.items.map(([item, label, icon], index) => <a key={item} className="rd-link" style={{ '--i': index } as CSSProperties} href={`#${item}`} title={label} tabIndex={open ? undefined : -1} aria-current={page === item ? 'page' : undefined} onPointerEnter={navPrefetch(item)} onFocus={navPrefetch(item)}><Icon name={icon} /><span>{label}</span>{item === 'activity' && unreadBadge}</a>)}
+          </div></div>
+        </div>
+      })}
+      <div className="rd-foot">
+        <span>Track scenes, not spreadsheets.</span>
+        <span><a href="#terms">Terms</a> · <a href="#privacy">Privacy</a> · <a href="#cookies">Cookies</a></span>
+        <span>Icons by <a href="https://www.svgrepo.com/collection/chikin-variety-glyph-icons/" target="_blank" rel="noopener noreferrer">chikin icons</a>, <a href="https://www.svgrepo.com/collection/jumpicon-glyph-icons/" target="_blank" rel="noopener noreferrer">Ayub Irawan</a> and <a href="https://www.svgrepo.com/collection/communication-glyphs-icons/" target="_blank" rel="noopener noreferrer">wishforge.games</a> (<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a>, modified)</span>
+        <button type="button" className="rd-signout" disabled={signingOut} onClick={signOut}>{signingOut ? 'Signing out…' : 'Sign out'}</button>
+      </div>
     </nav>}
-    <main id="main-content" tabIndex={-1}>{offline && <p className="offline-banner" role="status">You're offline. Changes can't be saved until you're back online.</p>}{children}</main>
+    {signedIn && <header className="rd-topbar">{brand}{search}</header>}
+    <div className="rd-sheet-wrap">
+      <main id="main-content" tabIndex={-1}>{offline && <p className="offline-banner" role="status">You're offline. Changes can't be saved until you're back online.</p>}{children}</main>
+    </div>
+    {signedIn && <DeskRail />}
+    {signedIn && <DeskBar />}
+    {signedIn && <nav className="rd-tabbar" aria-label="Primary (phone)">
+      {tabs.map(([item, label, icon]) => <a key={item} className="rd-tab" href={`#${item}`} aria-current={page === item ? 'page' : undefined} onPointerEnter={navPrefetch(item)}><Icon name={icon} />{label}</a>)}
+      <div className={`rd-more${menuOpen ? ' is-open' : ''}`} style={{ display: 'contents' }}>
+        <button type="button" className="rd-tab rd-more-toggle" aria-expanded={menuOpen} aria-controls="mobile-more-menu" onClick={() => setMenuOpen(open => !open)}><Icon name="more" />More{activityUnread > 0 && <b className="rd-count" aria-hidden="true">{activityUnread > 9 ? '9+' : activityUnread}</b>}</button>
+        {menuOpen && <>
+          <div className="rd-more-backdrop" aria-hidden="true" onClick={closeSheet} />
+          <div id="mobile-more-menu" ref={sheetRef} className="rd-more-sheet" role="dialog" aria-label="More" style={offset ? { transform: `translateY(${offset}px)`, transition: 'none' } : undefined}>
+            <span className="rd-grabber" aria-hidden="true"></span>
+            <div className="rd-sheet-head"><span>More</span><button type="button" className="rd-sheet-close" onClick={closeSheet}>Close</button></div>
+            {notice && <p className="rd-sheet-notice" role="status">{notice}</p>}
+            <label className="rd-sheet-note-label"><span>Note</span><input className="rd-sheet-note" type="text" placeholder="Quick note (Enter saves it)" aria-label="Quick note" enterKeyHint="done" maxLength={20000} readOnly={savingNote} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); saveQuickNote(event.currentTarget) } }} /></label>
+            <div className="rd-sheet-links">
+              {moreLinks.map(([item, label, icon]) => <a key={item} className="rd-link" href={`#${item}`} aria-current={page === item ? 'page' : undefined} onClick={closeSheet}><Icon name={icon} /><span>{label}</span>{item === 'activity' && unreadBadge}</a>)}
+              <button type="button" className="rd-link" onClick={() => { closeSheet(); setCommandOpen(true) }}><Icon name="search" /><span>Search / commands</span></button>
+              <button type="button" className="rd-link" disabled={signingOut} onClick={signOut}><Icon name="more" /><span>{signingOut ? 'Signing out…' : 'Sign out'}</span></button>
+            </div>
+          </div>
+        </>}
+      </div>
+    </nav>}
     {signedIn && <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} />}
     {signedIn&&tourOpen&&<OnboardingTour open onClose={()=>setTourOpen(false)}/>}
     <ToastHost />

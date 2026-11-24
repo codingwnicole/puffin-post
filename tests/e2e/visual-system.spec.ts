@@ -52,7 +52,7 @@ export async function signIn(page: Page, opts: { branch?: boolean; failSave?: bo
     return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) })
   })
   await page.goto('/#settings')
-  await expect(page.locator('.primary-nav').first()).toBeVisible({ timeout: 15000 })
+  await expect(page.locator('.rd-side').first()).toBeVisible({ timeout: 15000 })
 }
 
 // In-page colour helpers as a function-source string, passed into page.evaluate
@@ -194,13 +194,13 @@ test('dark depth: three surface steps are distinct and ordered page < card < pop
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   // The popover surface is the phone More sheet, which only exists while open.
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.locator('.mobile-more-toggle').click()
-  await expect(page.locator('.mobile-more-menu')).toBeVisible()
+  await page.locator('.rd-more-toggle').click()
+  await expect(page.locator('.rd-more-sheet')).toBeVisible()
   const tones = await page.evaluate((src: string) => {
     const h = (0, eval)(src)
-    const page = h.lum(getComputedStyle(document.querySelector('.primary-nav') as HTMLElement).backgroundColor)
+    const page = h.lum(getComputedStyle(document.querySelector('.rd-tabbar') as HTMLElement).backgroundColor)
     const card = h.lum(getComputedStyle(document.querySelector('.tracking-card') as HTMLElement).backgroundColor)
-    const pop = h.lum(getComputedStyle(document.querySelector('.mobile-more-menu') as HTMLElement).backgroundColor)
+    const pop = h.lum(getComputedStyle(document.querySelector('.rd-more-sheet') as HTMLElement).backgroundColor)
     return { page, card, pop }
   }, HELPERS_SRC)
   expect(tones.card).toBeGreaterThan(tones.page)
