@@ -16,6 +16,7 @@ import SupportPage from './pages/SupportPage'
 import { LegalPage } from './pages/LegalPage'
 import RoadmapPage from './pages/RoadmapPage'
 import WritingSprintsPage from './pages/WritingSprintsPage'
+import FocusPage from './pages/FocusPage'
 
 const LEGAL_ROUTES = ['terms', 'privacy', 'cookies'] as const
 type LegalRoute = (typeof LEGAL_ROUTES)[number]
@@ -44,6 +45,7 @@ function routeFor(hash: string): { page: AppPage; render: () => ReactNode } {
   const sprintRoomId = param('sprint-room/')
   const queryParams = new URLSearchParams(query)
   if (sprintRoomId !== null) return { page: 'tools', render: () => <WritingSprintsPage roomId={sprintRoomId} inviteToken={queryParams.get('invite') ?? ''} /> }
+  if (path === 'tools/focus') return { page: 'tools', render: () => <FocusPage /> }
   if (path === 'tools/sprints') return { page: 'tools', render: () => <WritingSprintsPage /> }
   if (shortcutId !== null) return { page: 'dashboard', render: () => <CharacterShortcutPage key={shortcutId} id={shortcutId} /> }
   if (profileId !== null) return { page: 'characters', render: () => <CharacterProfilePage key={profileId} id={profileId} /> }

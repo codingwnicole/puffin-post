@@ -635,3 +635,162 @@ h1,h2,.page-heading{font-family:var(--f-display);font-weight:400;letter-spacing:
 .rd-shell .email-confirmation>p strong{display:inline;margin:0}
 /* Support: build number sat on the heading's descenders */
 .rd-shell main .support-heading .field-help{margin:8px 0 0}
+
+/* ======================= phase 5: desk themes (the roadmap's "dashboard skins") =======================
+   Settings > Appearance picks an accent family; lib/theme.ts puts it on <html data-desk>. Meadow is the base tokens.
+   Dark rules carry one more attribute so they beat the light ones. */
+:root[data-desk="tidepool"]{--accent:#3E6870;--highlight:#D4E3E4}
+:root[data-desk="lavender"]{--accent:#685C88;--highlight:#E4DFEF}
+:root[data-desk="mushroom"]{--accent:#7A5F49;--highlight:#EDE2D6}
+:root[data-theme="dark"][data-desk="tidepool"]{--accent:#98C4C9;--highlight:#25393B}
+:root[data-theme="dark"][data-desk="lavender"]{--accent:#C2B8DF;--highlight:#302B40}
+:root[data-theme="dark"][data-desk="mushroom"]{--accent:#D6BBA2;--highlight:#362C23}
+[data-desk-swatch="meadow"]{--sw-a:#56715B;--sw-b:#DDE6D8}
+[data-desk-swatch="tidepool"]{--sw-a:#3E6870;--sw-b:#D4E3E4}
+[data-desk-swatch="lavender"]{--sw-a:#685C88;--sw-b:#E4DFEF}
+[data-desk-swatch="mushroom"]{--sw-a:#7A5F49;--sw-b:#EDE2D6}
+.rd-shell .desk-themes{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px;min-width:0;margin:4px 0 0;padding:0;border:0}
+.rd-shell .desk-themes legend{float:left;width:100%;margin:0 0 8px;padding:0;color:var(--text);font-size:14px;font-weight:600}
+.rd-shell .theme-menu .desk-theme{position:relative;flex-direction:row;align-items:center;gap:10px;min-height:44px;padding:6px 14px 6px 8px;border-radius:var(--r-ctl);background:var(--surface);box-shadow:inset 0 0 0 1px var(--border);color:var(--text);font-size:14px;font-weight:600;cursor:pointer;transition:box-shadow var(--motion-fast) var(--ease-out)}
+.rd-shell .desk-theme input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer}
+.rd-shell .desk-theme:has(input:checked){box-shadow:inset 0 0 0 2px var(--accent)}
+.rd-shell .desk-theme:has(input:focus-visible){outline:2px solid var(--focus);outline-offset:2px}
+.rd-shell .desk-swatch{width:28px;height:28px;flex:none;border-radius:8px;background:linear-gradient(135deg,var(--sw-a) 50%,var(--sw-b) 50%);box-shadow:inset 0 0 0 1px rgb(0 0 0/.08)}
+
+/* ======================= phase 5: focus cycles (#tools/focus) =======================
+   Ring timer built on solo sprints. Petals open one after another when a session ends (the "bloom"). */
+.rd-shell main .focus-back{display:inline-block;margin:0 0 8px}
+.rd-shell main .focus-layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(260px,.9fr);gap:clamp(20px,4vw,48px);align-items:start}
+.rd-shell main .focus-timer{display:grid;justify-items:center;gap:16px;padding:24px 16px;border-radius:var(--r-sheet);background:var(--surface);box-shadow:var(--e1)}
+.focus-ring{position:relative;width:min(340px,100%);aspect-ratio:1}
+.focus-ring svg{width:100%;height:100%;overflow:visible}
+.focus-track{fill:none;stroke:var(--border);stroke-width:10}
+.focus-progress{fill:none;stroke:var(--accent);stroke-width:10;stroke-linecap:round;transition:stroke-dashoffset 1s linear}
+.focus-ring.is-break .focus-progress{stroke:var(--wait)}
+.focus-leaf{fill:var(--starter);opacity:.7}
+.focus-petal{fill:var(--turn-t);stroke:var(--turn);stroke-width:1;transform-box:fill-box;transform-origin:50% 100%;transform:scale(0);transition:transform var(--motion-slow) var(--ease-settle);transition-delay:calc(var(--i,0) * 40ms)}
+.focus-ring.is-blooming .focus-petal{transform:scale(1)}
+.focus-face{position:absolute;inset:18%;display:grid;place-content:center;gap:6px;border-radius:50%;background:var(--surface);box-shadow:var(--e3);text-align:center}
+.focus-clock{font:400 clamp(40px,9vw,60px)/1 var(--f-display);font-variant-numeric:tabular-nums;color:var(--text)}
+.focus-label{max-width:20ch;margin:0 auto;padding:0 10px;color:var(--muted);font-size:14px;line-height:1.35;overflow-wrap:anywhere}
+.rd-shell main .focus-lengths{display:flex;gap:8px}
+.rd-shell main .focus-lengths [aria-pressed="true"]{background:var(--highlight);box-shadow:inset 0 0 0 2px var(--accent)}
+.rd-shell main .focus-controls{justify-content:center}
+.rd-shell main .focus-status{min-height:1.5em;margin:0;color:var(--muted);text-align:center}
+.focus-cycle{display:flex;gap:8px;margin:0;padding:0;list-style:none}
+.focus-cycle li{width:10px;height:10px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--border-strong)}
+.focus-cycle li[data-done]{background:var(--accent);box-shadow:none}
+.rd-shell main .focus-side{display:grid;gap:14px;align-content:start;justify-items:start}
+.rd-shell main .focus-scene{display:grid;gap:6px;width:100%;font-weight:600;font-size:14px}
+.rd-shell main .focus-history{width:100%;padding:18px 20px;border-radius:var(--r-sheet);background:var(--surface);box-shadow:var(--e1)}
+.rd-shell main .focus-history h2{margin:0 0 10px;font:400 20px/1.25 var(--f-display)}
+.rd-shell main .focus-history ul{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.rd-shell main .focus-history li{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-top:1px solid var(--border-soft);font-variant-numeric:tabular-nums}
+.rd-shell main .focus-history li span:first-child{display:grid;gap:2px;min-width:0}
+.rd-shell main .focus-history small{color:var(--subtle);font-size:13px}
+@media (max-width:760px){.rd-shell main .focus-layout{grid-template-columns:1fr}}
+
+/* ======================= Dashboard: owed first (critique P1, 2026-11-24) =======================
+   Your-turn scenes get their own lane at the top, oldest first; the RP groups below hold everything else.
+   Turn chips: your turn is filled, their turn outlined, queued uses the queued colours. */
+.rd-dashboard .owed-lane{width:100%;margin:0 0 32px}
+.rd-dashboard .owed-lane-header{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0 0 14px;padding:0 0 8px;border-bottom:1px solid var(--border)}
+.rd-dashboard .owed-lane-header h2,.rd-dashboard .rest-heading{margin:0;font:400 22px/1.2 var(--f-display);color:var(--text)}
+.rd-dashboard .rest-heading{margin:0 0 14px;font-size:18px;color:var(--muted)}
+.rd-dashboard .owed-lane .branch-list{grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr));gap:14px;align-items:start}
+.rd-dashboard .summary-legend .legend-queued::before{background:none;box-shadow:inset 0 0 0 1.5px var(--dorm)}
+.turn-badge.turn-your_turn{background:var(--turn);color:var(--surface)}
+.turn-badge.turn-their_turn{background:none;box-shadow:inset 0 0 0 1px var(--wait)}
+.turn-badge.turn-queued{background:var(--dorm-t);color:var(--dorm)}
+
+/* ======================= Dashboard P2 fixes (critique, 2026-11-24) ======================= */
+/* one clear turn action per card ("I replied" / "Their reply came in"); replaces the two-way toggle */
+.branch-turn-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;padding:0;border-radius:0;background:none}
+.rd-shell .turn-action{min-height:40px;padding:8px 14px;border-radius:var(--r-ctl);font:600 14px/1.2 var(--f-ui)}
+.rd-shell .turn-action:not(.secondary-button){border:0;background:var(--accent);color:var(--on-accent);box-shadow:0 1px 0 rgb(0 0 0/.14)}
+.rd-shell .turn-action:not(.secondary-button):hover:not(:disabled){filter:brightness(1.06)}
+.rd-shell .turn-action:active:not(:disabled){transform:translateY(1px)}
+.rd-shell .turn-action:disabled{opacity:.6;cursor:progress}
+/* readable sizes: nothing people read below 12px */
+.rd-beta{font-size:12px}
+.rd-dashboard .summary-card .reply-donut span{font-size:12px!important;letter-spacing:.04em}
+/* the filter toggle keeps its arrow at every width (a phone rule had dropped the marker) */
+.rd-dashboard .filter-panel>details>summary{display:inline-flex;align-items:center;gap:8px;min-height:40px;list-style:none;cursor:pointer;font-weight:600}
+.rd-dashboard .filter-panel>details>summary::-webkit-details-marker{display:none}
+.rd-dashboard .filter-panel>details>summary::before{content:"";width:0;height:0;border-left:6px solid currentColor;border-top:5px solid transparent;border-bottom:5px solid transparent;transition:transform var(--motion-fast) var(--ease-out)}
+.rd-dashboard .filter-panel>details[open]>summary::before{transform:rotate(90deg)}
+/* touch: 44px targets for the Dashboard's controls */
+@media (pointer:coarse){.rd-shell .turn-action,.rd-dashboard .do-next,.rd-dashboard .inbox-summary button,.rd-dashboard .filter-panel>details>summary,.rd-dashboard .inbox-hero .quick-add-link{min-height:44px}}
+/* phone: content sooner. Compact Reply run and no card-in-card around scenes */
+@media (max-width:600px){
+  .rd-dashboard .inbox-hero{gap:12px;margin-bottom:12px}
+  .rd-dashboard .inbox-hero .page-description{margin:4px 0 0}
+  .rd-dashboard .reply-run{margin:0}
+  .rd-dashboard .inbox-summary{display:flex;flex-wrap:wrap;gap:8px}
+  .rd-dashboard .character-stack{padding:0;background:none;box-shadow:none;gap:8px}
+  .rd-dashboard .character-deck-header{padding:0 2px}
+}
+
+/* ======================= scene cards: less repetition (critique P3, 2026-11-24) =======================
+   No avatar inside a character stack (BranchRow showAvatar=false), the pairing line only when the title differs,
+   and a quiet "Details ›" hint that sits beside the turn action instead of taking its own row. */
+.branch-card{position:relative}
+.branch-meta{font:500 12.5px/1.3 var(--f-ui);letter-spacing:0;text-transform:none;color:var(--muted)}
+.branch-card .scene-card-hint{position:absolute;right:14px;bottom:22px;display:inline-flex;align-items:center;gap:4px;font:600 13px/1 var(--f-ui);color:var(--muted)}
+.branch-card .scene-card-hint::after{content:"";width:6px;height:6px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg)}
+.branch-card .scene-card-trigger:hover .scene-card-hint,.branch-card .scene-card-trigger:focus-visible .scene-card-hint{color:var(--text)}
+.branch-card .branch-turn-actions{padding-right:84px}
+.branch-card:not(:has(.branch-turn-actions)) .scene-card-hint{position:static;justify-self:end}
+
+/* ======================= phase 5: the desk rail (DeskRail.tsx) =======================
+   A third column at 1280px and wider: focus timer, music, quick note. Collapses to a slim strip with the time.
+   Narrower screens don't get the rail; phones get .rd-deskbar above the tab bar while a focus cycle runs. */
+.rd-desk,.rd-deskbar{display:none}
+@media (min-width:1280px){
+  .rd-shell:has(> .rd-desk){grid-template-columns:256px minmax(0,1fr) 288px}
+  .rd-shell:has(> .rd-desk[data-open="false"]){grid-template-columns:256px minmax(0,1fr) 72px}
+  .rd-desk{position:sticky;top:0;height:100vh;height:100dvh;overflow-y:auto;display:flex;flex-direction:column;gap:14px;padding:18px 14px;scrollbar-width:thin}
+}
+.rd-desk-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px}
+.rd-desk-head h2{margin:0;font:600 12px/1 var(--f-ui);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.rd-desk[data-open="false"] .rd-desk-head{justify-content:center}
+.rd-desk[data-open="false"] .rd-desk-head h2{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.rd-desk-toggle{display:grid;place-items:center;width:40px;height:40px;padding:0;border:0;border-radius:var(--r-ctl);background:none;color:var(--muted);cursor:pointer}
+.rd-desk-toggle:hover{background:var(--surface-muted);color:var(--text)}
+.rd-desk-toggle .icon{transform:rotate(-90deg);transition:transform var(--motion-fast) var(--ease-out)}
+.rd-desk[data-open="false"] .rd-desk-toggle .icon{transform:rotate(90deg)}
+.rd-desk-mini{min-height:44px;padding:6px 4px;border:0;border-radius:var(--r-ctl);background:var(--surface);box-shadow:var(--e1);color:var(--text);font:600 13px/1 var(--f-ui);font-variant-numeric:tabular-nums;cursor:pointer}
+.rd-desk-body{display:flex;flex-direction:column;gap:14px}
+.rd-desk-module{display:grid;gap:10px;padding:14px;border-radius:var(--r-sheet);background:var(--surface);box-shadow:var(--e1)}
+.rd-desk-module h3{margin:0;font:600 14px/1.3 var(--f-ui);color:var(--text)}
+.rd-desk-timer{display:flex;align-items:center;gap:12px}
+.rd-desk-timer svg{width:44px;height:44px;flex:none}
+.rd-desk-timer .focus-track,.rd-desk-timer .focus-progress{stroke-width:5}
+.rd-desk-timer div{display:grid;gap:2px;min-width:0}
+.rd-desk-clock{font:400 32px/1 var(--f-display);font-variant-numeric:tabular-nums;color:var(--text)}
+.rd-desk-timer small{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rd-desk-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.rd-desk-actions>button:not([class]){min-height:40px;padding:8px 16px;border:0;border-radius:var(--r-ctl);background:var(--accent);color:var(--on-accent);font:600 14px/1 var(--f-ui);cursor:pointer}
+.rd-desk .secondary-button{min-height:40px;padding:8px 14px;border:1px solid var(--border);border-radius:var(--r-ctl);background:var(--surface);color:var(--text);font:600 14px/1.2 var(--f-ui);cursor:pointer}
+.rd-desk .text-button{padding:4px 0;border:0;background:none;color:var(--focus);font:600 13.5px/1.3 var(--f-ui);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.rd-desk .field-help{margin:0;color:var(--subtle);font-size:12.5px;line-height:1.45}
+.rd-desk .field-help:empty{display:none}
+.rd-desk-wide{width:100%}
+.rd-desk-form{display:grid;gap:8px}
+.rd-desk-form label{display:grid;gap:6px;color:var(--text);font-size:13px;font-weight:600}
+.rd-desk-form :is(input,textarea){width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--border-strong);border-radius:var(--r-ctl);background:var(--surface);color:var(--text);font:400 14px/1.45 var(--f-ui);resize:vertical}
+.rd-desk-form :is(input,textarea):focus-visible{outline:2px solid var(--focus);outline-offset:0;border-color:transparent}
+.rd-desk-form>button{justify-self:start}
+.rd-desk-player{width:100%;height:152px;border:0;border-radius:12px;background:var(--surface-muted)}
+.rd-desk-player.is-youtube{height:auto;aspect-ratio:16/9}
+.rd-desk-player.is-apple{height:175px}
+@media (max-width:760px){
+  .rd-deskbar{position:fixed;left:8px;right:8px;bottom:calc(68px + env(safe-area-inset-bottom,0px));z-index:49;display:flex;align-items:center;gap:10px;padding:6px 8px 6px 14px;border-radius:var(--r-ctl);background:var(--surface);box-shadow:var(--e2)}
+  .rd-deskbar-link{display:flex;align-items:baseline;gap:10px;flex:1;min-width:0;min-height:44px;align-items:center;color:var(--text);text-decoration:none}
+  .rd-deskbar-clock{font:400 20px/1 var(--f-display);font-variant-numeric:tabular-nums}
+  .rd-deskbar small{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:13px}
+  .rd-deskbar .secondary-button{min-height:44px}
+  .rd-shell:has(> .rd-deskbar){padding-bottom:calc(128px + env(safe-area-inset-bottom,0px))}
+}
+.rd-desk[data-open="false"]{padding-inline:10px}
+.rd-desk-mini{white-space:nowrap;font-size:12.5px}

@@ -21,6 +21,13 @@ describe('theme preferences', () => {
     expect(readThemePreference({ getItem: () => value })).toEqual({ mode: 'system' })
   })
 
+  it('keeps a valid desk theme and drops unknown ones', () => {
+    expect(readThemePreference({ getItem: () => '{"mode":"dark","desk":"lavender"}' })).toEqual({ mode: 'dark', desk: 'lavender' })
+    expect(readThemePreference({ getItem: () => '{"mode":"light","desk":"meadow"}' })).toEqual({ mode: 'light' })
+    expect(readThemePreference({ getItem: () => '{"mode":"light","desk":"neon"}' })).toEqual({ mode: 'light' })
+    expect(readThemePreference({ getItem: () => '{"mode":"sepia","desk":"tidepool"}' })).toEqual({ mode: 'system' })
+  })
+
   it('works when local storage is unavailable', () => {
     expect(readThemePreference({ getItem: () => { throw new Error('blocked') } })).toEqual({ mode: 'system' })
     expect(() => saveThemePreference({ mode: 'dark' }, { setItem: () => { throw new Error('full') } })).not.toThrow()

@@ -5,6 +5,7 @@ import { api, type TrackingOptions } from '../lib/api'
 import InitialsAvatar from './InitialsAvatar'
 import Icon from './Icon'
 import { useNativeDialog } from '../lib/dialog'
+import { toast } from '../lib/toast'
 
 export const statusLabel = (status: string) => status.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase())
 // Turn status is told apart by icon, label and shape (filled vs outlined), never colour alone.
@@ -15,7 +16,8 @@ export function TurnBadge({ status, pop = false }: { status: string; pop?: boole
 }
 const cleanPartner = (value: string) => value.replace(/\.tumblr\.com$/i, '').replace(/^@/, '')
 
-export default function BranchRow({ branch, options, onChange }: { branch: InboxBranch; options: TrackingOptions; onChange: () => Promise<void> }) {
+// showAvatar=false inside a character stack, whose header already shows the character.
+export default function BranchRow({ branch, options, onChange, showAvatar = true }: { branch: InboxBranch; options: TrackingOptions; onChange: () => Promise<void>; showAvatar?: boolean }) {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
@@ -47,9 +49,14 @@ export default function BranchRow({ branch, options, onChange }: { branch: Inbox
     setError('')
     setStatusOverride(next)
     try {
+      const previous = branch.status
       await api(`/branches/${branch.id}`, 'PATCH', { status: next })
       await onChange()
       setStatusOverride(null) // server data is the source of truth again
+      // The card moves to its new section on reload, so say where it went and offer the way back.
+      const name = displayTitle.length > 40 ? `${displayTitle.slice(0, 39)}…` : displayTitle
+      toast(next === 'your_turn' ? `${name} is your turn again.` : `${name} moved to waiting.`,
+        async () => { await api(`/branches/${branch.id}`, 'PATCH', { status: previous }); await onChange() })
     } catch (problem) {
       setStatusOverride(null) // roll back to the confirmed status
       setError((problem as Error).message)
@@ -120,14 +127,23 @@ export default function BranchRow({ branch, options, onChange }: { branch: Inbox
   const displayTitle = /^(Tumblr thread|Untitled scene)$/i.test(branch.title) ? `${branch.characterName} × ${partner}` : branch.title
   const summary = branch.description || 'No scene summary yet — open this card to add one.'
   const displayedStatus = archived ? 'archived' : status
+  // The pairing line only adds something when the title is not already "Character × partner".
+  const pairing = `${branch.characterName} × ${partner}`
+  const pairingRepeats = String(displayTitle ?? '').toLowerCase() === pairing.toLowerCase()
 
   return <article data-pick-id={branch.id} className={`tracking-card branch-card status-${displayedStatus}${expanded ? ' is-expanded' : ''}`}>
-    <button ref={triggerRef} type="button" className="scene-card-trigger" aria-expanded={expanded} aria-controls={`scene-details-${branch.id}`} onClick={toggleExpanded}>
-      <span className="branch-heading"><InitialsAvatar name={branch.characterName} imageUrl={branch.iconObjectKey ? `/api/characters/${branch.characterId}/icon?v=${encodeURIComponent(branch.iconObjectKey)}` : null}/><span className="branch-title"><span className="branch-meta">{branch.characterName} × {partner}</span><strong>{displayTitle}</strong></span>{archived ? <span className="status-badge turn-badge turn-archived">{branch.starterArchived === 1 ? 'Archived thread' : 'Archived reply'}</span> : <TurnBadge key={displayedStatus} status={displayedStatus} pop={pop}/>}</span>
+    <button ref={triggerRef} type="button" className="scene-card-trigger" aria-label={`${expanded ? 'Hide' : 'Show'} scene details: ${displayTitle}, ${archived ? 'archived' : statusLabel(displayedStatus)}`} aria-expanded={expanded} aria-controls={`scene-details-${branch.id}`} onClick={toggleExpanded}>
+      <span className="branch-heading">{showAvatar && <InitialsAvatar name={branch.characterName} imageUrl={branch.iconObjectKey ? `/api/characters/${branch.characterId}/icon?v=${encodeURIComponent(branch.iconObjectKey)}` : null}/>}<span className="branch-title"><span className={pairingRepeats ? 'branch-meta visually-hidden' : 'branch-meta'}>{pairing}</span><strong>{displayTitle}</strong></span>{archived ? <span className="status-badge turn-badge turn-archived">{branch.starterArchived === 1 ? 'Archived thread' : 'Archived reply'}</span> : <TurnBadge key={displayedStatus} status={displayedStatus} pop={pop}/>}</span>
       <span className="branch-premise">{summary}</span>
-      <span className="scene-card-hint"><span aria-hidden="true">{expanded ? '−' : '+'}</span>{expanded ? 'Hide scene details' : 'Show scene details'}</span>
+      <span className="scene-card-hint" aria-hidden="true">Details</span>
     </button>
-    {!archived&&<div className="branch-turn-actions"><button type="button" className={status === 'your_turn' ? 'turn-button is-current' : 'turn-button'} aria-pressed={status === 'your_turn'} onClick={() => void setTurn('your_turn')}>Your turn</button><button type="button" className={status === 'their_turn' ? 'turn-button is-current' : 'turn-button'} aria-pressed={status === 'their_turn'} onClick={() => void setTurn('their_turn')}>Their turn</button></div>}
+    {/* One clear action per state: "I replied" on owed scenes, "Their reply came in" on waiting ones. Queued scenes
+        have no current turn yet, so both choices show. The scene drawer's Status field still sets any state. */}
+    {!archived&&<div className="branch-turn-actions">{status === 'your_turn'
+      ? <button type="button" className="turn-action" disabled={statusOverride !== null} onClick={() => void setTurn('their_turn')}>I replied</button>
+      : status === 'their_turn'
+        ? <button type="button" className="secondary-button turn-action" disabled={statusOverride !== null} onClick={() => void setTurn('your_turn')}>Their reply came in</button>
+        : <><button type="button" className="secondary-button turn-action" disabled={statusOverride !== null} onClick={() => void setTurn('your_turn')}>Your turn</button><button type="button" className="secondary-button turn-action" disabled={statusOverride !== null} onClick={() => void setTurn('their_turn')}>Their turn</button></>}</div>}
     {expanded && <dialog ref={dialogRef} className="scene-drawer" aria-labelledby={`scene-title-${branch.id}`} onCancel={event => { event.preventDefault(); closeDetails() }} onClick={event => { if (event.target === event.currentTarget) closeDetails() }}><div className="scene-card-expanded" id={`scene-details-${branch.id}`}>
       <header className="scene-drawer-head"><div><span className="branch-meta">{branch.characterName} × {partner}</span><h2 id={`scene-title-${branch.id}`}>{displayTitle}</h2></div><button type="button" className="secondary-button scene-drawer-close" onClick={closeDetails}>Close</button></header>
       <div className="branch-details">

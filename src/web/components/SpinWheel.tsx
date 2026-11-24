@@ -9,7 +9,9 @@ const SPIN_MS = 3600
  * (a single CSS transition with a long ease-out that overshoots slightly and settles; instant under reduced motion),
  * then scrolls to and highlights the chosen card, which carries data-pick-id. Client-only: nothing is saved. */
 export default function SpinWheel({ items, empty }: { items: SpinItem[]; empty: string }) {
-  const [pick, setPick] = useState<SpinItem | null>(null)
+  const [chosen, setPick] = useState<SpinItem | null>(null)
+  // Once you reply to the picked scene it leaves the candidates; drop the stale result instead of suggesting it again.
+  const pick = chosen && items.some(item => item.id === chosen.id) ? chosen : null
   const [spinning, setSpinning] = useState(false)
   const [rotation, setRotation] = useState(0)
   const done = useRef<number | undefined>(undefined)

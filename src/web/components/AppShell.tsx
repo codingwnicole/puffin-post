@@ -4,6 +4,7 @@ import { api, clearApiCache, prefetchNav } from '../lib/api'
 import { isEditableTarget } from '../lib/shortcuts'
 import CommandMenu from './CommandMenu'
 import ToastHost from './ToastHost'
+import DeskRail, { DeskBar } from './DeskRail'
 import OnboardingTour from './OnboardingTour'
 
 export type AppPage = 'dashboard' | 'characters' | 'planner' | 'settings' | 'parking-lot' | 'connections' | 'tools' | 'activity' | 'support' | 'roadmap' | 'starter'
@@ -179,6 +180,8 @@ export default function AppShell({ page, children }: { page:AppPage; children:Re
     <div className="rd-sheet-wrap">
       <main id="main-content" tabIndex={-1}>{offline && <p className="offline-banner" role="status">You're offline. Changes can't be saved until you're back online.</p>}{children}</main>
     </div>
+    {signedIn && <DeskRail />}
+    {signedIn && <DeskBar />}
     {signedIn && <nav className="rd-tabbar" aria-label="Primary (phone)">
       {tabs.map(([item, label, icon]) => <a key={item} className="rd-tab" href={`#${item}`} aria-current={page === item ? 'page' : undefined} onPointerEnter={navPrefetch(item)}><Icon name={icon} />{label}</a>)}
       <div className={`rd-more${menuOpen ? ' is-open' : ''}`} style={{ display: 'contents' }}>

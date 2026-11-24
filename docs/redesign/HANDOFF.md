@@ -400,3 +400,102 @@ covers the shell; extend `layout.spec.ts` per page.
 Build must pass, all tests pass (except the two known visual checks if still failing for their documented reasons).
 Ask the owner explicitly before deploying; follow the repo's normal deploy path (check `README.md`/`docs/` for the
 exact command and environment, and whether it deploys from `main` after a merged PR).
+
+### Phase 5 progress (Claude, 2026-11-24; owner said "start phase 5", uncommitted)
+**Emails and bridge pages** now match the Writer's Desk:
+- One shared stylesheet, `src/shared/bridge-page.ts`, holds the paper tokens. It follows the system theme with light-dark(), and the font stacks fall back to system fonts because the strict CSP allows no web fonts.
+- It is used by `src/routes/auth.ts` (confirm sign-in, link unusable) and `src/routes/public-share.ts` (not found, report received, too many reports, card embed, stats embed).
+- The sign-in email (`magicLinkEmail` in `src/auth/magic-links.ts`) uses the light paper palette and is marked light-only.
+- Copy is unchanged apart from dropping the decorative eyebrows.
+
+**Desk themes** (Settings › Appearance): Meadow, Tidepool, Lavender hour and Mushroom.
+- Stored in the existing `puffin-post.theme` key as `desk`; Meadow is stored as no value.
+- Applied as `<html data-desk>`. The redesign.css "phase 5: desk themes" block overrides `--accent` and `--highlight`, with separate values for dark mode.
+- Fixed a bug that was already there: the saved light/dark choice was only applied while Settings was open. `main.tsx` now applies the theme at startup and follows live system changes.
+
+**Focus cycles** (`#tools/focus`, linked from Writing tools):
+- `src/web/lib/focus.ts` is the timer. It is a localStorage store (`puffin-post.focus`) shared through `useSyncExternalStore` and keeps time as an end timestamp, so it keeps running on other pages and after the tab sleeps.
+- Each focus session is followed by a break that starts at once: 5 minutes, or 15 after every fourth.
+- Stopping a session doesn't count it.
+- The "Writing for" picker lists your-turn scenes first (from `/inbox`).
+- When a session ends, the petals bloom.
+- The 8 most recent sessions are listed.
+- `FocusPage.tsx` is the page. Unit tests are in `tests/unit/focus.test.ts`.
+- No API use beyond reading `/inbox`.
+- The Cookies page lists the new storage key.
+
+**Not done:** the desk rail with music. Writing goals need API work, so they wait for the owner.
+
+### Dashboard critique fixes (2026-11-24)
+`/impeccable critique` scored the Dashboard 24/40. The snapshot is in `.impeccable/critique/`. The owner chose: fix the two P1s and keep the grouping.
+- **Reply run counts:**
+  - Owed now comes from the server's `yourTurnCount`. Before, it counted only the first 100 loaded rows.
+  - "Waiting on a partner" counts only `their_turn`; queued scenes get their own legend item.
+  - Both waiting and queued show "+" when more pages exist.
+- **Owed now lane:**
+  - On the active view (not "Oldest owed first"), your-turn scenes sit in an "Owed now" lane at the top, oldest first.
+  - The RP › character grouping follows under "Waiting and queued, by RP" and holds the rest.
+  - The lane and that heading are h2s, which also fixes the h1-to-h3 jump.
+- **Turn chips:** your turn is filled, their turn outlined, and queued uses the queued colours.
+- **Test:** `redesign-dashboard.spec.ts` checks the counts and the lane order with 120 owed across pages.
+- **Still open from the critique (P2/P3):**
+  - Marking a reply sent: the two-way toggle, and no feedback or undo.
+  - Phone layout and touch targets.
+  - Dark-mode contrast of the inactive turn buttons (4.1:1).
+  - 10.5px "Private beta" and "owed" text.
+  - The "Reply desk" eyebrow above the h1.
+  - Repetition on each card.
+
+**Checks (2026-11-24):** unit 351/351, build OK, e2e 119/119.
+
+### Dashboard critique P2 fixes (2026-11-24, owner: "Fix the P2 issues")
+- **Marking a reply sent** (`BranchRow.tsx`):
+  - The two-way Your turn / Their turn toggle is now one action per state: "I replied" on owed scenes (primary) and "Their reply came in" on waiting ones.
+  - Queued scenes have no current turn, so they show "Mark your turn" and "Mark their turn".
+  - After a change, the card moves on reload and an Undo toast appears (the existing `lib/toast.ts` / ToastHost, `role=status`). Undo puts the old status back and reloads.
+  - Buttons disable while the change saves.
+  - The scene drawer's Status field still sets any state.
+- **Spin wheel:** the result disappears once its scene is no longer owed (`SpinWheel.tsx`).
+- **Accessibility:**
+  - The old dark-mode 4.1:1 toggle text is gone; the new buttons use the primary and secondary button styles.
+  - "Private beta" and the donut's "owed" are now 12px.
+  - The "Reply desk" eyebrow above the h1 is removed.
+  - The filter toggle draws its own arrow at every width; a phone rule had hidden the marker.
+- **Phone:**
+  - Tighter hero spacing.
+  - Below 600px, the character card no longer wraps scene cards (no card-in-card).
+  - 44px touch targets on coarse pointers for the turn actions, "Oldest owed first", "Check Tumblr now", the filter toggle and "Add a thread".
+  - The first owed scene is now above the fold at 390x844.
+  - The Parking Lot link stays: `polish.spec.ts` requires it on phones.
+- **Test:** `redesign-dashboard.spec.ts` covers "I replied" → toast → moves to waiting → Undo, and the queued buttons.
+- **Still open from the critique:** P3 card repetition (the per-card avatar under the character header, a meta line that repeats the default title, and "+Show scene details" on every card).
+
+**Checks:** unit 351/351, build OK, e2e 120/120 (the polish spec reran after the fix).
+
+### Dashboard critique P3 fix (2026-11-24, owner: "Fix the P3 issue")
+- `BranchRow` takes `showAvatar` (default true). The Dashboard's character stacks pass false, because their header already shows the character. The Owed now lane and the thread page keep the avatar.
+- The pairing line ("Wren × Ash") is visually hidden when the title already reads the same, ignoring case. It stays in the DOM for tests and screen readers.
+- The pairing line is now 12.5px in sentence case, not 11px uppercase.
+- The "+Show scene details" row is now a small "Details ›" hint beside the turn action. The card's accessible name is short: "Show/Hide scene details: <title>, <status>".
+- Queued scenes' buttons read "Your turn" / "Their turn" so they fit on one line next to the hint.
+
+**Checks:** unit 351/351, build OK.
+- e2e: 119/120 in the full run. `data-integrity` failed during its setup: `POST /api/starters` returned a 500 from the local dev server, with no error detail logged, before any page was opened. Run alone twice, it passed both times. Watch for this if it comes back.
+- The other 4 failures in the first full run were mine and are fixed:
+  - the title comparison crashed on mocked branches that have no title;
+  - the accessible name stopped switching to "Hide scene details".
+
+### Phase 5: desk rail (2026-11-24, owner: "Build the desk rail")
+`src/web/components/DeskRail.tsx`, mounted in AppShell for signed-in users.
+- **Rail (1280px and wider):** a third grid column, 288px open or 72px collapsed, sticky and scrolling on its own. It has three modules:
+  - **Focus:** mini ring, clock, Start/Pause/Resume focus, a link to `#tools/focus`. Same store as the Focus page (`lib/focus.ts`).
+  - **Music:** a playlist link, checked with `parsePlaylist` (Spotify, YouTube or Apple Music). The player loads only after a click, same rule and sandbox as character playlists. Because the rail lives in AppShell, music keeps playing across pages.
+  - **Quick note:** saves to the Parking Lot (`POST /reply-drafts`, purpose `note`, the same call as the phone More sheet). The draft is kept with `saveDraftLocal`; the button disables while saving; the result shows in `role=status` and errors in `role=alert`.
+- **Collapsing:** the rail collapses to a strip showing the time. The open state and the playlist link are stored in `puffin-post.desk` (listed on the Cookies page).
+- **Phones:** `DeskBar` is a slim strip above the tab bar, shown only while a focus cycle runs, with the time, the phase and Pause/Resume focus. Music isn't on phones yet.
+- **Between 761px and 1279px:** no rail, by design. The Focus page is still there.
+- **Button names:** the timer buttons read "Start focus" etc., not "Start", because the writing sprint page has its own Start button. A bare "Start" made the sprint test click the wrong one.
+- **Test:** `redesign-dashboard.spec.ts` "desk rail" checks that the timer survives navigation, rejects a non-music link, loads music only on click, posts the quick note, keeps the collapsed state after a reload, and shows the phone bar.
+
+**Checks:** unit 351/351, build OK, e2e 121/121.
+**Phase 5 still open:** writing goals (need API and schema work, which needs the owner's approval), and music on phones.

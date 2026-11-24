@@ -82,7 +82,9 @@ const COOKIES: Block[] = [
   { h: '1. What this notice covers', p: 'This notice lists every piece of storage RP Thread Buddy uses in your browser, and every outside service the app talks to. RP Thread Buddy uses only essential storage: the things the app needs to sign you in, keep your place, and do what you asked. There are no tracking cookies, no ad pixels, and no analytics.' },
   { h: '2. The session cookie', p: 'When you sign in we set one cookie called __Host-threadums_session. It is httpOnly (your browser scripts cannot read it), it is sent only over HTTPS, it uses SameSite=Lax (browsers will not send it on cross-site requests), and it expires after 7 days, when the app simply asks you to sign in again. The __Host- prefix forces the Secure flag and path=/ automatically. It exists only so the app knows who you are. You cannot use the app while signed in without it.' },
   { h: '3. Browser storage we keep for you', p: 'The app keeps a small amount of your own preferences and unsent work in your browser:', li: [
-    'puffin-post.theme (localStorage): which of the two themes you picked. Stored only on this device.',
+    'puffin-post.theme (localStorage): your light or dark theme and desk theme. Stored only on this device.',
+    'puffin-post.desk (localStorage): whether your desk rail is open, and the playlist link you gave it. Stored only on this device.',
+    'puffin-post.focus (localStorage): your focus timer, the scene title it is linked to, and your last few session lengths. Stored only on this device.',
     'puffin.characters.view (localStorage): whether the characters page opens in card or detail view. Stored only on this device.',
     'puffin-draft:* (sessionStorage): the text you have not saved yet in a long form, kept only so a failed save or reload does not lose it. Cleared when the save lands or when you sign out.',
     'rpthreadbuddy-writing-sprints (IndexedDB, with localStorage fallback): your private sprint reply text, titles, and local timer state, kept on this device until you delete the sprint or clear browser storage.',

@@ -1,23 +1,13 @@
-import { useLayoutEffect, useState } from 'react'
-import { readThemePreference, resolveTheme, saveThemePreference, type ThemePreference } from '../lib/theme'
+import { useState } from 'react'
+import { applyThemePreference, DESK_THEMES, readThemePreference, saveThemePreference, type ThemePreference } from '../lib/theme'
 
 export default function ThemeMenu() {
   const [preference, setPreference] = useState(readThemePreference)
-  useLayoutEffect(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const apply = () => {
-      const mode = resolveTheme(preference.mode, media.matches)
-      document.documentElement.dataset.theme = mode
-      document.documentElement.style.colorScheme = mode
-    }
-    apply()
-    media.addEventListener('change', apply)
-    return () => media.removeEventListener('change', apply)
-  }, [preference])
-
   function change(next: ThemePreference) {
+    if (next.desk === 'meadow') delete next.desk
     setPreference(next)
     saveThemePreference(next)
+    applyThemePreference(next) // main.tsx re-reads storage when the system theme changes
   }
 
   return (
@@ -30,6 +20,16 @@ export default function ThemeMenu() {
           <option value="dark">Dark</option>
         </select>
       </label>
+      <fieldset className="desk-themes">
+        <legend>Desk theme</legend>
+        {DESK_THEMES.map(([id, label]) => (
+          <label key={id} className="desk-theme">
+            <input type="radio" name="desk-theme" value={id} checked={(preference.desk ?? 'meadow') === id} onChange={() => change({ ...preference, desk: id })} />
+            <span className="desk-swatch" data-desk-swatch={id} aria-hidden="true" />
+            {label}
+          </label>
+        ))}
+      </fieldset>
     </fieldset>
   )
 }
