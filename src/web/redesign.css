@@ -250,9 +250,6 @@ h1,h2,.page-heading{font-family:var(--f-display);font-weight:400;letter-spacing:
 .turn-badge.turn-archived{background:var(--dorm-t);color:var(--dorm)}
 .turn-badge .icon{--icon-size:.95rem}
 .branch-turn-actions{display:inline-grid;grid-template-columns:1fr 1fr;margin-top:8px;padding:2px;border-radius:9px;background:var(--sheet-3)}
-.turn-button{min-height:34px;padding:5px 12px;border:0;border-radius:7px;background:none;box-shadow:none;color:var(--subtle);font:600 13px/1 var(--f-ui);transition:background var(--motion-med) var(--ease-settle),color var(--motion-med),box-shadow var(--motion-med)}
-.turn-button.is-current{background:var(--surface);color:var(--text);box-shadow:var(--e1)}
-.turn-button:active{transform:translateY(1px) scale(.98)}
 .scene-card-expanded{margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)}
 .branch-excerpt{font:400 16px/1.6 var(--f-read);color:var(--text)}
 
@@ -404,7 +401,7 @@ h1,h2,.page-heading{font-family:var(--f-display);font-weight:400;letter-spacing:
 .rd-shell main .refresh-warning{padding:10px 14px;border-radius:var(--r-ctl);background:var(--dorm-t);color:var(--text)}
 
 /* counts line up (the pruned legacy rule did this for these classes; the font shorthands earlier in this file reset it) */
-.rd-dashboard .do-next,.rd-dashboard .group-count,.turn-button,.turn-badge,.rd-dashboard .reply-run strong,.rd-dashboard .summary-legend{font-variant-numeric:tabular-nums}
+.rd-dashboard .do-next,.rd-dashboard .group-count,.turn-badge,.rd-dashboard .reply-run strong,.rd-dashboard .summary-legend{font-variant-numeric:tabular-nums}
 
 /* ======================= phase 3: Characters, cards, profiles, sharing ======================= */
 .rd-characters{display:grid;gap:24px}
@@ -897,3 +894,9 @@ h1,h2,.page-heading{font-family:var(--f-display);font-weight:400;letter-spacing:
 .rd-shell .thread-landing,.rd-shell .thread-landing.is-email-confirmation{padding-bottom:0}
 /* !important only to beat the legacy phone rule (styles.css:423) that reserves tab-bar space; signed-out visitors have no tab bar */
 .rd-shell.rd-guest main#main-content:has(.thread-landing){padding-bottom:28px!important}
+
+/* scene moves (lib/motion.ts runSceneMove): the moved card glides to its new section with the settle overshoot;
+   the page itself swaps instantly instead of running the page-change fade. Reduced motion never starts one. */
+:root[data-vt="scene"] main#main-content{view-transition-name:none}
+::view-transition-group(.scene){animation-duration:520ms;animation-timing-function:var(--ease-settle)}
+::view-transition-old(.scene),::view-transition-new(.scene){animation-duration:220ms}

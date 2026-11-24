@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { flushSync } from 'react-dom'
 import AddThreadDialog, { starterPayload } from '../components/AddThreadDialog'
 import type { InboxBranch } from '../../db/repositories/branches'
 import { api, peekCache, staleGet, type TrackingOptions } from '../lib/api'
@@ -82,7 +83,8 @@ export default function InboxPage() {
   // Only the view (filters, Do-next) goes in the address; limit/offset are for the API.
   const viewQs=(()=>{const view=new URLSearchParams(query);view.delete('limit');view.delete('offset');return view.toString()})()
   useEffect(()=>{const raw=window.location.hash.slice(1).split('?')[0];if(!['dashboard','inbox','/inbox'].includes(raw))return;const base='#dashboard';window.history.replaceState(null,'',viewQs?`${base}?${viewQs}`:base)},[viewQs])
-  async function reload(){setInbox(await api(`/inbox?${query}`));setPageOffset(0)}
+  // flushSync: a scene move (lib/motion.ts) snapshots the list right after this resolves, so the new list must be committed by then.
+  async function reload(){const next=await api<typeof inbox>(`/inbox?${query}`);flushSync(()=>{setInbox(next);setPageOffset(0)})}
   async function createStarter(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setError('');setBusy(true);const payload=starterPayload(event.currentTarget);try{const starter=await api<{id:string}>('/starters','POST',payload);window.location.hash=`starter/${starter.id}`}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
   useEffect(()=>{let active=true;setError('');
     // Stale-while-revalidate: keep the current inbox while the fresh fetch is in flight;
