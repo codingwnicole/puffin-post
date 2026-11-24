@@ -52,7 +52,7 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
   const t = THEMES[card.theme] ?? THEMES.holo
 
   const frontSvg = share.style === 'card' ? renderToString(createElement(Side, { side: 'front', name, profile: card, stats, portrait: `/c/${slug}/portrait`, moodboard: [], uid: 'f' })) : ''
-  const backSvg = share.style === 'card' ? renderToString(createElement(Side, { side: 'back', name, profile: card, stats, portrait: null, moodboard: [], uid: 'b' })) : ''
+  const backSvg = share.style === 'card' ? renderToString(createElement(Side, { side: 'back', name, profile: card, stats: share.showStats ? stats : { total: 0, mine: 0, theirs: 0, rps: [] }, portrait: null, moodboard: [], uid: 'b' })) : ''
 
   const songLine = (card.song || '') + (card.artist ? ' — ' + card.artist : '')
   const facts = (card.facts || []).filter(Boolean)
@@ -61,15 +61,15 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
   let moodboardHtml = ''
   if (share.showMoodboard && moodItems.length > 0) {
     const items = moodItems.map(item => {
-      if (item.kind === 'pin' && item.pinId) return `<iframe src="https://assets.pinterest.com/ext/embed.html?id=${escapeHtml(item.pinId)}" class="mood-pin" loading="lazy"></iframe>`
+      if (item.kind === 'pin' && item.pinId) return `<iframe src="https://assets.pinterest.com/ext/embed.html?id=${escapeHtml(item.pinId)}" class="mood-pin" title="Pinterest moodboard pin" loading="lazy"></iframe>`
       if (item.kind === 'image') return `<img src="/c/${escapeHtml(slug)}/m/${escapeHtml(item.id)}" alt="" class="mood-img" loading="lazy">`
       return ''
     }).filter(Boolean).join('')
-    moodboardHtml = `<section class="section"><h2 class="section-title">Moodboard</h2><div class="mood-grid">${items}</div></section>`
+    moodboardHtml = `<section class="section moodboard-section"><h2 class="section-title">Moodboard</h2><div class="mood-grid">${items}</div></section>`
   }
 
   let playlistHtml = ''
-  if (card.playlistUrl) {
+  if (share.showPlaylist && card.playlistUrl) {
     const parsed = parsePlaylist(card.playlistUrl)
     if (parsed) {
       const label = parsed.provider === 'spotify' ? 'Spotify' : parsed.provider === 'apple' ? 'Apple Music' : 'YouTube'
@@ -77,28 +77,35 @@ function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: Ca
       const previewTracks = tracks.slice(0, 5)
       const trackPreviewHtml = previewTracks.length > 0 ? `<ol class="track-preview">${previewTracks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ol>` : ''
       const embedSrc = parsed.provider === 'spotify' ? parsed.embedUrl + (parsed.embedUrl.includes('?') ? '&' : '?') + 'theme=0' : parsed.embedUrl
-      playlistHtml = `<section class="section"><h2 class="section-title">Playlist</h2>${trackPreviewHtml}<div class="playlist-embed"><iframe src="${escapeHtml(embedSrc)}" width="100%" height="${embedHeight}" style="border-radius:12px" frameborder="0" allowfullscreen allow="autoplay;clipboard-write;encrypted-media;fullscreen;picture-in-picture" loading="lazy"></iframe></div></section>`
+      playlistHtml = `<section class="section playlist-section"><h2 class="section-title">Playlist</h2>${trackPreviewHtml}<div class="playlist-embed" data-playlist-container data-embed-src="${escapeHtml(embedSrc)}" data-embed-height="${embedHeight}"><button type="button" class="btn-accent" data-playlist-load>Load the ${label} player</button><p>Loads ${label}’s player, which follows ${label}’s privacy policy.</p></div></section>`
     }
   }
 
   let statsHtml = ''
   if (share.showStats) {
-    statsHtml = `<section class="section"><h2 class="section-title">Thread Stats</h2><div class="stat-row"><div class="stat-card"><span class="stat-num">${stats.total}</span><span class="stat-label">threads</span></div><div class="stat-card"><span class="stat-num">${stats.mine}</span><span class="stat-label">your turn</span></div><div class="stat-card"><span class="stat-num">${stats.theirs}</span><span class="stat-label">their turn</span></div></div>${stats.rps.length ? `<p class="rp-list">Writes in ${escapeHtml(stats.rps.join(' &middot; '))}</p>` : ''}</section>`
+    statsHtml = `<section class="section stats-section"><h2 class="section-title">Thread Stats</h2><div class="stat-row"><div class="stat-card"><span class="stat-num">${stats.total}</span><span class="stat-label">threads</span></div><div class="stat-card"><span class="stat-num">${stats.mine}</span><span class="stat-label">your turn</span></div><div class="stat-card"><span class="stat-num">${stats.theirs}</span><span class="stat-label">their turn</span></div></div>${stats.rps.length ? `<p class="rp-list">Writes in ${escapeHtml(stats.rps.join(' &middot; '))}</p>` : ''}</section>`
   }
 
   const boardPath = card.boardUrl ? card.boardUrl.replace(/^https?:\/\/(www\.)?pinterest\.[a-z.]+\//, '').replace(/\/$/, '') : ''
   const boardEmbedSrc = boardPath ? `https://petracoding.github.io/pinterest/board.html?link=${encodeURIComponent(boardPath + '/')}&hideHeader=0&hideFooter=1&transparent=1` : ''
-  const boardHtml = card.boardUrl && boardEmbedSrc ? `<section class="section"><h2 class="section-title">Moodboard</h2><iframe src="${escapeHtml(boardEmbedSrc)}" class="board-embed" loading="lazy"></iframe></section>` : ''
+  const boardHtml = share.showMoodboard && card.boardUrl && boardEmbedSrc ? `<section class="section moodboard-section"><h2 class="section-title">Moodboard</h2><iframe src="${escapeHtml(boardEmbedSrc)}" class="board-embed" loading="lazy"></iframe></section>` : ''
 
-  const detailsHtml = (card.likes || card.dislikes || card.notes) ? `<section class="section"><h2 class="section-title">About</h2><div class="detail-grid">${card.likes ? `<div class="detail-item"><span class="detail-label">Likes</span><span>${escapeHtml(card.likes)}</span></div>` : ''}${card.dislikes ? `<div class="detail-item"><span class="detail-label">Dislikes</span><span>${escapeHtml(card.dislikes)}</span></div>` : ''}${card.notes ? `<div class="detail-item detail-wide"><span class="detail-label">Notes</span><span>${escapeHtml(card.notes)}</span></div>` : ''}</div></section>` : ''
+  const detailsHtml = (card.likes || card.dislikes || card.notes) ? `<section class="section about-section"><h2 class="section-title">About</h2><div class="detail-grid">${card.likes ? `<div class="detail-item"><span class="detail-label">Likes</span><span>${escapeHtml(card.likes)}</span></div>` : ''}${card.dislikes ? `<div class="detail-item"><span class="detail-label">Dislikes</span><span>${escapeHtml(card.dislikes)}</span></div>` : ''}${card.notes ? `<div class="detail-item detail-wide"><span class="detail-label">Notes</span><span>${escapeHtml(card.notes)}</span></div>` : ''}</div></section>` : ''
 
-  const factsHtml = facts.length > 0 ? `<section class="section"><h2 class="section-title">Fun Facts</h2><ul class="fact-list">${facts.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul></section>` : ''
+  const factsHtml = facts.length > 0 ? `<section class="section facts-section"><h2 class="section-title">Fun Facts</h2><ul class="fact-list">${facts.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul></section>` : ''
 
-  const tracklistHtml = tracks.length > 0 ? `<section class="section"><h2 class="section-title">Tracklist</h2><ol class="track-list">${tracks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ol></section>` : ''
+  const tracklistHtml = tracks.length > 0 ? `<section class="section tracklist-section"><h2 class="section-title">Tracklist</h2><ol class="track-list">${tracks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ol></section>` : ''
 
-  const portraitHtml = `<img class="hero-portrait" src="/c/${escapeHtml(slug)}/portrait" alt="" onerror="this.style.display='none'">`
+  const safeFavorite = /^#[0-9a-f]{6}$/i.test(card.favoriteColor) ? card.favoriteColor : t.accent
+  const initials = name.split(/\s+/).map(part => part[0] ?? '').join('').slice(0, 2).toUpperCase() || '?'
+  const portraitHtml = char.portraitObjectKey || char.iconObjectKey
+    ? `<img class="hero-portrait" src="/c/${escapeHtml(slug)}/portrait" alt="">`
+    : `<div class="hero-initials" aria-hidden="true">${escapeHtml(initials)}</div>`
   const cardPng = `/c/${escapeHtml(slug)}/card.png`
-  const cardDisplayHtml = share.style === 'card' ? `<div class="card-display"><a href="${cardPng}" target="_blank" title="View full card">${frontSvg}</a><a href="${cardPng}" target="_blank" title="View full card">${backSvg}</a></div>` : ''
+  const publicCardHtml = share.style === 'card' ? `<div class="public-card" id="public-card" data-flipped="false"><div class="public-card-inner"><a class="public-card-face public-card-front" href="${cardPng}" target="_blank" rel="noopener" aria-label="Open ${escapeHtml(name)}'s card PNG">${frontSvg}</a><a class="public-card-face public-card-back" href="${cardPng}" target="_blank" rel="noopener" aria-label="Open ${escapeHtml(name)}'s card PNG">${backSvg}</a></div></div><div class="card-controls"><button type="button" class="btn-muted" data-card-flip="public-card" aria-pressed="false">Flip card</button><a href="${cardPng}" target="_blank" rel="noopener">Open PNG preview</a></div>` : ''
+  const heroMediaHtml = share.style === 'card'
+    ? `<div class="hero-media"><span class="favorite-halo" aria-hidden="true"></span><div class="hero-card" data-card-tilt>${publicCardHtml}</div></div>`
+    : `<div class="hero-media hero-media-stats">${portraitHtml}</div>`
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -115,105 +122,25 @@ ${hasPreview ? `<meta property="og:image" content="${escapeHtml(appOrigin)}/c/${
 <meta name="twitter:card" content="summary_large_image">
 ${noindex ? '<meta name="robots" content="noindex,nofollow">' : ''}
 <style>
-:root{--bg0:${t.bg[0]};--bg1:${t.bg[1]};--bg2:${t.bg[2]};--ink:${t.ink};--sub:${t.sub};--accent:${t.accent};--stroke:${t.stroke};--panel0:${t.panel[0]};--panel1:${t.panel[1]};--foil0:${t.foil[0]};--foil1:${t.foil[1]};--foil2:${t.foil[2] || t.foil[0]};--corner:${t.corner}px;--font:${t.font};--sans:${t.sans}}
-*{box-sizing:border-box;margin:0}
-body{font-family:var(--sans);font-size:16px;line-height:1.6;color:var(--ink);min-height:100vh;background:var(--bg1);background-image:radial-gradient(circle at 20% 10%,var(--bg0) 0%,transparent 50%),radial-gradient(circle at 80% 90%,var(--bg2) 0%,transparent 50%)}
-a{color:var(--accent)}
-.page{max-width:860px;margin:0 auto;padding:2rem 1.25rem 3rem}
-
-/* Hero: card + name + quote */
-.hero{padding-bottom:2rem;border-bottom:1px solid var(--stroke);overflow:hidden}
-.hero-portrait{float:left;width:180px;height:180px;border-radius:1rem;object-fit:cover;margin:0 2rem 1rem 0;border:3px solid var(--stroke)}
-.card-display{display:flex;gap:1.5rem;justify-content:center;margin-top:2rem;padding:2rem 0;border-top:1px solid color-mix(in srgb,var(--stroke) 40%,transparent)}
-.card-display a{display:block;text-decoration:none;transition:transform .15s ease}
-.card-display a:hover{transform:scale(1.03)}
-.card-display svg{width:320px;height:auto;filter:drop-shadow(0 4px 12px rgba(0,0,0,.2))}
-.hero-text{display:grid;gap:.75rem;align-content:start;padding-top:.5rem}
-.hero-name{font:600 clamp(2rem,5vw,3.2rem)/1.1 var(--font);letter-spacing:-.03em;color:var(--ink)}
-.hero-nickname{font:italic 500 1.1rem/1.3 var(--font);color:var(--sub)}
-.hero-quote{font:italic 1.05rem/1.5 var(--font);color:var(--ink);opacity:.85;padding:.75rem 1rem;border-left:3px solid var(--accent);background:linear-gradient(90deg,color-mix(in srgb,var(--panel0) 40%,transparent),transparent)}
-.hero-meta{display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;font-size:.9rem;color:var(--sub)}
-.hero-meta strong{color:var(--ink)}
-.hero-song{display:flex;align-items:center;gap:.5rem;font-size:.9rem;color:var(--sub);margin-top:.25rem}
-.hero-song::before{content:'\\266B';font-size:1.1rem;color:var(--accent)}
-.hero-color{display:inline-flex;align-items:center;gap:.4rem}
-.hero-color-swatch{width:1rem;height:1rem;border-radius:50%;border:1px solid var(--stroke);vertical-align:middle}
-
-/* Sections */
-.section{margin-top:2rem;padding:1.5rem;border:1px solid color-mix(in srgb,var(--stroke) 50%,transparent);border-radius:calc(var(--corner) + 6px);background:linear-gradient(135deg,color-mix(in srgb,var(--panel0) 60%,transparent),color-mix(in srgb,var(--panel1) 40%,transparent))}
-.section-title{font:600 .75rem/1 var(--sans);color:var(--accent);letter-spacing:.14em;text-transform:uppercase;margin-bottom:1rem}
-
-/* Stats */
-.stat-row{display:grid;grid-template-columns:repeat(3,1fr);gap:.75rem}
-.stat-card{display:flex;flex-direction:column;align-items:center;gap:.25rem;padding:1rem;border-radius:var(--corner);background:color-mix(in srgb,var(--panel0) 80%,transparent);border:1px solid color-mix(in srgb,var(--stroke) 30%,transparent)}
-.stat-num{font:700 1.8rem var(--font);color:var(--ink)}
-.stat-label{font:600 .75rem var(--sans);color:var(--sub);text-transform:uppercase;letter-spacing:.08em}
-.rp-list{margin-top:.75rem;font-size:.9rem;color:var(--sub)}
-
-/* Moodboard */
-.mood-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem}
-.mood-img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:var(--corner);border:1px solid color-mix(in srgb,var(--stroke) 30%,transparent)}
-.mood-pin{width:100%;height:326px;border:none;border-radius:var(--corner)}
-
-/* Facts */
-.fact-list{list-style:none;padding:0;display:grid;gap:.5rem}
-.fact-list li{padding:.6rem 1rem;border-radius:var(--corner);background:color-mix(in srgb,var(--panel0) 80%,transparent);border:1px solid color-mix(in srgb,var(--stroke) 20%,transparent);font-size:.95rem}
-.fact-list li::before{content:'\\2726 ';color:var(--accent);margin-right:.3rem}
-
-/* Details */
-.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem}
-.detail-item{display:flex;flex-direction:column;gap:.2rem;font-size:.95rem}
-.detail-wide{grid-column:1/-1}
-.detail-label{font:600 .7rem var(--sans);color:var(--accent);letter-spacing:.1em;text-transform:uppercase}
-
-/* Tracklist */
-.track-list{padding-left:1.5rem;display:grid;gap:.35rem}
-.track-list li{font-size:.95rem;color:var(--ink)}
-.track-list li::marker{color:var(--accent)}
-.track-preview{list-style:none;padding:0;display:grid;gap:.35rem;margin-bottom:1rem}
-.track-preview li{display:flex;align-items:center;gap:.6rem;padding:.45rem .75rem;border-radius:var(--corner);background:color-mix(in srgb,var(--panel0) 70%,transparent);font-size:.9rem;color:var(--ink)}
-.track-preview li::before{counter-increment:tp;content:counter(tp);font:700 .75rem var(--sans);color:var(--accent);min-width:1.2rem;text-align:right}
-.track-preview{counter-reset:tp}
-
-/* Board link */
-.board-embed{width:100%;height:520px;border:none;border-radius:var(--corner);background:transparent;overflow:hidden}
-
-/* Buttons */
-.btn-accent{padding:.6rem 1.4rem;background:var(--accent);color:var(--panel1);border:none;border-radius:calc(var(--corner) + 2px);cursor:pointer;font:700 .9rem var(--sans);min-height:44px}
-.btn-accent:hover{filter:brightness(1.1)}
-.btn-muted{padding:.6rem 1.4rem;background:var(--panel0);color:var(--ink);border:1px solid var(--stroke);border-radius:calc(var(--corner) + 2px);cursor:pointer;font:700 .9rem var(--sans);min-height:44px}
-.playlist-embed{border-radius:12px;overflow:hidden}
-
-/* Footer */
-.footer{margin-top:3rem;padding-top:1.25rem;border-top:1px solid color-mix(in srgb,var(--stroke) 40%,transparent);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem}
-.footer-brand{display:flex;align-items:center;gap:.5rem;font:600 .95rem Georgia,serif;color:var(--sub);text-decoration:none}
-.footer-brand:hover{color:var(--ink)}
-.footer-mark{display:grid;place-items:center;width:1.6rem;height:1.6rem;border-radius:50%;background:var(--accent);color:var(--panel1);font:800 .72rem Georgia,serif;letter-spacing:-.08em}
-.footer-right{font-size:.82rem;color:var(--sub)}
-.footer-right a{color:var(--accent);font-weight:600}
-.report-toggle{background:none;border:none;color:var(--sub);font-size:.78rem;cursor:pointer;padding:.2rem}
-.report-toggle:hover{color:var(--ink)}
-.report-form{margin-top:.5rem}
-.report-form textarea{width:100%;height:70px;background:color-mix(in srgb,var(--panel0) 80%,transparent);color:var(--ink);border:1px solid var(--stroke);border-radius:var(--corner);padding:.5rem;font:inherit;resize:vertical}
-
-@media(max-width:600px){
-  .hero{text-align:center}
-  .hero-portrait{float:none;display:block;width:140px;height:140px;margin:0 auto 1rem;border-radius:50%}
-  .hero-quote{text-align:left}
-  .hero-meta{justify-content:center}
-  .card-display{flex-wrap:wrap}.card-display svg{width:260px}
-  .detail-grid{grid-template-columns:1fr}
-  .stat-row{grid-template-columns:repeat(3,1fr);gap:.5rem}
-  .stat-num{font-size:1.4rem}
-  .mood-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr))}
-  .footer{flex-direction:column;text-align:center}
-}
+:root{color-scheme:light dark;--paper:light-dark(#F3EEE5,#1C1A17);--sheet:light-dark(#FBF8F2,#262320);--sheet-2:light-dark(#F5EFE6,#2E2A26);--ink:light-dark(#2D2925,#EFE8DC);--ink-2:light-dark(#5C544B,#BDB3A6);--subtle:light-dark(#6B6156,#9A9084);--line:light-dark(#E3DACC,#3B3631);--accent:light-dark(#56715B,#A3C0A4);--favorite:${safeFavorite};--e1:0 1px 2px rgb(45 41 37/.06),0 3px 10px rgb(45 41 37/.05);--e2:0 2px 4px rgb(45 41 37/.05),0 12px 26px -10px rgb(45 41 37/.24);--e3:0 4px 8px rgb(45 41 37/.06),0 30px 60px -22px rgb(45 41 37/.38);--font:Georgia,"Iowan Old Style",serif;--sans:system-ui,-apple-system,"Segoe UI",sans-serif;--corner:${t.corner}px}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:var(--sans);font-size:16px;line-height:1.6;color:var(--ink);min-height:100vh;background:radial-gradient(900px 520px at 8% -8%,light-dark(rgb(255 232 196/.7),rgb(255 196 130/.07)),transparent 65%) no-repeat,var(--paper)}a{color:var(--accent)}button{font:inherit}.page{width:min(1180px,100%);margin:0 auto;padding:28px clamp(16px,4vw,44px) 40px}
+:focus-visible{outline:2px solid light-dark(#2F5F63,#9CCBCF);outline-offset:3px}
+.hero{display:grid;grid-template-columns:minmax(250px,340px) minmax(0,1fr);gap:clamp(28px,5vw,68px);align-items:center;padding:14px 0 34px;border-bottom:1px solid var(--line);overflow:visible}.hero-media{min-width:0;position:relative;display:grid;place-items:center;isolation:isolate}.favorite-halo{position:absolute;z-index:-1;width:116%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--favorite) 25%,transparent),transparent 68%);filter:blur(10px)}.hero-card{width:min(330px,100%);display:grid;justify-items:center;perspective:1400px;transform:rotateX(var(--tilt-x,0deg)) rotateY(var(--tilt-y,0deg));filter:drop-shadow(var(--shadow-x,0px) var(--shadow-y,22px) var(--shadow-blur,28px) rgb(29 26 22/.28));transition:transform 220ms ease,filter 220ms ease;touch-action:pan-y}.public-card{width:100%;aspect-ratio:640/860;position:relative;perspective:1400px}.public-card-inner{position:absolute;inset:0;transform-style:preserve-3d;transition:transform 600ms cubic-bezier(.22,.68,.18,1)}.public-card[data-flipped="true"] .public-card-inner{transform:rotateY(180deg)}.public-card-face{position:absolute;inset:0;display:block;backface-visibility:hidden;-webkit-backface-visibility:hidden;border-radius:4.5%/3.2%;overflow:hidden;text-decoration:none}.public-card-back{transform:rotateY(180deg)}.public-card-face svg{display:block;width:100%;height:100%}.public-card-face::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:.16;background:radial-gradient(circle at var(--mx,50%) var(--my,30%),rgb(255 255 255/.52),transparent 48%),linear-gradient(115deg,transparent 25%,color-mix(in srgb,var(--favorite) 35%,transparent) 48%,transparent 70%);mix-blend-mode:soft-light}.card-controls{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:8px;margin-top:12px}.card-controls a{padding:8px 10px;font-size:13px}.hero-media-stats{align-self:start}.hero-portrait,.hero-initials{width:min(240px,75vw);aspect-ratio:1;border-radius:22px;object-fit:cover;border:1px solid var(--line);box-shadow:var(--e2)}.hero-initials{display:grid;place-items:center;background:var(--sheet-2);color:var(--accent);font:400 64px/1 var(--font)}
+.hero-text{display:grid;gap:12px;align-content:center;min-width:0;animation:rise 500ms ease both}.hero-kicker{font:650 11px/1.3 var(--sans);letter-spacing:.12em;text-transform:uppercase;color:var(--subtle)}.hero-name{font:400 clamp(34px,5vw,58px)/1.05 var(--font);letter-spacing:-.025em;color:var(--ink);overflow-wrap:anywhere}.hero-nickname{font:italic 19px/1.35 var(--font);color:var(--ink-2)}.hero-quote{font:italic 400 clamp(18px,2.2vw,24px)/1.5 var(--font);color:var(--ink);padding:12px 16px;border-left:3px solid var(--favorite);background:linear-gradient(90deg,color-mix(in srgb,var(--sheet-2) 80%,transparent),transparent);max-width:60ch}.hero-meta{display:flex;flex-wrap:wrap;gap:8px 18px;color:var(--ink-2);font-size:14px}.hero-meta strong{color:var(--ink)}.hero-song{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink-2)}.hero-song::before{content:"♫";font-size:18px;color:var(--favorite)}.hero-color{display:inline-flex;align-items:center;gap:7px}.hero-color-swatch{width:16px;height:16px;border-radius:50%;border:1px solid var(--line);vertical-align:middle}
+.content-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:16px;margin-top:24px}.section{grid-column:span 6;min-width:0;margin:0;padding:clamp(16px,2vw,24px);border:1px solid var(--line);border-radius:18px;background:var(--sheet);box-shadow:var(--e1);animation:rise 420ms ease both}.section-title{font:600 11px/1.3 var(--sans);color:var(--subtle);letter-spacing:.1em;text-transform:uppercase;margin:0 0 16px}.stats-section{grid-column:span 12}.moodboard-section{grid-column:span 7}.playlist-section{grid-column:span 5}.board-section{grid-column:span 5}.facts-section,.about-section{grid-column:span 6}.tracklist-section{grid-column:span 5}.stat-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.stat-card{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px;border-radius:12px;background:var(--sheet-2);border:1px solid var(--line)}.stat-num{font:400 30px/1.1 var(--font);color:var(--ink);font-variant-numeric:tabular-nums}.stat-label{font:650 10px/1.3 var(--sans);color:var(--subtle);text-transform:uppercase;letter-spacing:.08em}.rp-list{margin-top:12px;font-size:14px;color:var(--ink-2)}
+.mood-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px}.mood-img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:12px;border:1px solid var(--line)}.mood-pin{width:100%;height:320px;border:0;border-radius:12px}.fact-list{list-style:none;padding:0;display:grid;gap:8px}.fact-list li{padding:10px 12px;border-radius:10px;background:var(--sheet-2);border:1px solid var(--line);font-size:14px}.fact-list li::before{content:"✦ ";color:var(--favorite);margin-right:5px}.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.detail-item{display:flex;flex-direction:column;gap:4px;font-size:14px}.detail-wide{grid-column:1/-1}.detail-label{font:650 10px/1.3 var(--sans);color:var(--subtle);letter-spacing:.09em;text-transform:uppercase}.track-list{padding-left:24px;display:grid;gap:6px}.track-list li{font-size:14px;color:var(--ink)}.track-list li::marker{color:var(--accent)}.track-preview{list-style:none;padding:0;display:grid;gap:6px;margin:0 0 14px;counter-reset:tp}.track-preview li{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:9px;background:var(--sheet-2);font-size:13px}.track-preview li::before{counter-increment:tp;content:counter(tp);font:650 11px var(--sans);color:var(--subtle);min-width:18px;text-align:right}.board-embed{width:100%;height:420px;border:0;border-radius:12px;background:var(--sheet-2)}
+.btn-accent,.btn-muted{display:inline-flex;justify-content:center;align-items:center;min-height:44px;padding:9px 16px;border-radius:10px;cursor:pointer;font:650 14px/1.2 var(--sans);text-decoration:none}.btn-accent{background:var(--accent);color:light-dark(#FBF8F2,#1C1A17);border:1px solid transparent}.btn-accent:hover{filter:brightness(1.08)}.btn-muted{background:var(--sheet);color:var(--ink);border:1px solid var(--line)}.playlist-embed{display:grid;justify-items:start;gap:10px;min-height:120px;padding:14px;border:1px dashed var(--line);border-radius:12px;background:var(--sheet-2)}.playlist-embed p{margin:0;color:var(--ink-2);font-size:13px}.playlist-embed iframe{display:block}.footer{margin-top:32px;padding-top:16px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px}.footer-brand{display:flex;align-items:center;gap:8px;font:600 14px var(--font);color:var(--ink-2);text-decoration:none}.footer-brand:hover{color:var(--ink)}.footer-mark{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:var(--accent);color:light-dark(#FBF8F2,#1C1A17);font:700 10px var(--sans)}.footer-right{font-size:13px;color:var(--ink-2)}.footer-right a{color:var(--accent);font-weight:600}.report-toggle{background:none;border:0;color:var(--ink-2);font-size:13px;cursor:pointer;padding:6px}.report-form{display:grid;gap:8px;margin-top:8px;min-width:min(320px,85vw)}.report-form textarea{width:100%;min-height:88px;background:var(--sheet);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit;resize:vertical}
+@media(prefers-color-scheme:dark){:root{--e1:0 1px 2px rgb(0 0 0/.3),0 3px 10px rgb(0 0 0/.25);--e2:0 2px 4px rgb(0 0 0/.3),0 12px 26px -10px rgb(0 0 0/.6);--e3:0 4px 8px rgb(0 0 0/.35),0 30px 60px -22px rgb(0 0 0/.75)}}@keyframes rise{from{opacity:0;filter:blur(4px);transform:translateY(8px)}}
+@media(max-width:820px){.page{padding-top:18px}.hero{grid-template-columns:1fr;gap:22px;text-align:center}.hero-media{order:0}.hero-text{order:1;justify-items:center}.hero-meta{justify-content:center}.hero-quote{text-align:left}.hero-card{width:min(280px,72vw)}.content-grid{gap:12px}.section,.stats-section,.moodboard-section,.playlist-section,.board-section,.facts-section,.about-section,.tracklist-section{grid-column:span 12}.mood-grid{grid-template-columns:repeat(auto-fill,minmax(92px,1fr))}}
+@media(max-width:420px){.stat-row{gap:5px}.stat-card{padding:10px 4px}.stat-num{font-size:25px}.stat-label{font-size:9px}.detail-grid{grid-template-columns:1fr}.detail-wide{grid-column:auto}.footer{flex-direction:column;text-align:center}}
+@media(hover:hover) and (pointer:fine){.hero-card:hover{filter:drop-shadow(var(--shadow-x,0px) var(--shadow-y,22px) var(--shadow-blur,28px) rgb(29 26 22/.34))}.card-controls a:hover{text-decoration:underline}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.hero-card,.public-card-inner,.hero-text,.section{transition:none;animation:none;filter:none}.hero-card{transform:none}}
 </style>
 </head>
 <body>
-<div class="page">
-<div class="hero">
-${portraitHtml}
+<main class="page">
+<header class="hero">
+${heroMediaHtml}
 <div class="hero-text">
 <h1 class="hero-name">${escapeHtml(name)}</h1>
 ${card.nickname && card.nickname !== name ? `<p class="hero-nickname">${escapeHtml(card.nickname)}</p>` : ''}
@@ -221,18 +148,17 @@ ${card.quote ? (() => { const ql = card.quote.length; const qs = ql < 30 ? '1.6r
 <div class="hero-meta">
 ${card.age ? `<span><strong>${escapeHtml(card.age)}</strong> years old</span>` : ''}
 ${card.birthdate ? `<span>Born <strong>${escapeHtml(card.birthdate)}</strong></span>` : ''}
-${card.favoriteColor && card.favoriteColor !== '#b07a9e' ? `<span class="hero-color"><span class="hero-color-swatch" style="background:${escapeHtml(card.favoriteColor)}"></span>${escapeHtml(card.favoriteColor)}</span>` : ''}
+${card.favoriteColor && card.favoriteColor !== '#b07a9e' ? `<span class="hero-color"><span class="hero-color-swatch" style="background:${safeFavorite}"></span>${escapeHtml(safeFavorite)}</span>` : ''}
 </div>
 ${songLine ? `<p class="hero-song">${escapeHtml(songLine)}</p>` : ''}
 </div>
-</div>
-${factsHtml}${detailsHtml}${moodboardHtml}${boardHtml}${playlistHtml}${tracklistHtml}${statsHtml}
-${cardDisplayHtml}
+</header>
+<div class="content-grid">${factsHtml}${detailsHtml}${moodboardHtml}${boardHtml}${playlistHtml}${tracklistHtml}${statsHtml}</div>
 <footer class="footer">
 <a href="${escapeHtml(appOrigin)}" class="footer-brand"><span class="footer-mark">RP</span>RP Thread Buddy</a>
 <div class="footer-right"><a href="${escapeHtml(appOrigin)}">Make your own</a><span> &middot; </span><details style="display:inline"><summary class="report-toggle">Report</summary><form method="POST" action="/c/${escapeHtml(slug)}/report" class="report-form"><textarea name="reason" maxlength="1000" required placeholder="Why are you reporting this page?"></textarea><button type="submit" class="btn-accent" style="margin-top:.35rem;padding:.4rem 1rem;font-size:.82rem">Send report</button></form></details></div>
 </footer>
-</div>
+</main>
 <script src="/share.js" defer></script>
 </body>
 </html>`

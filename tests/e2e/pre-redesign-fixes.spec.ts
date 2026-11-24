@@ -30,7 +30,7 @@ test('card editor asks before Escape throws away edits, and keeps focus inside',
   const { ctx, page } = await signedIn(browser)
   await page.request.post('/api/characters', { data: { name: 'Wren' } })
   await page.goto('/#characters'); await page.reload()
-  await page.getByRole('button', { name: '✦ Cards' }).click()
+  await page.getByRole('button', { name: 'Cards', exact: true }).click()
   const opener = page.locator('.tcard-tile').first().getByRole('button', { name: 'Make a card' })
   await opener.click()
   const editor = page.getByRole('dialog')

@@ -23,6 +23,8 @@ test('solo sprint keeps replies separate, saves locally, and uploads totals only
 
   await page.getByLabel('Reply text').first().pressSequentially('first reply words')
   await page.getByRole('button', { name: 'Finish & Copy' }).click()
+  // wait until the first reply is completed and the fresh blank reply exists, or the typing races the swap
+  await expect(page.getByRole('status').filter({ hasText: 'Reply completed' })).toBeVisible()
   await page.getByLabel('Reply text').first().pressSequentially('second reply words')
   await page.getByRole('button', { name: 'Finish & Copy' }).click()
 

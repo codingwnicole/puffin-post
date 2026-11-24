@@ -150,15 +150,17 @@ export default function TradingCard({ name, profile, stats, portrait, moodboard,
   const hasMoodboard = (moodboard?.length ?? 0) > 0 || !!profile.boardUrl || !!profile.playlistUrl || (profile.tracklist?.length ?? 0) > 0
   const [flipped, setFlipped] = useState(initialSide === 'back')
   const uid = useId().replace(/[^a-zA-Z0-9]/g, '')
+  // Pointer effects write CSS variables directly to keep the tilt shadow in sync without re-rendering.
   const move = (event: PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== 'mouse') return
     const box = event.currentTarget.getBoundingClientRect(), x = (event.clientX - box.left) / box.width, y = (event.clientY - box.top) / box.height
     event.currentTarget.style.setProperty('--rx', `${(0.5 - y) * 14}deg`); event.currentTarget.style.setProperty('--ry', `${(x - 0.5) * 18}deg`)
     event.currentTarget.style.setProperty('--mx', `${x * 100}%`); event.currentTarget.style.setProperty('--my', `${y * 100}%`)
+    event.currentTarget.style.setProperty('--shadow-x', `${(0.5 - x) * 26}px`); event.currentTarget.style.setProperty('--shadow-y', `${18 + y * 12}px`)
   }
-  const leave = (event: PointerEvent<HTMLDivElement>) => { for (const key of ['--rx', '--ry', '--mx', '--my']) event.currentTarget.style.removeProperty(key) }
+  const leave = (event: PointerEvent<HTMLDivElement>) => { for (const key of ['--rx', '--ry', '--mx', '--my', '--shadow-x', '--shadow-y']) event.currentTarget.style.removeProperty(key) }
   const face = (side: 'front' | 'back' | 'mood') => <Side side={side} name={name} profile={profile} stats={stats} portrait={side === 'front' ? portrait : null} moodboard={side === 'mood' ? moodboard : undefined} uid={uid} />
-  return <div className="tcard" data-theme-id={profile.theme} data-flipped={flipped || undefined} onPointerMove={move} onPointerLeave={leave} style={{ '--card-glow': THEMES[profile.theme]?.accent } as CSSProperties}>
+  return <div className="tcard" data-theme-id={profile.theme} data-flipped={flipped || undefined} onPointerMove={move} onPointerLeave={leave} style={{ '--card-glow': THEMES[profile.theme]?.accent, '--card-foil': THEMES[profile.theme]?.foil[1] } as CSSProperties}>
     <button type="button" className="tcard-inner" aria-pressed={flipped} aria-label={`Flip ${name}'s card to the ${flipped ? 'front' : 'back'}`} onClick={() => setFlipped(current => !current)}>
       <span className="tcard-flip">
       <span className="tcard-face tcard-front">{face('front')}</span>

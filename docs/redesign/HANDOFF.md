@@ -1,7 +1,7 @@
 # Redesign handoff: "The Writer's Desk"
 
 Read this whole file before touching code. It is written so a new agent with no chat history can finish the job.
-Last updated: 2026-11-23, phase 1 implemented and shell tests green; full e2e run and commit pending (see "Status").
+Last updated: 2026-11-24, phases 1–2 committed as `e58ac9a`; phase 3 implemented and reviewed; phase 4 mostly done (all uncommitted).
 
 ## 1. What this is
 
@@ -79,7 +79,7 @@ folder-tab navigation, editorial serif headings and selective depth and motion.
 
 ## 5. Status
 
-### Done in phase 1 (branch `redesign/phase-1-shell`, uncommitted until checks pass; check `git status`)
+### Done in phases 1–2 (commit `e58ac9a` on branch `redesign/phase-1-shell`)
 - `src/web/redesign.css`: tokens (light + dark), base type, desktop shell, tablet icon rail (≤1020px), phone top bar +
   bottom tab bar + More sheet (≤760px), signed-out layout, reduced motion.
 - `src/web/components/AppShell.tsx`: rebuilt markup.
@@ -140,17 +140,15 @@ folder-tab navigation, editorial serif headings and selective depth and motion.
 - Phone More sheet: tabs `z-index: 50`, sheet 49, backdrop 48 (all inside the tab bar's stacking context) so the
   sheet never paints over the tabs, even mid-slide. Sheet links are left-aligned (a tablet rule had leaked; tablet
   rules are now all scoped to `.rd-side`). Grabber bar drawn with `::before`.
-- Result at this point: unit 341/341, build OK, e2e 110/110 (re-run in progress when this was written; check).
+- Phase 1–2 verification from the completed worktree: unit 341/341, build OK, e2e 114/114.
 
-### Not verified yet at the time of writing
-- Re-run all three checks after any change.
-- Visual check in a browser at 1440 / 1024 / 768 / 390 / 320, light and dark. The new shell spec saves screenshots to
-  `test-results/redesign-shell-*.png`.
+### Phase 1–2 verification
+- Phases 1–2 are committed and were built and tested. Run all three required checks again after later phase changes.
+- The approved prototype could not be opened from the local `file://` URL in the embedded browser because of its URL policy. Its source was inspected read-only; do not try a different browser route to work around the block.
 
-### Next steps for phase 1
-1. Run checks, fix failures (not by weakening tests). Look at the screenshots.
-2. Fonts: done (§6).
-3. Commit phase 1 with a clear message. Show the owner the local preview. Ask for a fresh yes before any deploy.
+### Phase 1 completion
+- Shell, Dashboard, fonts, and their tests are committed in `e58ac9a`.
+- Never deploy or push without a fresh yes for that specific action.
 
 ## 6. Fonts (decided and done)
 The owner chose npm packages. Installed with exact versions: `@fontsource/young-serif@5.3.0`,
@@ -229,13 +227,8 @@ only on pages that use `--f-read` (from phase 2). `redesign-shell.spec.ts` asser
 - **Filter tray, empty states, skeletons, load more** restyled under `.rd-dashboard` (pill summary, inset tray with a
   small slide-in, paper empty state, shimmer skeletons).
 
-### Still to do in phase 2
-1. ~~Scene details drawer~~ — DONE (see below).
-2. ~~Add a thread as a dialog~~ — DONE.
-3. ~~Activity "Add to tracker" opens the full form~~ — DONE.
-4. ~~Filter tray, skeletons, empty/onboarding state, load-more restyle~~ — DONE.
-5. Optional per prototype: greeting line with the person's name (needs a name source; the session probe has none),
-   count-up on the ring (only if tests are adjusted to wait for the final value).
+### Phase 2 follow-up
+- The implementation and required checks are complete. Optional greeting-name and count-up refinements remain out of scope unless requested.
 
 ## 7. Tests changed for the new shell (keep them in sync if you change markup)
 Old → new selectors: `.primary-nav` → `.rd-side` (desktop) or `.rd-tabbar` (phone background), `.primary-nav > a` →
@@ -312,6 +305,83 @@ check-your-email). Delete each page's legacy CSS as you go.
 Focus cycles (built on solo sprints: breaks, linked scene, bloom), desk rail with music (reuse `parsePlaylist` and the
 click-to-load rule; CSP already allows `frame-src https://open.spotify.com`), desk themes ("dashboard skins" on the
 roadmap: Meadow, Tidepool, Lavender hour, Mushroom accents), writing goals (needs API work).
+
+### Phase 3 progress (2026-11-24)
+- Characters now use a details/card grid, with the requested header character picker and visible per-character card actions. The 10 card themes and existing PNG/GIF rasterization remain data/source of truth.
+- Card editor has Front / Back / Playlist & board tabs and session-local draft recovery. Card tilt now also shifts its cast shadow; foil/glare and the 600ms flip are in the redesign layer.
+- Character profile now has a 12-slot moodboard, About, Fun facts, Thread stats, Playlist and Tracklist sections. Sharing panel has the existing settings exposed as controls, link copying and PNG preview.
+- Public `/c/<slug>` rebuilt (GPT): tokens matching the app, card hero with a favourite-colour halo (the colour is
+  validated as `#rrggbb` before it reaches CSS), sections on a 12-column grid, tilt in `public/share.js` (skipped on
+  touch and reduced motion), and the share options for playlist and stats now respected.
+
+### Phase 3 review and completion (Claude, 2026-11-24)
+Checked GPT's uncommitted phase 3 work: type-check, unit tests and build passed; 5 e2e tests failed. Fixed:
+- Cards toggle label is now "Cards" (the old "✦ Cards" glyph counted as an icon glyph); tests use `{ name: 'Cards', exact: true }`.
+- Moodboard: the live guidance line "Upload 8–12 images that feel like this character, or add pins from Pinterest."
+  had been dropped; restored under the empty grid. Empty slots no longer carry `.profile-tile` (they inflated tile
+  counts); they are `.profile-empty-tile` only. Pin frames are titled "Pinterest pin N" (unique, better for screen
+  readers); the test matches the prefix.
+- Card editor: fields moved onto Front / Back / Playlist & board tabs, so tests open the right tab first. The editor
+  lost the legacy `.card-editor` class, so its inputs had fallen back to browser defaults; they now use the redesign
+  field style (`.rd-card-editor ...`).
+- Share test raced the PNG preview upload; it now waits for the panel's preview image (shown once upload finishes)
+  before fetching `card.png`. Same save order as before; the race was already there.
+- Removed the decorative eyebrow labels GPT added (profile sections, card editor, public hero "A character
+  profile"); Impeccable's craft floor bans eyebrows above headings.
+- Profile Pinterest link field styled.
+- Legacy CSS pruned for the phase 3 classes used only in phase 3 files (character-*, card-editor-row,
+  card-theme-picker, card-symbol-picker, view-switch, profile-*, share-*, mood-*): 40 selectors, 39 rules. Kept:
+  `tcard*` (card rendering and export alignment), `profile-board`, `upload-hint` (shared with the planner).
+- Do not start phase 4 before the owner reviews phase 3.
+
+### Phase 4 progress (Claude, 2026-11-24; owner said "begin phase 4", uncommitted)
+**Data audit (owner asked for a full check that nothing is lost):**
+- Phases 1–4 change no API route, request/response shape, schema or migration. The only server-side change is the
+  rendering of the public `/c/<slug>` page (`src/routes/public-share.ts`), which reads the same fields as before.
+- Local draft keys (`saveDraftLocal`/`restoreDraftLocal`), theme and walkthrough storage keys are unchanged, so text
+  people typed before the redesign is still restored.
+- Every card field (front, back, playlist, board, theme, symbol, stats, favourite colour) is still editable in the
+  card editor tabs; every profile/public section still renders.
+- `tests/e2e/data-integrity.spec.ts` (new): seeds characters with full trading cards, RP sections, quicklinks, moodboard,
+  threads with every branch field, labels, Parking lot drafts, planner ideas and public sharing; snapshots the API, walks
+  every redesigned page checking the data is shown, saves the card editor untouched, and proves nothing stored changed.
+
+**Pages:** every remaining page moves onto the redesign through one shared layer near the end of `redesign.css`
+("phase 4: the shared parts"): paper cards for `.tracking-card`/`.settings-section`, small-caps `.eyebrow`, one field
+style for inputs/selects/textareas in `main` and `dialog`, and primary/secondary/text/danger buttons. No page markup
+or data flow changed. Also:
+- The two `!important` input border-colour rules were removed from `styles.css` (they overrode the field style).
+- `.empty-state` uses the Dashboard empty-state style everywhere (was centred and bordered on Connected accounts).
+- Thread page (`#starter/<id>`): spacing between the title actions, summary and partner cards; "Add branch" no longer
+  stretches full width.
+- Signed-out landing: sits on the app sheet (no second tinted box); the old monogram circle (hard-coded colours in
+  `landing-fixes.css`) is hidden because the shell brand shows the same mark. Copy unchanged.
+- `.text-button` is 44px tall on touch screens (`polish.spec.ts` hit-area check).
+- `tests/e2e/redesign-pages.spec.ts` (new): renders parking lot, activity, planner, tools, sprints, connections,
+  settings, roadmap, support, terms and a thread page at 1440 and 390 with real data, asserts no sideways scroll, and
+  saves screenshots to `test-results/pages/` for review.
+
+**Checks (2026-11-24):** unit 341/341, build OK, e2e 115/116 in the full run; the one failure (`polish.spec.ts` hit
+area) was fixed and that spec rerun 6/6. The `rows.map`/`drafts.filter` errors in the e2e log come from failure-state
+tests that feed malformed responses on purpose; those tests pass.
+
+**Second pass (same day):**
+- `redesign-pages.spec.ts` gained a "deeper states" test: check-your-email (1440/390), Support board with items,
+  solo sprint setup and running, private room (1440/390). Screenshots in `test-results/pages/`.
+- `.tool-copied` chip ("Copied", "Draft saved on this device"): legacy white text on `--nav-bg`, which the redesign
+  remaps to pale paper, so it was unreadable. Now ink-reversed, and above the phone tab bar.
+- Check-your-email: the address stays inside its sentence (legacy made it `display:block`, leaving ". It expires…"
+  on its own line).
+- Support: build number no longer touches the heading.
+- `writing-sprints.spec.ts` solo test had a race (typed the second reply before the app swapped in the new blank
+  reply); it now waits for the "Reply completed" status first. No assertion loosened.
+- "Skip to content" showing mid-page in phone full-page screenshots is a screenshot artifact; in the browser it
+  stays at -80px until focused.
+- Legacy CSS pruning is deliberately not done for phase 4: these pages still take their layout grids from
+  `styles.css`/`landing-fixes.css`; the new layer only restyles surfaces, fields and buttons. Remove the legacy
+  files wholesale once each page's layout has redesign rules, not class by class.
+
+**Checks (second pass):** unit 341/341, build OK, e2e 117/117.
 
 ## 9. Motion spec (implement with CSS + View Transitions; tokens in redesign.css)
 fast 140ms (hover/press), med 220ms (tabs, drawers), slow 420ms (settle, lift). Page change: old page out 150ms,

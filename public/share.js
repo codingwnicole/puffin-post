@@ -13,6 +13,29 @@
     })
   })
 
+  // The public profile card stays static when motion is reduced or the device is touch-first.
+  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  var coarsePointer = window.matchMedia && window.matchMedia('(hover: none), (pointer: coarse)').matches
+  if (!reducedMotion && !coarsePointer) {
+    document.querySelectorAll('[data-card-tilt]').forEach(function (card) {
+      card.addEventListener('pointermove', function (event) {
+        if (event.pointerType !== 'mouse') return
+        var bounds = card.getBoundingClientRect()
+        var x = (event.clientX - bounds.left) / bounds.width
+        var y = (event.clientY - bounds.top) / bounds.height
+        card.style.setProperty('--tilt-x', ((0.5 - y) * 8) + 'deg')
+        card.style.setProperty('--tilt-y', ((x - 0.5) * 10) + 'deg')
+        card.style.setProperty('--mx', (x * 100) + '%')
+        card.style.setProperty('--my', (y * 100) + '%')
+        card.style.setProperty('--shadow-x', ((0.5 - x) * 26) + 'px')
+        card.style.setProperty('--shadow-y', (18 + y * 12) + 'px')
+      })
+      card.addEventListener('pointerleave', function () {
+        ;['--tilt-x', '--tilt-y', '--mx', '--my', '--shadow-x', '--shadow-y'].forEach(function (property) { card.style.removeProperty(property) })
+      })
+    })
+  }
+
   // Playlist click-to-load: replaces the button with the iframe from data-embed-src
   document.querySelectorAll('[data-playlist-load]').forEach(function (button) {
     button.addEventListener('click', function () {

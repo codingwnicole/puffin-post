@@ -54,7 +54,7 @@ test('a card with a moodboard keeps a hidden mood side and a front + back downlo
   // Cards view only draws card art (portrait, mood side) once the character has a card.
   expect((await page.request.put('/api/characters/' + id + '/card', { data: {}, headers: ORIGIN })).ok()).toBe(true)
   await page.reload()
-  await page.getByRole('button', { name: '✦ Cards' }).click()
+  await page.getByRole('button', { name: 'Cards', exact: true }).click()
   const tile = page.locator('.tcard-tile').first()
   const card = tile.locator('.tcard')
   const flip = tile.getByRole('button', { name: /Flip Sable Vane/ })

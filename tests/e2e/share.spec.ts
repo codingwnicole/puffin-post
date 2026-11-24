@@ -39,6 +39,8 @@ test('share lifecycle: enable, public page, snippets, rotate, disable', async ({
   expect(slug.length).toBeGreaterThan(0)
 
   // Assert preview upload happened (card.png exists)
+  // The PNG preview uploads after the share is created; the panel shows it once the upload finishes.
+  await expect(dialog.getByRole('img', { name: /public preview image/ })).toBeVisible({ timeout: 10000 })
   const previewResponse = await page.request.get(`/c/${slug}/card.png`)
   expect(previewResponse.status()).toBe(200)
   expect(previewResponse.headers()['content-type']).toBe('image/png')

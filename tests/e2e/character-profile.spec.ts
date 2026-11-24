@@ -66,7 +66,7 @@ test('profile page: moodboard, pin, reorder, remove, board link, click-to-load p
   const pinResponse = page.waitForResponse(r => r.url().includes('/moodboard/pin'))
   await page.getByRole('button', { name: 'Add a Pinterest pin' }).click()
   expect((await pinResponse).status()).toBe(201)
-  const pinFrame = page.locator('.profile-tile iframe[title="Pinterest pin"]')
+  const pinFrame = page.locator('.profile-tile iframe[title^="Pinterest pin"]')
   await expect(pinFrame).toHaveAttribute('src', 'https://assets.pinterest.com/ext/embed.html?id=987654321098')
   await expect(page.getByText('3 of 12')).toBeVisible()
 
@@ -91,6 +91,8 @@ test('profile page: moodboard, pin, reorder, remove, board link, click-to-load p
   // Card editor: playlist + board + tracklist, then the board link card and click-to-load player.
   await page.getByRole('button', { name: 'Edit card' }).click()
   const editor = page.getByRole('dialog')
+  // The editor groups fields into Front / Back / Playlist & board tabs.
+  await editor.getByRole('tab', { name: 'Playlist & board' }).click()
   await editor.getByLabel('Playlist link').fill('https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M')
   await editor.getByLabel('Pinterest board', { exact: true }).fill('https://www.pinterest.com/wren/moodboard-pins/')
   await editor.getByLabel('Track list').fill('Nightcall\nMidnight City')
@@ -111,6 +113,7 @@ test('profile page: moodboard, pin, reorder, remove, board link, click-to-load p
 
   // A bad playlist link shows the server's 400 message in the editor.
   await page.getByRole('button', { name: 'Edit card' }).click()
+  await page.getByRole('dialog').getByRole('tab', { name: 'Playlist & board' }).click()
   await page.getByRole('dialog').getByLabel('Playlist link').fill('https://example.com/not-a-playlist')
   await page.getByRole('dialog').getByRole('button', { name: 'Save card' }).click()
   await expect(page.getByRole('alert')).toBeVisible()
