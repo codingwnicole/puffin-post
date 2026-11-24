@@ -187,6 +187,8 @@ test('"I replied" moves a scene to waiting with an undo, and queued scenes offer
   await page.getByRole('button', { name: 'Undo' }).click()
   await expect(page.getByRole('region', { name: 'Owed now' }).getByText('Harbor at dusk')).toBeVisible()
   expect(patches).toEqual([{ id: 'b1', status: 'their_turn' }, { id: 'b1', status: 'your_turn' }])
+  // the scene-move transition names are temporary: none may stay on a card (they would clash with page transitions)
+  await expect.poll(() => page.locator('article.branch-card').evaluateAll(cards => cards.filter(card => (card as HTMLElement).style.viewTransitionName).length), { timeout: 3000 }).toBe(0)
   const queued = groups.locator('article', { hasText: 'Ledger of debts' })
   await expect(queued.getByRole('button', { name: 'Your turn', exact: true })).toBeVisible()
   await expect(queued.getByRole('button', { name: 'Their turn', exact: true })).toBeVisible()

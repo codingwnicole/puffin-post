@@ -6,6 +6,7 @@ import InitialsAvatar from './InitialsAvatar'
 import Icon from './Icon'
 import { useNativeDialog } from '../lib/dialog'
 import { toast } from '../lib/toast'
+import { runSceneMove, useSceneMoving } from '../lib/motion'
 
 export const statusLabel = (status: string) => status.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase())
 // Turn status is told apart by icon, label and shape (filled vs outlined), never colour alone.
@@ -35,6 +36,7 @@ export default function BranchRow({ branch, options, onChange, showAvatar = true
   // Optimistic status flip for reversible turns only; the badge and the select
   // both read this, so the change is visible immediately and rolls back on error.
   const [statusOverride, setStatusOverride] = useState<string | null>(null)
+  const sceneMoving = useSceneMoving()
   const status = statusOverride ?? branch.status
   const toggleExpanded = () => setExpanded(current => !current)
   // Pop once when a thread becomes your turn while on screen (not on every page load).
@@ -51,12 +53,12 @@ export default function BranchRow({ branch, options, onChange, showAvatar = true
     try {
       const previous = branch.status
       await api(`/branches/${branch.id}`, 'PATCH', { status: next })
-      await onChange()
+      await runSceneMove(onChange) // the card glides to its new section
       setStatusOverride(null) // server data is the source of truth again
       // The card moves to its new section on reload, so say where it went and offer the way back.
       const name = displayTitle.length > 40 ? `${displayTitle.slice(0, 39)}…` : displayTitle
       toast(next === 'your_turn' ? `${name} is your turn again.` : `${name} moved to waiting.`,
-        async () => { await api(`/branches/${branch.id}`, 'PATCH', { status: previous }); await onChange() })
+        async () => { await api(`/branches/${branch.id}`, 'PATCH', { status: previous }); await runSceneMove(onChange) })
     } catch (problem) {
       setStatusOverride(null) // roll back to the confirmed status
       setError((problem as Error).message)
@@ -131,7 +133,7 @@ export default function BranchRow({ branch, options, onChange, showAvatar = true
   const pairing = `${branch.characterName} × ${partner}`
   const pairingRepeats = String(displayTitle ?? '').toLowerCase() === pairing.toLowerCase()
 
-  return <article data-pick-id={branch.id} className={`tracking-card branch-card status-${displayedStatus}${expanded ? ' is-expanded' : ''}`}>
+  return <article data-pick-id={branch.id} className={`tracking-card branch-card status-${displayedStatus}${expanded ? ' is-expanded' : ''}`} style={sceneMoving ? { viewTransitionName: `scene-${branch.id}`, viewTransitionClass: 'scene' } as React.CSSProperties : undefined}>
     <button ref={triggerRef} type="button" className="scene-card-trigger" aria-label={`${expanded ? 'Hide' : 'Show'} scene details: ${displayTitle}, ${archived ? 'archived' : statusLabel(displayedStatus)}`} aria-expanded={expanded} aria-controls={`scene-details-${branch.id}`} onClick={toggleExpanded}>
       <span className="branch-heading">{showAvatar && <InitialsAvatar name={branch.characterName} imageUrl={branch.iconObjectKey ? `/api/characters/${branch.characterId}/icon?v=${encodeURIComponent(branch.iconObjectKey)}` : null}/>}<span className="branch-title"><span className={pairingRepeats ? 'branch-meta visually-hidden' : 'branch-meta'}>{pairing}</span><strong>{displayTitle}</strong></span>{archived ? <span className="status-badge turn-badge turn-archived">{branch.starterArchived === 1 ? 'Archived thread' : 'Archived reply'}</span> : <TurnBadge key={displayedStatus} status={displayedStatus} pop={pop}/>}</span>
       <span className="branch-premise">{summary}</span>

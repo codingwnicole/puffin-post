@@ -251,6 +251,9 @@ Folder-tab drawers in the sidebar, each tinted, that open and close and remember
 ### Trading Card (signature)
 Each character's collectible card: ten themes held as data, a front and a back, a 600ms flip, tilt that follows the pointer (off on touch and reduced motion), and foil and glare layers. Exports as PNG or GIF.
 
+### Scene Move (signature)
+When a scene's turn changes ("I replied", "Their reply came in", or Undo), the card glides from its section to its new one with the settle overshoot (520ms) while the other cards close the gap. Built on the browser's View Transitions API; with reduced motion, or in browsers without it, the card simply appears in its new place.
+
 ### Reply Run and Spin Wheel (signature)
 The Dashboard summary: a ring showing owed against waiting, and a small wheel that spins with a settling overshoot to pick which reply to write next.
 

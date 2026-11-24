@@ -561,3 +561,19 @@ The owner asked for the landing to be rebuilt around the four differentiators.
   - DESIGN.md: this is an extension of the existing world, so none was written. Run `/impeccable document` to record the system.
   - The dark-mode lamp glow stays faint by design.
 - **Checks:** unit 351/351, build OK, e2e 121/121.
+
+### Scene move animation (2026-11-24)
+- **What it does:** when a scene's turn changes ("I replied", "Their reply came in", or Undo), the card glides from its section to its new one while the other cards close the gap. This is the "most rewarding moment" the critique called flat.
+- **How:** `runSceneMove` and `useSceneMoving` in `src/web/lib/motion.ts`, built on the View Transitions API that page swaps already use; no animation library.
+  - While a move runs, every scene card gets a temporary `view-transition-name` (`scene-<id>`) and class `scene`.
+  - `html[data-vt="scene"]` turns off the page-change fade.
+  - The move uses the settle curve and lasts 520ms.
+- **Requirement:** `InboxPage.reload` uses `flushSync`, so the new list is committed before the browser takes its after-snapshot.
+- **Fallbacks:**
+  - Reduced motion skips the transition entirely.
+  - Browsers without view transitions get the instant swap.
+  - The thread page's reload isn't flushSync'd, so a move there falls back to the instant swap.
+- **Cleanup:** removed the dead `.turn-button` rules left over from the old toggle.
+- **Test:** the reply-flow test now checks that no card keeps a transition name after a move.
+- **Checks:** unit 351/351, build OK, e2e 121/121 (the dashboard spec repeated 3 times).
+- **Not deployed yet.**
