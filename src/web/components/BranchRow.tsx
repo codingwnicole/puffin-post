@@ -3,16 +3,14 @@ import type { InboxBranch } from '../../db/repositories/branches'
 import { REPLY_STATUSES, type ReplyStatus } from '../../shared/domain'
 import { api, type TrackingOptions } from '../lib/api'
 import InitialsAvatar from './InitialsAvatar'
+import Icon from './Icon'
 
 export const statusLabel = (status: string) => status.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase())
 // Turn status is told apart by icon, label and shape (filled vs outlined), never colour alone.
-const TURN_ICONS: Record<string, string> = {
-  your_turn: 'M20 3c-6 1-11 6-13 12l-2 6 2-1c1-3 3-5 5-6 1 2 0 4-1 5 5-2 8-7 9-16Z', // quill
-  their_turn: 'M7 3h10M7 21h10M8 3c0 5 8 6 8 9s-8 4-8 9M16 3c0 5-8 6-8 9s8 4 8 9', // hourglass
-}
+const TURN_ICONS = { your_turn: 'your-turn', their_turn: 'their-turn' } as const
 export function TurnBadge({ status, pop = false }: { status: string; pop?: boolean }) {
-  const icon = TURN_ICONS[status]
-  return <span className={`status-badge turn-badge turn-${status}${pop ? ' turn-pop' : ''}`}>{icon && <svg viewBox="0 0 24 24" aria-hidden="true" width="14" height="14"><path d={icon}/></svg>}{statusLabel(status)}</span>
+  const icon = TURN_ICONS[status as keyof typeof TURN_ICONS]
+  return <span className={`status-badge turn-badge turn-${status}${pop ? ' turn-pop' : ''}`}>{icon && <Icon name={icon} />}{statusLabel(status)}</span>
 }
 const cleanPartner = (value: string) => value.replace(/\.tumblr\.com$/i, '').replace(/^@/, '')
 
