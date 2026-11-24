@@ -53,15 +53,23 @@ export async function createReplyDraft(scope: WorkspaceScope, input: DraftInput)
 }
 export async function updateReplyDraft(scope: WorkspaceScope, id: string, patch: Partial<DraftInput> & { state?: 'open'|'archived' }) {
   await getReplyDraft(scope,id)
-  await references(scope,patch)
-  if (patch.characterIds) for (const characterId of patch.characterIds) await references(scope,{characterId})
+  // The list wins when both fields are supplied, matching draft creation.
+  const characterIds = patch.characterIds !== undefined ? [...new Set(patch.characterIds)]
+    : 'characterId' in patch ? patch.characterId ? [patch.characterId] : [] : undefined
+  const normalized = characterIds === undefined ? patch : { ...patch, characterId: characterIds[0] ?? null }
+  await references(scope,normalized)
+  if (characterIds) for (const characterId of characterIds) await references(scope,{characterId})
   const mapping = { title:'title',notes:'notes',purpose:'purpose',characterId:'character_id',partnerId:'partner_id',sourceUrl:'source_url',reminderAt:'reminder_at',state:'state' }
-  const entries = Object.entries(mapping).filter(([key]) => key in patch)
-  const result = await scope.db.prepare(`UPDATE reply_drafts SET ${entries.map(([,column]) => `${column}=?`).concat('updated_at=?').join(',')}
+  const entries = Object.entries(mapping).filter(([key]) => key in normalized)
+  const update = scope.db.prepare(`UPDATE reply_drafts SET ${entries.map(([,column]) => `${column}=?`).concat('updated_at=?').join(',')}
     WHERE workspace_id=? AND id=? AND state <> 'converted' RETURNING id`)
-    .bind(...entries.map(([key]) => patch[key as keyof typeof patch] ?? null),new Date().toISOString(),scope.workspaceId,id).first()
-  if (!result) throw new Error('Draft is already converted')
-  if (patch.characterIds) await scope.db.batch([scope.db.prepare('DELETE FROM reply_draft_characters WHERE workspace_id=? AND draft_id=?').bind(scope.workspaceId,id),...[...new Set(patch.characterIds)].map(characterId=>scope.db.prepare('INSERT INTO reply_draft_characters (workspace_id,draft_id,character_id) VALUES (?,?,?)').bind(scope.workspaceId,id,characterId))])
+    .bind(...entries.map(([key]) => normalized[key as keyof typeof normalized] ?? null),new Date().toISOString(),scope.workspaceId,id)
+  // Conditional child writes preserve converted drafts if a conversion won the race.
+  const results = await scope.db.batch([update, ...(characterIds === undefined ? [] : [
+    scope.db.prepare("DELETE FROM reply_draft_characters WHERE workspace_id=? AND draft_id=? AND EXISTS (SELECT 1 FROM reply_drafts WHERE workspace_id=? AND id=? AND state<>'converted')").bind(scope.workspaceId,id,scope.workspaceId,id),
+    ...characterIds.map(characterId => scope.db.prepare("INSERT INTO reply_draft_characters (workspace_id,draft_id,character_id) SELECT ?,?,? WHERE EXISTS (SELECT 1 FROM reply_drafts WHERE workspace_id=? AND id=? AND state<>'converted')").bind(scope.workspaceId,id,characterId,scope.workspaceId,id)),
+  ])])
+  if (!results[0].results.length) throw new Error('Draft is already converted')
   return getReplyDraft(scope,id)
 }
 export async function deleteReplyDraft(scope: WorkspaceScope, id:string) {

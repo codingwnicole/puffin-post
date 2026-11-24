@@ -155,6 +155,25 @@ test('empty wheels are explained and disabled', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Spin the wheel' })).toBeDisabled()
 })
 
+test('archiving an edited draft saves its current writing before clearing the local backup', async ({ page }) => {
+  await mock(page)
+  let archived = false
+  let patch: { notes?: string; state?: string } = {}
+  await page.route('**/api/reply-drafts', route => route.fulfill({json:archived ? [] : [draft]}))
+  await page.route('**/api/reply-drafts/d1', route => {
+    patch = route.request().postDataJSON(); archived = true
+    return route.fulfill({json:{...draft,...patch}})
+  })
+  const dialog = await openWheel(page, 'parking-lot')
+  await dialog.getByRole('button', {name:'Spin',exact:true}).click()
+  await dialog.getByRole('button', {name:'Open Draft',exact:true}).click()
+  const card = page.locator('[data-pick-id="d1"]')
+  await card.locator('textarea[name=notes]').fill('New writing that has not been saved yet.')
+  await card.getByRole('button', {name:'Archive draft',exact:true}).click()
+  await expect(card).toHaveCount(0)
+  expect(patch).toEqual({state:'archived',notes:'New writing that has not been saved yet.'})
+})
+
 test('saving a wheel-selected draft closes the editor after the refreshed item remounts', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await mock(page)
