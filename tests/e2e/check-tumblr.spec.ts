@@ -23,6 +23,8 @@ test('Open on Tumblr goes to the latest reply on the partner\'s blog, and Check 
   const card = page.locator('article.branch-card')
   await card.locator('.scene-card-trigger').click()
   await expect(card.getByRole('link',{ name:'Open on Tumblr' })).toHaveAttribute('href','https://www.tumblr.com/friend/999')
+  // Scene details open in a modal drawer; close it to use the page again.
+  await page.keyboard.press('Escape')
 
   await expect(card.locator('.turn-badge')).toHaveText('Your turn')
   await page.getByRole('button',{ name:'Check Tumblr now' }).click()

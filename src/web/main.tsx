@@ -1,8 +1,15 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+// Self-hosted fonts (OFL): the Worker CSP allows fonts from 'self' only. Vite bundles the woff2 files; unicode-range
+// subsets mean the browser fetches only the scripts and faces a page actually uses.
+import '@fontsource/young-serif/400.css'
+import '@fontsource-variable/figtree/wght.css'
+import '@fontsource-variable/newsreader/wght.css'
+import '@fontsource-variable/newsreader/wght-italic.css'
 import './styles.css'
 import './landing-fixes.css'
+import './redesign.css'
 
 // Client-error reporting: forward uncaught page errors to /api/client-errors.
 // At most 5 reports per page load; rate-limited server-side as well.

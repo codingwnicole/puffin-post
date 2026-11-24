@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { api, staleGet } from '../lib/api'
+import { api, staleGet, type TrackingOptions } from '../lib/api'
+import AddThreadDialog, { starterPayload } from '../components/AddThreadDialog'
 import { toast } from '../lib/toast'
 
 type Activity = { id: string; blogIdentifier: string; actor: string; timestamp: string; postId: string | null; preview: string | null; sourceUrl: string | null; threadKey?: string | null }
@@ -92,24 +93,34 @@ export default function TumblrActivityPage() {
       .finally(() => setBusy(''))
   }
 
-  async function addMention(item: Activity) {
-    const characterId = selectedCharacters[item.id], url = postUrl(item)
-    if (!characterId) { setError('Choose the character this starter is for first'); return }
-    if (!url) { setItemErrors(current => ({ ...current, [item.id]: 'Tumblr did not provide a usable post link for this tag' })); return }
-    setBusy(item.id); setError(''); setMessage(''); setItemErrors(current => { const next = { ...current }; delete next[item.id]; return next }); setNeedsBlog(current => { const next = { ...current }; delete next[item.id]; return next })
+  // "Add to tracker" opens the full Add a thread form (owner request): the same fields and the same empty premise as the
+  // Dashboard, instead of a one-click save whose premise was the post's opening lines.
+  const [adding, setAdding] = useState<Activity | null>(null), [addBusy, setAddBusy] = useState(false), [addError, setAddError] = useState('')
+  const [trackingOptions, setTrackingOptions] = useState<TrackingOptions | null>(null)
+  function openAdd(item: Activity) {
+    if (!postUrl(item)) { setItemErrors(current => ({ ...current, [item.id]: 'Tumblr did not provide a usable post link for this tag' })); return }
+    setAddError(''); setError(''); setMessage(''); setAdding(item)
+    if (!trackingOptions) staleGet<TrackingOptions>('/starters/options').then(setTrackingOptions).catch(problem => setAddError((problem as Error).message))
+  }
+  async function addMention(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const item = adding
+    if (!item) return
+    setAddBusy(true); setAddError(''); setItemErrors(current => { const next = { ...current }; delete next[item.id]; return next }); setNeedsBlog(current => { const next = { ...current }; delete next[item.id]; return next })
     try {
-      await api('/starters', 'POST', { characterId, postUrl: url, partnerBlogIdentifier: item.id.startsWith('post:') || item.actor === 'anonymous' ? null : item.actor })
+      await api('/starters', 'POST', starterPayload(event.currentTarget))
       // Remove the tracked item from local state instead of reloading the whole page.
       const isSameThread = (other: Activity) => item.threadKey ? other.threadKey === item.threadKey : other.id === item.id
       setMentions(current => current.filter(mention => !isSameThread(mention)))
       setThreadCandidates(current => current.filter(candidate => !isSameThread(candidate)))
       setMessage('Starter added to your tracker.')
+      setAdding(null)
     } catch (problem) {
       const fail = problem as Error & { code?: string }
       // A missing character blog is a setup gap the user can fix in-place; route it there.
-      setItemErrors(current => ({ ...current, [item.id]: fail.code === 'character_needs_blog' ? 'Assign a Tumblr blog to this character before tracking a thread.' : fail.message }))
+      setAddError(fail.code === 'character_needs_blog' ? 'Assign a Tumblr blog to this character before tracking a thread (Connected accounts).' : fail.message)
       setNeedsBlog(current => ({ ...current, [item.id]: fail.code === 'character_needs_blog' }))
-    } finally { setBusy('') }
+    } finally { setAddBusy(false) }
   }
 
   async function dismissCandidate(item: Activity) {
@@ -138,6 +149,7 @@ export default function TumblrActivityPage() {
   const incomplete = failedBlogs.length > 0
 
   return <section aria-labelledby="activity-title">
+    {adding && trackingOptions && <AddThreadDialog options={trackingOptions} busy={addBusy} error={addError} postUrl={postUrl(adding) ?? ''} characterId={selectedCharacters[adding.id] ?? ''} source={`From Tumblr activity: ${adding.id.startsWith('post:') ? 'a recent post on ' + blogLabel(adding.blogIdentifier) : (adding.actor === 'anonymous' ? 'a Tumblr member' : blogLabel(adding.actor)) + ' tagged ' + blogLabel(adding.blogIdentifier)}. Check the details, then add it. The premise is yours to write; the post is shown below the field for reference.`} onSubmit={event => void addMention(event)} onClose={() => setAdding(null)} />}
     <h1 className="page-heading" id="activity-title">Tumblr activity</h1>
     <p className="page-description">New asks and tagged starters from the blogs assigned to your characters, in one small review queue.</p>
     {error && <p role="alert">{error}</p>}{message && <p role="status" className="success-pulse">{message}</p>}
@@ -158,11 +170,11 @@ export default function TumblrActivityPage() {
     <section className="tracking-card">
       <h3>Did you mean to track these?</h3>
       <p className="field-help">Recent posts from your connected blogs that are not in RP Thread Buddy yet. Save the ones that are actually scenes; ignore the rest.</p>
-      {threadCandidates.length ? threadCandidates.map(item => <article className="activity-row activity-mention" key={item.id}><div><strong>{blogLabel(item.blogIdentifier)}</strong><p>Recent post from your blog</p>{item.preview && <p className="activity-preview">{item.preview}</p>}{postUrl(item) && <p><a href={postUrl(item) ?? ''} target="_blank" rel="noopener noreferrer">Open Tumblr post</a></p>}</div><div className="activity-actions"><label>Track for<select value={selectedCharacters[item.id] ?? ''} onChange={event => setSelectedCharacters(current => ({ ...current, [item.id]: event.target.value }))}><option value="">Choose a character</option>{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select></label><button disabled={busy === item.id || !postUrl(item)} onClick={() => void addMention(item)}>{busy === item.id ? 'Adding...' : 'Add to tracker'}</button><button className="secondary-button" disabled={busy === item.id} onClick={() => void dismissCandidate(item)}>{busy === item.id ? 'Saving...' : 'Dismiss this'}</button>{!postUrl(item) && <span className="field-help">No post link to track.</span>}{itemErrors[item.id] && <span role="alert">{itemErrors[item.id]}{needsBlog[item.id] && <> <a href="#connections">Assign a blog</a></>}</span>}</div></article>) : <p>{incomplete ? 'Posts from the failed blogs are missing.' : 'No untracked recent posts found.'}</p>}
+      {threadCandidates.length ? threadCandidates.map(item => <article className="activity-row activity-mention" key={item.id}><div><strong>{blogLabel(item.blogIdentifier)}</strong><p>Recent post from your blog</p>{item.preview && <p className="activity-preview">{item.preview}</p>}{postUrl(item) && <p><a href={postUrl(item) ?? ''} target="_blank" rel="noopener noreferrer">Open Tumblr post</a></p>}</div><div className="activity-actions"><label>Track for<select value={selectedCharacters[item.id] ?? ''} onChange={event => setSelectedCharacters(current => ({ ...current, [item.id]: event.target.value }))}><option value="">Choose a character</option>{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select></label><button disabled={busy === item.id || !postUrl(item)} onClick={() => openAdd(item)}>Add to tracker</button><button className="secondary-button" disabled={busy === item.id} onClick={() => void dismissCandidate(item)}>{busy === item.id ? 'Saving...' : 'Dismiss this'}</button>{!postUrl(item) && <span className="field-help">No post link to track.</span>}{itemErrors[item.id] && <span role="alert">{itemErrors[item.id]}{needsBlog[item.id] && <> <a href="#connections">Assign a blog</a></>}</span>}</div></article>) : <p>{incomplete ? 'Posts from the failed blogs are missing.' : 'No untracked recent posts found.'}</p>}
     </section>
     <section className="tracking-card">
       <h3>Tagged starters</h3>
-      {mentions.length ? mentions.map(item => <article className="activity-row activity-mention" key={item.id}><div><strong>{item.actor === 'anonymous' ? 'Tumblr member' : blogLabel(item.actor)}</strong><p>tagged {blogLabel(item.blogIdentifier)} &middot; {new Date(item.timestamp).toLocaleString()}</p>{item.preview && <p className="activity-preview">{item.preview}</p>}{postUrl(item) && <p><a href={postUrl(item) ?? ''} target="_blank" rel="noopener noreferrer">Open Tumblr post</a></p>}</div><div className="activity-actions"><label>Track for<select value={selectedCharacters[item.id] ?? ''} onChange={event => setSelectedCharacters(current => ({ ...current, [item.id]: event.target.value }))}><option value="">Choose a character</option>{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select></label><button disabled={busy === item.id || !postUrl(item)} onClick={() => void addMention(item)}>{busy === item.id ? 'Adding...' : 'Add to tracker'}</button><button className="secondary-button" disabled={busy === item.id} onClick={() => void dismissCandidate(item)}>{busy === item.id ? 'Saving...' : 'Dismiss this'}</button>{!postUrl(item) && <span className="field-help">No post link to track.</span>}{itemErrors[item.id] && <span role="alert">{itemErrors[item.id]}{needsBlog[item.id] && <> <a href="#connections">Assign a blog</a></>}</span>}</div></article>) : <p>{incomplete ? 'Tagged posts from the failed blogs are missing.' : 'No new tagged posts found for your connected blogs.'}</p>}
+      {mentions.length ? mentions.map(item => <article className="activity-row activity-mention" key={item.id}><div><strong>{item.actor === 'anonymous' ? 'Tumblr member' : blogLabel(item.actor)}</strong><p>tagged {blogLabel(item.blogIdentifier)} &middot; {new Date(item.timestamp).toLocaleString()}</p>{item.preview && <p className="activity-preview">{item.preview}</p>}{postUrl(item) && <p><a href={postUrl(item) ?? ''} target="_blank" rel="noopener noreferrer">Open Tumblr post</a></p>}</div><div className="activity-actions"><label>Track for<select value={selectedCharacters[item.id] ?? ''} onChange={event => setSelectedCharacters(current => ({ ...current, [item.id]: event.target.value }))}><option value="">Choose a character</option>{characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select></label><button disabled={busy === item.id || !postUrl(item)} onClick={() => openAdd(item)}>Add to tracker</button><button className="secondary-button" disabled={busy === item.id} onClick={() => void dismissCandidate(item)}>{busy === item.id ? 'Saving...' : 'Dismiss this'}</button>{!postUrl(item) && <span className="field-help">No post link to track.</span>}{itemErrors[item.id] && <span role="alert">{itemErrors[item.id]}{needsBlog[item.id] && <> <a href="#connections">Assign a blog</a></>}</span>}</div></article>) : <p>{incomplete ? 'Tagged posts from the failed blogs are missing.' : 'No new tagged posts found for your connected blogs.'}</p>}
     </section>
     <section className="tracking-card">
       <h3>Asks</h3>

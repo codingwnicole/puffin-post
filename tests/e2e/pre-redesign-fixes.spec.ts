@@ -58,7 +58,7 @@ test('card editor asks before Escape throws away edits, and keeps focus inside',
 test('command menu keeps Tab inside and returns focus on close', async ({ browser }) => {
   const { ctx, page } = await signedIn(browser)
   await page.goto('/#inbox'); await page.reload()
-  const hint = page.locator('.shortcut-hint')
+  const hint = page.locator('.rd-side .rd-search')
   await hint.click()
   const menu = page.getByRole('dialog', { name: 'Command menu' })
   await expect(menu.locator('input')).toBeFocused()
@@ -73,11 +73,11 @@ test('command menu keeps Tab inside and returns focus on close', async ({ browse
 test('the phone quick note is saved to the Parking Lot on Enter', async ({ browser }) => {
   const { ctx, page } = await signedIn(browser, { width: 390, height: 844 })
   await page.goto('/#inbox'); await page.reload()
-  await page.locator('.mobile-more-toggle').click()
-  const note = page.locator('.mobile-more-menu .sheet-note')
+  await page.locator('.rd-more-toggle').click()
+  const note = page.locator('.rd-more-sheet .rd-sheet-note')
   await note.fill('Ask Ash about the heist')
   await note.press('Enter')
-  await expect(page.locator('.sheet-notice')).toHaveText('Saved to your Parking Lot')
+  await expect(page.locator('.rd-sheet-notice')).toHaveText('Saved to your Parking Lot')
   await expect(note).toHaveValue('')
   const drafts = await (await page.request.get('/api/reply-drafts')).json() as { title: string; purpose: string }[]
   expect(drafts.some(draft => draft.title === 'Ask Ash about the heist' && draft.purpose === 'note')).toBe(true)

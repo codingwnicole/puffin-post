@@ -55,13 +55,13 @@ async function assertCardsFit(page: Page) {
   test.expect(overflow).toEqual([])
 }
 
-// The sidebar footer (.nav-note) must not intersect the last visible nav link.
+// The sidebar footer (.rd-foot) must not intersect the last visible nav link.
 async function assertNavFooterClear(page: Page) {
   const overlap = await page.evaluate(() => {
-    const nav = document.querySelector<HTMLElement>('.primary-nav')
-    const note = document.querySelector<HTMLElement>('.nav-note')
+    const nav = document.querySelector<HTMLElement>('.rd-side')
+    const note = document.querySelector<HTMLElement>('.rd-foot')
     if (!nav || !note) return null // guest (no nav) or no footer: nothing to overlap
-    const links = Array.from(nav.querySelectorAll<HTMLElement>(':scope > a')).filter(a => a.offsetParent !== null)
+    const links = Array.from(nav.querySelectorAll<HTMLElement>('.rd-link')).filter(a => a.offsetParent !== null)
     if (!links.length) return null
     const last = links[links.length - 1].getBoundingClientRect()
     const n = note.getBoundingClientRect()
@@ -72,11 +72,11 @@ async function assertNavFooterClear(page: Page) {
   test.expect(overlap).toBeNull()
 }
 
-// The sidebar footer's own buttons must not cover each other (they share the .nav-note box).
+// The sidebar footer's own buttons must not cover each other (search sits above the drawers, sign out in .rd-foot).
 async function assertNavFooterButtonsClear(page: Page) {
   const overlap = await page.evaluate(() => {
-    const hint = document.querySelector<HTMLElement>('.shortcut-hint')
-    const signOut = document.querySelector<HTMLElement>('.sign-out')
+    const hint = document.querySelector<HTMLElement>('.rd-side .rd-search')
+    const signOut = document.querySelector<HTMLElement>('.rd-signout')
     if (!hint || !signOut) return null
     const h = hint.getBoundingClientRect()
     const s = signOut.getBoundingClientRect()
@@ -170,8 +170,8 @@ test('390px bottom nav More button shows no stray chevron', async ({ page }) => 
   await mockApi(page)
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('#inbox')
-  await test.expect(page.locator('.mobile-more')).toBeVisible()
-  await test.expect(page.locator('.mobile-more-toggle')).toBeVisible()
+  await test.expect(page.locator('.rd-tabbar')).toBeVisible()
+  await test.expect(page.locator('.rd-more-toggle')).toBeVisible()
 })
 
 test('character card lifecycle buttons never clip their label', async ({ page }) => {
@@ -188,8 +188,8 @@ test('character card lifecycle buttons never clip their label', async ({ page })
 })
 
 test.describe('expanded More menu stays on top of cards', () => {
-  // Widths from the scaling audit where the bottom "More" menu shows (<=1024px).
-  const WIDTHS = [375, 600, 760, 761, 800, 900, 1024]
+  // Widths where the phone tab bar and its More sheet show (<=760px). From 761px the sidebar lists every page.
+  const WIDTHS = [375, 600, 760]
   for (const width of WIDTHS) {
     test.describe(`more menu on top at ${width}x800`, () => {
       test.use({ viewport: { width, height: 800 } })
@@ -208,10 +208,10 @@ test.describe('expanded More menu stays on top of cards', () => {
         await page.goto('#inbox')
         await page.waitForSelector('article.branch-card', { timeout: 15000 })
         await page.waitForTimeout(400) // let the rise animation settle (transform stacking context)
-        await page.locator('.mobile-more-toggle').click()
+        await page.locator('.rd-more-toggle').click()
         await page.waitForTimeout(150)
         const res = await page.evaluate(() => {
-          const panel = document.querySelector<HTMLElement>('.mobile-more-menu')
+          const panel = document.querySelector<HTMLElement>('.rd-more-sheet')
           if (!panel) return { contains: false, err: 'no panel' }
           const r = panel.getBoundingClientRect()
           const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2)

@@ -59,7 +59,7 @@ test('three participants are actionable independently from inbox and starter det
   await page.evaluate(() => { location.hash = 'starter/s' })
   await expect(page.getByText('Shared scene',{ exact:true })).toBeVisible()
   await expect(page.locator('article.branch-card')).toHaveCount(3)
-  await expect(card(page,'One').locator('.turn-badge')).toHaveText('Archived')
+  await expect(card(page,'One').locator('.turn-badge')).toHaveText('Archived reply')
   await expect(card(page,'Two').locator('.turn-badge')).toHaveText('Your turn')
   await expect(card(page,'Three').locator('.turn-badge')).toHaveText('Your turn')
 })
@@ -166,10 +166,12 @@ test('shows a refresh warning only on the affected branch in inbox and starter d
   })
   const check = async () => {
     await expand(page,'Friend')
-    await expand(page,'Other')
     await expect(card(page,'Friend').getByRole('status')).toHaveText('Refresh needs attention: Tumblr refresh failed (503)')
+    await page.keyboard.press('Escape')
+    await expand(page,'Other')
     await expect(card(page,'Other').getByLabel('Status')).toBeVisible()
     await expect(card(page,'Other').getByRole('status')).toHaveCount(0)
+    await page.keyboard.press('Escape')
   }
   await page.goto('/')
   await check()

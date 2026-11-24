@@ -17,7 +17,7 @@ Status as of 2026-11-21, branch `refactor/pre-redesign-architecture`. The rules 
 | Theme | `lib/theme.ts`, `components/ThemeMenu.tsx` | `data-theme` on `<html>`, light/dark/system, saved in localStorage. |
 | Canvas export | `components/TradingCard.tsx`, `lib/stats-card.ts` | PNG/GIF export of cards and stats images. |
 
-No router, state, styling, or animation library is installed. Dependencies the browser bundle uses: `react`, `react-dom`, `gifenc` (animated card export), `zod` (shared validation).
+No router, state, styling, or animation library is installed. Dependencies the browser bundle uses: `react`, `react-dom`, `gifenc` (animated card export), `zod` (shared validation), and three self-hosted font packages for the redesign (`@fontsource/young-serif`, `@fontsource-variable/figtree`, `@fontsource-variable/newsreader`, all OFL; the CSP only allows fonts from `self`).
 
 ## Audit findings
 

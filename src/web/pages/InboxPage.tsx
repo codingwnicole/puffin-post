@@ -1,4 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react'
+import AddThreadDialog, { starterPayload } from '../components/AddThreadDialog'
 import type { InboxBranch } from '../../db/repositories/branches'
 import { api, peekCache, staleGet, type TrackingOptions } from '../lib/api'
 // ponytail: instant seed only for the unfiltered inbox; filtered views wait for fresh data.
@@ -7,7 +8,6 @@ import SpinWheel from '../components/SpinWheel'
 import BranchRow from '../components/BranchRow'
 import CheckTumblrButton from '../components/CheckTumblrButton'
 import InitialsAvatar from '../components/InitialsAvatar'
-import StarterFields from '../components/StarterFields'
 import FilterBar, { type InboxFilters } from '../components/FilterBar'
 import { useEntered } from '../lib/motion'
 import { openOnboardingTour } from '../components/OnboardingTour'
@@ -19,17 +19,26 @@ function ReplyRun({ branches }: { branches: InboxBranch[] }) {
   const active = branches.filter(branch => branch.status !== 'archived' && !branch.archivedAt && branch.starterArchived !== 1)
   const owed = active.filter(branch => branch.status === 'your_turn').length
   const waiting = active.length - owed
-  const owedPercent = active.length ? Math.round((owed / active.length) * 100) : 0
+  // Ring geometry: r=36 in a 84-unit box; a 4-unit gap separates the two arcs when both exist.
+  const circumference = 2 * Math.PI * 36, total = Math.max(active.length, 1)
+  const gap = owed && waiting ? 4 : 0
+  const owedLength = Math.max(0, circumference * owed / total - gap), waitingLength = Math.max(0, circumference * waiting / total - gap)
   const yours = active.filter(branch => branch.status === 'your_turn').map(branch => ({ id: branch.id, label: branch.title, href: `#starter/${branch.starterId}` }))
   return <section className="reply-run summary-card" aria-label={`${owed} replies owed and ${waiting} waiting on someone else`}>
-    <div className="reply-donut" style={{ '--owed': `${owedPercent}%` } as CSSProperties}><strong>{owed}</strong><span>owed</span></div>
+    <div className="reply-donut"><svg viewBox="0 0 84 84" aria-hidden="true"><circle className="ring-track" cx="42" cy="42" r="36" />{owed > 0 && <circle className="ring-owed" cx="42" cy="42" r="36" style={{ strokeDasharray: `${owedLength} ${circumference}` }} />}{waiting > 0 && <circle className="ring-waiting" cx="42" cy="42" r="36" style={{ strokeDasharray: `${waitingLength} ${circumference}`, strokeDashoffset: -(circumference * owed / total) }} />}</svg><strong>{owed}</strong><span>owed</span></div>
     <div><p className="eyebrow">Reply run</p><strong>{owed ? `${owed} scene${owed === 1 ? '' : 's'} on your desk` : 'Your desk is clear'}</strong><p className="summary-legend"><span className="legend-owed">{owed} your turn</span> <span className="legend-waiting">{waiting} waiting on a partner</span></p>
       <SpinWheel items={yours} empty="Nothing is your turn here right now. Enjoy the quiet."/></div>
   </section>
 }
 
-function QuickAdd({options,busy,onSubmit}:{options:TrackingOptions;busy:boolean;onSubmit:(event:React.FormEvent<HTMLFormElement>)=>void}) {
-  return <aside className="quick-add-panel quick-add-panel-inline" id="quick-add" aria-labelledby="quick-add-title" tabIndex={-1}><div><p className="eyebrow">New scene</p><h3 id="quick-add-title">Add a thread</h3><p>Track Tumblr, Discord, or an entirely manual scene. Add a link when you want Thread Buddy to fill in the details.</p></div><form className="tracking-form" onSubmit={onSubmit}><StarterFields options={options}/><div className="actions"><button disabled={busy}>{busy?'Adding thread...':'Add thread'}</button><a className="button secondary-button" href="#dashboard">Cancel</a></div></form><div className="quick-add-help"><strong>With a post link</strong><span>Thread Buddy reads the participants and opening text. Without one, it simply saves the scene you describe.</span></div></aside>
+// Add a thread opens as a dialog whenever the address is #quick-add (the header link, onboarding and the command menu
+// all point there). The page owns this one in-page anchor; App.tsx already routes it to the Dashboard.
+function QuickAdd({options,busy,error,onSubmit}:{options:TrackingOptions;busy:boolean;error:string;onSubmit:(event:React.FormEvent<HTMLFormElement>)=>void}) {
+  const readOpen=()=>window.location.hash==='#quick-add'
+  const [open,setOpen]=useState(readOpen)
+  useEffect(()=>{const sync=()=>setOpen(readOpen());window.addEventListener('hashchange',sync);return()=>window.removeEventListener('hashchange',sync)},[])
+  if(!open)return null
+  return <AddThreadDialog id="quick-add" options={options} busy={busy} error={error} onSubmit={onSubmit} onClose={()=>{setOpen(false);window.history.replaceState(null,'','#dashboard')}}/>
 }
 
 function GuestSignIn({busy,setBusy,sentLink,setSentLink,sentEmail,setSentEmail}:{busy:boolean;setBusy:(value:boolean)=>void;sentLink:boolean;setSentLink:(value:boolean)=>void;sentEmail:string;setSentEmail:(value:string)=>void}) {
@@ -61,7 +70,7 @@ export default function InboxPage() {
   const viewQs=(()=>{const view=new URLSearchParams(query);view.delete('limit');view.delete('offset');return view.toString()})()
   useEffect(()=>{const raw=window.location.hash.slice(1).split('?')[0];if(!['dashboard','inbox','/inbox'].includes(raw))return;const base='#dashboard';window.history.replaceState(null,'',viewQs?`${base}?${viewQs}`:base)},[viewQs])
   async function reload(){setInbox(await api(`/inbox?${query}`));setPageOffset(0)}
-  async function createStarter(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setError('');setBusy(true);const payload:Record<string,FormDataEntryValue|null>=Object.fromEntries(new FormData(event.currentTarget));payload.groupId=payload.groupId||null;payload.partnerBlogIdentifier=payload.partnerBlogIdentifier||null;try{const starter=await api<{id:string}>('/starters','POST',payload);window.location.hash=`starter/${starter.id}`}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
+  async function createStarter(event:React.FormEvent<HTMLFormElement>){event.preventDefault();setError('');setBusy(true);const payload=starterPayload(event.currentTarget);try{const starter=await api<{id:string}>('/starters','POST',payload);window.location.hash=`starter/${starter.id}`}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}
   useEffect(()=>{let active=true;setError('');
     // Stale-while-revalidate: keep the current inbox while the fresh fetch is in flight;
     // a failed reload keeps the old content and only surfaces the error (no blank page).
@@ -86,8 +95,12 @@ export default function InboxPage() {
   const hasBranches = inbox.branches.length > 0
   const archivedView = filters.archiveView === 'archived'
   // A filtered view with no matches must keep its filters on screen (or there is no way to clear them).
+  const owedBranches = inbox.branches.filter(branch => branch.status === 'your_turn' && !branch.archivedAt && branch.starterArchived !== 1)
+  const oldestWait = owedBranches.reduce((oldest, branch) => branch.lastActivityAt ? Math.max(oldest, Date.now() - Date.parse(branch.lastActivityAt)) : oldest, 0)
+  const oldestDays = Math.floor(oldestWait / 86_400_000)
+  const owedSentence = owedBranches.length ? `You owe ${owedBranches.length} ${owedBranches.length === 1 ? 'reply' : 'replies'}.${oldestDays >= 1 ? ` The oldest has waited ${oldestDays} ${oldestDays === 1 ? 'day' : 'days'}.` : ''}` : 'Nothing is waiting on you right now.'
   const filtered = Boolean(filters.status||filters.characterId||filters.tagId||filters.q||filters.oldestFirst||filters.archiveView!=='active'||focusMode)
-  return <section aria-labelledby="inbox-title"><div className="inbox-hero"><div className="inbox-hero-copy"><p className="eyebrow">{archivedView?'Your saved scenes':'Reply desk'}</p><h1 id="inbox-title" className="page-heading">{archivedView?'Archived threads':filters.archiveView==='all'?'All tracked threads':'Your turn'}</h1><p className="page-description">{archivedView?'Archived threads stay saved here until you choose to restore them.':filters.archiveView==='all'?'Browse active and archived threads together.':'The scenes waiting on you, sorted by RP and character.'}</p></div>{loaded&&hasBranches&&filters.archiveView==='active'&&<ReplyRun branches={inbox.branches}/>}<a className="quick-add-link" href="#quick-add">+ Add a thread</a></div>
+  return <section aria-labelledby="inbox-title" className="rd-dashboard"><div className="inbox-hero"><div className="inbox-hero-copy"><p className="eyebrow">{archivedView?'Your saved scenes':'Reply desk'}</p><h1 id="inbox-title" className="page-heading">{archivedView?'Archived threads':filters.archiveView==='all'?'All tracked threads':'Your turn'}</h1><p className="page-description">{archivedView?'Archived threads stay saved here until you choose to restore them.':filters.archiveView==='all'?'Browse active and archived threads together.':(loaded && hasBranches ? <>{owedSentence} <span className="page-description-rest">Sorted by RP and character.</span></> : 'The scenes waiting on you, sorted by RP and character.')}</p></div>{loaded&&hasBranches&&filters.archiveView==='active'&&<ReplyRun branches={inbox.branches}/>}<a className="quick-add-link" href="#quick-add">+ Add a thread</a></div>
     {error&&<p role="alert">{error}</p>}{!loaded&&<div className="skeletons" aria-hidden="true"><div className="skeleton-row"><div className="skeleton-line skeleton-line-avatar" /><div className="skeleton-lines"><div className="skeleton-line" /><div className="skeleton-line skeleton-line-short" /></div></div><div className="skeleton-row"><div className="skeleton-line skeleton-line-avatar" /><div className="skeleton-lines"><div className="skeleton-line" /><div className="skeleton-line skeleton-line-short" /></div></div><div className="skeleton-row"><div className="skeleton-line skeleton-line-avatar" /><div className="skeleton-lines"><div className="skeleton-line" /><div className="skeleton-line skeleton-line-short" /></div></div></div>}
     {loaded&&!hasBranches&&!filtered&&<div className="empty-state onboarding"><p className="eyebrow">Start your first thread</p><h3>Build a space that keeps up with your stories.</h3><p>Add a character, then save a scene. A link is useful, never required.</p><ol><li><a href="#characters">Add a character</a></li><li>Return here to add a scene</li></ol><button type="button" className="secondary-button" onClick={openOnboardingTour}>Take the optional walkthrough</button></div>}
     {loaded&&(hasBranches||filtered)&&<div className="inbox-summary"><div><button className="do-next" type="button" aria-pressed={focusMode} onClick={()=>setFocusMode(value=>!value)}>{focusMode?'Show all active':'Oldest owed first'}</button><span className="visually-hidden" aria-live="polite">{focusMode?'Showing your oldest owed replies first.':''}</span></div><div className="reminder-summary">{inbox.overdueDraftCount>0&&<a href="#parking-lot">{inbox.overdueDraftCount} overdue {inbox.overdueDraftCount===1?'note':'notes'}</a>}{inbox.dueSoonCount>0&&<span>{inbox.dueSoonCount} check-ins this week</span>}</div><CheckTumblrButton onDone={reload}/><a className="text-action" href="#parking-lot">Parking Lot</a></div>}{loaded&&(hasBranches||filtered)&&<FilterBar filters={filters} options={options} tags={tags} onChange={setFilters}/>}
@@ -96,7 +109,7 @@ export default function InboxPage() {
         {group==='Unsorted'&&!hasMultipleRps&&unsortedBranches.some(b=>b.rpUnsortedReason==='no_rps')&&<p className="rp-unsorted-reason"><a href="#characters">Add them to an RP</a> to sort these scenes.</p>}
         <div className="character-stacks">{Object.entries(branches.reduce<GroupedBranches>((all,branch)=>{(all[branch.characterName]??=[]).push(branch);return all},{})).map(([character,items],si)=>{const lead=items[0],owed=items.filter(item=>item.status==='your_turn'&&!item.archivedAt&&item.starterArchived !== 1).length;const lane=filters.archiveView==='archived'?'archived':filters.archiveView==='all'?'tracked':'active';return <article key={character} className="character-stack" style={{'--i':gi*4+si} as CSSProperties}><header className="character-deck-header"><InitialsAvatar name={character} imageUrl={lead.iconObjectKey?`/api/characters/${lead.characterId}/icon`:null}/><span><strong>{character}</strong><small>{items.length} {lane} {items.length===1?'scene':'scenes'}{owed?` · ${owed} ${owed === 1 ? 'reply owed' : 'replies owed'}`:''}</small></span></header><div className="branch-list">{items.map(branch=><div key={`${branch.id}:${branch.notes}:${branch.partnerId}`} className={branch.id===oldestOwedId?'oldest-owed':''}><BranchRow branch={branch} options={options} onChange={reload}/></div>)}</div>
           {group==='Unsorted'&&lead.rpUnsortedReason==='multiple_rps'&&<div className="rp-assign-row"><label className="eyebrow">Assign RP</label><select aria-label={`Assign RP for ${character}`} defaultValue="" onChange={e=>{if(e.target.value)assignGroup(lead.starterId,e.target.value);e.target.value=""}}><option value="" disabled>Pick an RP section…</option>{(options.groups??[]).map(g=><option key={g.id} value={g.id}>{g.name}</option>)}</select></div>}
-        </article>})}</div></section>)}</div>}{/* The form exists on an empty inbox too: the hero link and onboarding point here. */}<QuickAdd options={options} busy={busy} onSubmit={createStarter}/></div>
+        </article>})}</div></section>)}</div>}{/* The form exists on an empty inbox too: the hero link and onboarding point here. */}<QuickAdd options={options} busy={busy} error={error} onSubmit={createStarter}/></div>
       {inbox.hasMore&&<div className="inbox-load-more"><button type="button" disabled={loadMoreBusy} onClick={loadMore}>{loadMoreBusy?'Loading…':'Load more scenes'}</button></div>}</>}
   </section>
 }

@@ -6,11 +6,11 @@
 // same modifications. chat, palette and cards are by wishforge.games from "Communication Glyphs
 // Icons" and "Gui Glyphs Icons" (https://www.svgrepo.com/collection/communication-glyphs-icons/,
 // https://www.svgrepo.com/collection/gui-glyphs-icons/), CC BY 4.0, same modifications. All are
-// credited in-app in the nav footer. bot has no match in any reviewed collection and stays a stroke.
+// credited in-app in the nav footer. bot has no match in any reviewed collection and stays a stroke, as does the chevron.
 // Icons an admin can pick for a roadmap item; keep in sync with ROADMAP_ICONS in src/routes/roadmap.ts.
 export const ROADMAP_ICONS = ['sparkle', 'chat', 'bot', 'palette', 'cards', 'megaphone', 'star'] as const
 export type RoadmapIcon = (typeof ROADMAP_ICONS)[number]
-type IconName = 'inbox' | 'parking' | 'characters' | 'planner' | 'connections' | 'settings' | 'tools' | 'activity' | 'more' | 'search' | 'pin' | 'roadmap' | 'support' | 'your-turn' | 'their-turn' | RoadmapIcon
+type IconName = 'inbox' | 'parking' | 'characters' | 'planner' | 'connections' | 'settings' | 'tools' | 'activity' | 'more' | 'search' | 'pin' | 'roadmap' | 'support' | 'your-turn' | 'their-turn' | 'chevron' | RoadmapIcon
 
 const glyphs: Partial<Record<IconName, [viewBox: string, d: string]>> = {
   inbox: ['27.6 56.8 94.9 94.9', 'M118.923 96.69L113.866 103.26L74.886 74.07L36.364 103.592L31.078 97.008L74.901 61.521L92.406 75.505L93.011 65.326L106.789 65.858L106.462 86.735L118.923 96.69ZM44.043 104.437L75.232 80.771L106.967 104.009L106.154 136.558L114.955 136.371L114.553 147.01H36.642V138.032L44.56 137.864L44.043 104.437ZM52.946 123.275L74.306 122.771L74.317 111.967L52.538 111.798L52.946 123.275ZM97.757 112.149L83.163 112.036L83.791 137.032L97.167 136.748L97.757 112.149Z'], // 441652 house
@@ -38,6 +38,7 @@ const glyphs: Partial<Record<IconName, [viewBox: string, d: string]>> = {
 
 const paths: Partial<Record<IconName, string>> = {
   bot: 'M5 9h14v10H5zM12 5v4M12 3h.01M9 13h.01M15 13h.01M9.5 16h5M3 13v2M21 13v2',
+  chevron: 'M6 9l6 6 6-6', // drawer disclosure arrow; plain stroke like bot
 }
 
 export default function Icon({ name }: { name: IconName }) {

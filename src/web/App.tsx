@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import AppShell, { type AppPage } from './components/AppShell'
 import InboxPage from './pages/InboxPage'
@@ -56,14 +56,24 @@ function routeFor(hash: string): { page: AppPage; render: () => ReactNode } {
 
 export default function App() {
   const [route, setRoute] = useState(() => window.location.hash.slice(1))
+  const lastRoute = useRef(route)
   useEffect(() => {
     const navigate = () => {
       const next = window.location.hash.slice(1)
       // View Transitions API: supported browsers crossfade app page swaps. Legal routes are full-page
       // documents, not app navigation, so skip the crossfade (it would keep the old page visible over
       // the legal doc).
+      const previous = lastRoute.current
+      lastRoute.current = next
       if (legalRouteFor(next)) { setRoute(next); return }
-      document.startViewTransition ? document.startViewTransition(() => flushSync(() => setRoute(next))) : setRoute(next)
+      // #quick-add only opens the Add a thread dialog over the Dashboard; the page itself doesn't change.
+      const inPage = (route: string) => route === 'quick-add'
+      if (inPage(next) || inPage(previous)) { setRoute(next); return }
+      if (!document.startViewTransition) { setRoute(next); return }
+      // A newer navigation skips the running transition; that rejection is expected, so it must not reach the
+      // unhandledrejection error beacon in main.tsx.
+      const transition = document.startViewTransition(() => flushSync(() => setRoute(next)))
+      transition.ready.catch(() => undefined); transition.finished.catch(() => undefined); transition.updateCallbackDone.catch(() => undefined)
     }
     window.addEventListener('hashchange', navigate)
     return () => window.removeEventListener('hashchange', navigate)
