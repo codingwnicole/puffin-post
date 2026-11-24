@@ -33,7 +33,7 @@ test('scene details open in a drawer that closes on Escape, asks before deleting
   await trigger.click()
   const drawer = page.getByRole('dialog', { name: 'Harbor at dusk' })
   await expect(drawer).toBeVisible()
-  await expect(drawer.getByLabel('Stable premise')).toHaveValue('Rain on the docks, a lamp left burning.')
+  await expect(drawer.getByLabel('Scene premise')).toHaveValue('Rain on the docks, a lamp left burning.')
   await drawer.evaluate(el => Promise.all(el.getAnimations().map(a => a.finished)))
   await page.screenshot({ path: 'test-results/redesign-drawer-1440.png' })
 

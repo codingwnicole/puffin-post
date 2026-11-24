@@ -499,3 +499,65 @@ exact command and environment, and whether it deploys from `main` after a merged
 
 **Checks:** unit 351/351, build OK, e2e 121/121.
 **Phase 5 still open:** writing goals (need API and schema work, which needs the owner's approval), and music on phones.
+
+### Impeccable init, critique, audit and polish (2026-11-24)
+- **PRODUCT.md** (new, repo root) records users, purpose, positioning, constraints, brand, principles and accessibility. The owner confirmed:
+  - the audience is roleplay writers broadly, with Tumblr as the first integration;
+  - the four positioning points;
+  - WCAG 2.2 AA.
+- **Whole-app critique: 26/40.** Snapshot in `.impeccable/critique/…__src-web.md`, left open because P2s remain.
+- **Audit: 15/20.** Report in `.impeccable/audit/`.
+- **Polish (fixed):**
+  - The command menu (Ctrl K) is styled: its CSS targeted old class names. The input is now a labelled combobox with `aria-activedescendant`.
+  - Phone tab bar: the legacy `styles.css` `a[href="#dashboard"]` rule broke the Dashboard tab. Overridden with `.rd-tabbar a.rd-tab{display:grid}`.
+  - Thread page:
+    - "Scene premise" everywhere; it was called "Scene summary" on the page and "Stable premise" in the drawer.
+    - "Add partner" in place of "Add branch".
+    - The character is labelled.
+    - Delete thread is a quiet danger link next to Archive.
+    - "Writing partners" is an h2.
+  - Heading order: Settings, Parking Lot and Characters section headings are h2 now (they jumped from h1 to h3).
+  - Removed kicker labels above headings (the craft-floor ban) on Tools, Sprints, Parking Lot, Characters and the landing page. The Parking card type now sits under the title.
+  - Readable labels: 12px minimum, using `--muted` for AA on dark tinted headers. The Queued chip went from 4.4:1 to `--muted`.
+  - One filled button per region: Parking cards, Profile, and Characters ("Add an RP" is secondary). "Upload icon" now matches the secondary buttons.
+  - Desk rail modules no longer re-run the page entrance animation.
+  - The landing preview card has a full border instead of the legacy side stripe.
+  - The RP stats PNG export uses the paper palette instead of the old teal one.
+  - Avatars lazy-load.
+  - Settings: legend spacing, the "Type DELETE to confirm" label no longer wraps, and the page description has a 68ch measure.
+- **Tests updated (labels and heading levels only):**
+  - multi-reply-starter ("Add partner", "Scene premise");
+  - data-integrity and redesign-dashboard ("Scene premise");
+  - visual-system (the Settings heading may be h2).
+- **Still open:**
+  - landing copy and proof (needs the owner, because it states product claims);
+  - phone Dashboard toolbar and compact character cards (`adapt`);
+  - route-level code splitting (`optimize`);
+  - whether the desk rail should show on every page (owner decision);
+  - command menu search across threads and characters (`harden`).
+
+**Checks:** unit 351/351, build OK, e2e 121/121. The visual-system "dark depth" check listed as a known failure in AGENTS.md now passes.
+
+### Signed-out landing rewrite: "The thread" (2026-11-24)
+The owner asked for the landing to be rebuilt around the four differentiators.
+- **Owner's answers:** new writers first, with sign-in visible at the top on phones; a new headline; words only, no interface previews.
+- **Structure:** three structures were dealt (Impeccable concept-seed `seed:f9388522627b1067`). The owner first chose "The desk list", then switched to "The thread".
+- **Direction contract:** `.impeccable/surfaces/src-web-pages-inboxpage-tsx.md`.
+- **Markup:** the guest branch of `InboxPage.tsx` (`thread-landing`, `GUEST_THREAD`).
+  - The headline is "Know whose turn it is, on every thread."
+  - The page is an RP thread. Four "You" worries alternate with four "Thread Buddy" answers, one per differentiator.
+  - The thread ends with a "Your turn: sign in or start free" post that focuses the email field.
+  - The sign-in slip ("Your turn: / sign in or start free") is pinned beside the headline at 761px and wider, and sits directly under it on phones.
+  - The help line, legal links and roadmap link moved into one foot line.
+  - The magic-link form, password option, terms line and check-your-email state are unchanged.
+- **Styles:** the "signed-out landing: the thread" block at the end of `redesign.css`.
+  - The guest background sheet is now aligned.
+  - On phones the legacy tab-bar bottom padding (styles.css:423, which uses `!important`) is overridden for the signed-out page only.
+- **Tests:**
+  - account-and-inbox-url: new headline.
+  - check-email: the original layout assertion is restored (beside the copy above 760px, stacked at or below), plus a new check that the slip starts within the first 900px.
+- **Finish review:** a fresh agent following the degraded finish-reviewer guide; the shipped reviewer agent isn't installed here. The first review returned "fix" with 6 items; three verdict passes followed, and the final disposition was "ship" for all scored items.
+- **Not done:**
+  - DESIGN.md: this is an extension of the existing world, so none was written. Run `/impeccable document` to record the system.
+  - The dark-mode lamp glow stays faint by design.
+- **Checks:** unit 351/351, build OK, e2e 121/121.

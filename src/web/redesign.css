@@ -421,7 +421,7 @@ h1,h2,.page-heading{font-family:var(--f-display);font-weight:400;letter-spacing:
 .rd-characters .character-rp-heading > div:first-child{display:grid;gap:4px;padding:7px 14px 6px;margin-bottom:-1px;border-radius:10px 10px 0 0;background:var(--starter-t);box-shadow:inset 0 -1px 0 var(--border)}
 .rd-characters .character-rp-section:nth-of-type(3n) .character-rp-heading > div:first-child{background:var(--wait-t)}
 .rd-characters .character-rp-section:nth-of-type(3n+1) .character-rp-heading > div:first-child{background:var(--peach-t)}
-.rd-characters .character-rp-heading h3{margin:0;font:400 19px/1.2 var(--f-display);color:var(--text)}
+.rd-characters .character-rp-heading :is(h2,h3){margin:0;font:400 19px/1.2 var(--f-display);color:var(--text)}
 .rd-characters .character-rp-heading .eyebrow{margin:0;font:600 10px/1.3 var(--f-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--subtle)}
 .rd-characters .character-rp-actions{display:flex;align-items:center;gap:10px;padding-bottom:6px;color:var(--muted);font-size:13px}
 .rd-characters .character-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:16px;align-items:start}
@@ -794,3 +794,106 @@ h1,h2,.page-heading{font-family:var(--f-display);font-weight:400;letter-spacing:
 }
 .rd-desk[data-open="false"]{padding-inline:10px}
 .rd-desk-mini{white-space:nowrap;font-size:12.5px}
+
+/* ======================= whole-app polish (Impeccable critique + audit, 2026-11-24) ======================= */
+/* command menu (Ctrl K): its legacy styles targeted class names the component no longer uses */
+.rd-shell dialog.command-overlay{place-items:start center;padding:12vh 12px 12px;background:rgb(28 26 23/.38)}
+.rd-shell .command-overlay .command-card{display:grid;grid-template-rows:auto minmax(0,1fr);width:min(560px,100%);max-height:min(70dvh,560px);padding:0;border:0;border-radius:var(--r-sheet);background:var(--surface);color:var(--text);box-shadow:var(--e3);overflow:hidden}
+.rd-shell dialog.command-overlay .command-input{width:100%;min-height:52px;padding:14px 18px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:none;color:var(--text);font:400 16px/1.4 var(--f-ui)}
+.rd-shell dialog.command-overlay .command-input:focus-visible{outline:none;border-color:var(--border);box-shadow:inset 0 -2px 0 var(--focus)}
+.command-list{margin:0;padding:8px;list-style:none;overflow-y:auto}
+.command-item{display:flex;align-items:center;min-height:44px;padding:10px 12px;border-radius:var(--r-ctl);color:var(--text);font:500 15px/1.3 var(--f-ui);cursor:pointer}
+.command-item-active{background:var(--highlight)}
+.command-empty{padding:14px 12px;color:var(--muted);font-size:14px}
+/* phone tab bar: a legacy styles.css rule (a[href="#dashboard"]) knocked the Dashboard tab off the grid */
+@media (max-width:760px){.rd-tabbar a.rd-tab{display:grid}}
+/* readable small labels: 12px minimum, muted (not subtle) so they pass AA on tinted headers in dark mode */
+.rd-characters .character-rp-heading .eyebrow,.rd-characters .character-card-top .eyebrow,.rd-characters .character-rps strong,.rd-profile-hero .profile-sections strong,.rd-profile-content .profile-section-head .eyebrow,.rd-profile-counts span,.rd-profile-details dt,.rd-dialog-heading .eyebrow{font-size:12px;letter-spacing:.05em;color:var(--muted)}
+.rd-editor-panel .card-theme-picker small{font-size:12px;color:var(--muted)}
+.rd-shell .summary-card .plotting-donut span{font-size:12px}
+/* queued chip: --dorm on its tint was 4.4:1 */
+.turn-badge.turn-queued{color:var(--muted)}
+/* the desk rail's modules sit in the shell, not the page: no entrance animation re-running on every route */
+.rd-desk section[aria-labelledby]{animation:none}
+/* landing preview card: a full tint instead of the legacy one-sided stripe */
+.rd-shell .guest-preview-card{border:1px solid var(--border);border-left-width:1px;background:var(--surface)}
+/* thread page */
+.rd-shell main .starter-character{margin:0 auto 0 0;color:var(--muted);font-size:14px}
+.rd-shell main .starter-character strong{color:var(--text)}
+.rd-shell main .starter-actions .danger-button{background:none;color:var(--danger);text-decoration:underline;text-underline-offset:3px}
+.rd-shell main .starter-actions .danger-button:hover:not(:disabled){background:var(--danger-t);color:var(--danger)}
+.rd-shell main .starter-premise-label{display:block;margin:0 0 8px;color:var(--text);font-weight:600;font-size:14px}
+.rd-shell main .starter-partners-heading,.rd-shell main .parking-lane h2{margin:24px 0 12px;font:400 20px/1.25 var(--f-display);color:var(--text)}
+.rd-shell main .theme-menu>legend{margin:0 0 12px;color:var(--muted);font-size:14px}
+.rd-shell main p.page-description{max-width:68ch}
+.rd-shell main .draft-kind{margin:-2px 0 8px}
+/* "Upload icon" is a <label> wrapping a file input: make it read as the same secondary button as its neighbours */
+.rd-characters .character-card .icon-picker{display:inline-flex;align-items:center;justify-content:center;min-height:40px;margin:0;padding:8px 14px;border:1px solid var(--border);border-radius:var(--r-ctl);background:var(--surface);color:var(--text);font:600 14px/1.2 var(--f-ui);box-shadow:none;cursor:pointer;vertical-align:middle}
+.rd-characters .character-card .icon-picker:hover{background:var(--surface-muted)}
+.rd-characters .character-card .icon-picker:focus-within{outline:2px solid var(--focus);outline-offset:2px}
+
+/* ======================= signed-out landing: the thread (surface brief: .impeccable/surfaces/src-web-pages-inboxpage-tsx.md) =======================
+   An RP thread between a writer and the app; the "Your turn" slip is the sign-in form, pinned beside the headline
+   (directly under it on phones). Overrides the legacy two-column guest layout in styles.css. */
+.rd-shell.rd-guest .rd-sheet-wrap{max-width:1200px;margin:0 auto}
+.rd-shell .thread-landing,.rd-shell .thread-landing.is-email-confirmation{display:grid;grid-template-columns:minmax(0,1fr);gap:24px;max-width:1100px;min-height:0;margin:0 auto;padding:clamp(8px,2vw,24px) 0 clamp(24px,4vw,40px);background:none}
+.rd-shell .thread-landing .guest-copy{max-width:none;margin:0}
+.rd-shell .thread-landing .guest-copy h1{max-width:16ch;margin:0;font:400 clamp(40px,5.4vw,62px)/1.04 var(--f-display);letter-spacing:-.02em;color:var(--text);text-wrap:balance}
+.rd-shell .thread-landing .guest-lede{max-width:none;margin:14px 0 0;color:var(--muted);font-size:18px;line-height:1.55}
+/* turn chips: the product's own turn colours */
+.thread-who{display:inline-flex;align-items:center;min-height:22px;padding:1px 8px;border-radius:var(--r-chip);font:600 12px/1.4 var(--f-ui)}
+.thread-who.is-you{background:var(--turn);color:var(--surface)}
+.thread-who.is-app{box-shadow:inset 0 0 0 1px var(--wait);color:var(--wait)}
+/* the thread */
+.guest-thread{display:grid;gap:12px;margin:0;padding:0;list-style:none}
+.thread-post{display:grid;gap:6px;justify-items:start;max-width:620px;padding:16px 20px;border-radius:var(--r-sheet);background:var(--surface);box-shadow:var(--e1)}
+.thread-post.is-you{margin-right:clamp(24px,8vw,96px);background:var(--surface-muted);box-shadow:inset 0 0 0 1px var(--border)}
+.thread-post.is-app{margin-left:clamp(24px,8vw,96px)}
+.thread-post p{margin:0;font:400 18px/1.5 var(--f-read);color:var(--text)}
+.thread-post strong{font-weight:600}
+.thread-post.is-app{box-shadow:var(--e2)}
+/* the one authored moment: the thread arrives post by post, once */
+@media (prefers-reduced-motion:no-preference){.thread-post{animation:thread-in var(--motion-slow) var(--ease-out) both;animation-delay:calc(120ms + var(--i,0) * 80ms)}}
+@keyframes thread-in{from{transform:translateY(10px)}}
+/* the sign-in slip */
+.rd-shell .thread-landing .guest-card{display:grid;gap:4px;align-content:start;margin:0;padding:22px 24px;border:0;border-radius:var(--r-sheet);background:var(--surface);box-shadow:var(--e2)}
+.rd-shell .thread-landing .guest-card>.thread-who{justify-self:start}
+.rd-shell .thread-landing .guest-card h2{display:block;margin:0;font:400 26px/1.2 var(--f-display);color:var(--text)}
+.rd-shell .thread-landing .thread-slip-note{margin:0 0 10px;color:var(--muted);font-size:14.5px}
+.rd-shell .thread-landing .guest-card .tracking-form{margin:0}
+.rd-shell .thread-landing .guest-card .tracking-form button{width:100%;min-height:46px}
+.rd-shell .thread-landing .guest-card .password-option{margin:6px 0 0;padding-top:0;border-top:0}
+.rd-shell .thread-landing .password-option>summary{display:inline-flex;align-items:center;gap:10px;min-height:44px;list-style:none;cursor:pointer}
+.rd-shell .thread-landing .password-option>summary::-webkit-details-marker{display:none}
+.rd-shell .thread-landing .guest-card :is(.guest-terms,.guest-legal,.field-help){margin:6px 0 0;text-align:left;font-size:13px;color:var(--muted)}
+.rd-shell .thread-landing .guest-card .email-confirmation{display:grid;gap:8px}
+.rd-shell .thread-landing .email-confirmation h2{margin:0;font:400 26px/1.2 var(--f-display)}
+.rd-shell .thread-landing .thread-foot{margin:4px 0 0;color:var(--muted);font-size:13.5px;line-height:1.6}
+.rd-shell .thread-landing .thread-foot-links{white-space:nowrap}
+@media (min-width:761px){
+  .rd-shell .thread-landing,.rd-shell .thread-landing.is-email-confirmation{grid-template-columns:minmax(0,1fr) minmax(280px,360px);grid-template-areas:"copy slip" "thread slip" "foot slip";column-gap:clamp(28px,4vw,56px);row-gap:24px;align-items:start}
+  .rd-shell .thread-landing .guest-copy{grid-area:copy}
+  .rd-shell .thread-landing .guest-card{grid-area:slip;position:sticky;top:24px}
+  .rd-shell .thread-landing .guest-thread{grid-area:thread}
+  .rd-shell .thread-landing .thread-foot{grid-area:foot}
+}
+@media (max-width:600px){
+  .thread-post{padding:14px 16px}
+  .thread-post.is-app{margin-left:20px}
+  .thread-post p{font-size:17px}
+  .rd-shell .thread-landing .guest-lede{font-size:16.5px}
+}
+/* finish review fixes */
+.rd-shell .thread-landing .nowrap{white-space:nowrap}
+.rd-shell .thread-landing .thread-slip-turn{display:block;color:var(--turn)}
+.thread-post.is-last{background:var(--turn-t);box-shadow:var(--e1)}
+.thread-turn{padding:0;border:0;background:none;color:var(--turn);font:600 18px/1.5 var(--f-read);text-decoration:underline;text-underline-offset:4px;cursor:pointer;min-height:44px}
+.thread-turn:hover{color:var(--text)}
+@media (min-width:761px) and (max-width:1000px){
+  .rd-shell .thread-landing,.rd-shell .thread-landing.is-email-confirmation{grid-template-columns:minmax(0,1fr) minmax(260px,300px)}
+  .thread-post.is-app{margin-left:20px}
+  .thread-post.is-you{margin-right:20px}
+}
+.rd-shell .thread-landing,.rd-shell .thread-landing.is-email-confirmation{padding-bottom:0}
+/* !important only to beat the legacy phone rule (styles.css:423) that reserves tab-bar space; signed-out visitors have no tab bar */
+.rd-shell.rd-guest main#main-content:has(.thread-landing){padding-bottom:28px!important}

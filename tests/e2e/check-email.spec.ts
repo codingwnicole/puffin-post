@@ -34,6 +34,7 @@ test('check-your-email stays composed on desktop and mobile and recovers from in
     expect(layout.scroll,`horizontal overflow at ${width}px`).toBeLessThanOrEqual(layout.viewport)
     if(width<=760) expect(layout.cardTop,`confirmation should stack at ${width}px`).toBeGreaterThan(layout.copyBottom-1)
     else expect(layout.cardLeft,`confirmation should align beside the copy at ${width}px`).toBeGreaterThan(layout.copyRight)
+    expect(layout.cardTop,`confirmation should start within the first screen at ${width}px`).toBeLessThan(900)
   }
 
   await page.getByRole('button',{name:'Resend sign-in link'}).click()

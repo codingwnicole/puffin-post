@@ -146,9 +146,9 @@ export default function CharacterProfilePage({ id }: { id: string }) {
           </p>
           <p className="profile-stats">{stats.total} thread{stats.total === 1 ? '' : 's'} · your turn on {stats.mine} · their turn on {stats.theirs}</p>
           <div className="profile-actions">
-            <button type="button" onClick={() => setShowCard(true)}>View card</button>
+            <button type="button" className="secondary-button" onClick={() => setShowCard(true)}>View card</button>
             <button type="button" onClick={() => setEditingCard(true)}>Edit card</button>
-            <button type="button" onClick={() => setSharing(true)}>Share</button>
+            <button type="button" className="secondary-button" onClick={() => setSharing(true)}>Share</button>
             <a href="#characters">Back to characters</a>
           </div>
         </div>

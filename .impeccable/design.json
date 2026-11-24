@@ -1,0 +1,386 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-24T18:04:21.709944+00:00",
+  "title": "Design System: RP Thread Buddy",
+  "extensions": {
+    "colorMeta": {
+      "meadow": {
+        "role": "primary",
+        "displayName": "Meadow Sage",
+        "canonical": "#56715B",
+        "tonalRamp": [
+          "#1A221B",
+          "#2B382E",
+          "#3C4F40",
+          "#4C6350",
+          "#56715B",
+          "#91A394",
+          "#C4CDC6",
+          "#EBEEEB"
+        ]
+      },
+      "harbor-ink": {
+        "role": "primary",
+        "displayName": "Harbor Ink",
+        "canonical": "#2F5F63",
+        "tonalRamp": [
+          "#0E1C1E",
+          "#183032",
+          "#214245",
+          "#295457",
+          "#2F5F63",
+          "#78979A",
+          "#B6C7C8",
+          "#E6ECEC"
+        ]
+      },
+      "your-turn": {
+        "role": "secondary",
+        "displayName": "Plum, your turn",
+        "canonical": "#86506A",
+        "tonalRamp": [
+          "#281820",
+          "#432835",
+          "#5E384A",
+          "#76465D",
+          "#86506A",
+          "#B08D9E",
+          "#D5C2CB",
+          "#F0EAED"
+        ]
+      },
+      "their-turn": {
+        "role": "secondary",
+        "displayName": "Harbor Blue, their turn",
+        "canonical": "#4D6488",
+        "tonalRamp": [
+          "#171E29",
+          "#263244",
+          "#36465F",
+          "#445878",
+          "#4D6488",
+          "#8B9AB2",
+          "#C1C9D5",
+          "#EAECF1"
+        ]
+      },
+      "new-scene": {
+        "role": "tertiary",
+        "displayName": "Fern, new scene",
+        "canonical": "#4F6E52",
+        "tonalRamp": [
+          "#182119",
+          "#283729",
+          "#374D39",
+          "#466148",
+          "#4F6E52",
+          "#8DA18F",
+          "#C1CCC2",
+          "#EAEEEA"
+        ]
+      },
+      "queued": {
+        "role": "tertiary",
+        "displayName": "Ledger Brown, queued",
+        "canonical": "#7A644F",
+        "tonalRamp": [
+          "#251E18",
+          "#3D3228",
+          "#554637",
+          "#6B5846",
+          "#7A644F",
+          "#A99A8D",
+          "#D0C9C1",
+          "#EFECEA"
+        ]
+      },
+      "danger": {
+        "role": "tertiary",
+        "displayName": "Brick, danger",
+        "canonical": "#9A3B32",
+        "tonalRamp": [
+          "#2E120F",
+          "#4D1E19",
+          "#6C2923",
+          "#88342C",
+          "#9A3B32",
+          "#BD807A",
+          "#DCBAB7",
+          "#F3E7E6"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#F3EEE5",
+        "tonalRamp": [
+          "#494745",
+          "#7A7772",
+          "#AAA7A0",
+          "#D6D1CA",
+          "#F3EEE5",
+          "#F7F4EE",
+          "#FBF9F6",
+          "#FEFDFC"
+        ]
+      },
+      "sheet": {
+        "role": "neutral",
+        "displayName": "Sheet",
+        "canonical": "#FBF8F2",
+        "tonalRamp": [
+          "#4B4A49",
+          "#7E7C79",
+          "#B0AEA9",
+          "#DDDAD5",
+          "#FBF8F2",
+          "#FCFAF7",
+          "#FEFDFA",
+          "#FFFEFD"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#2D2925",
+        "tonalRamp": [
+          "#0E0C0B",
+          "#161412",
+          "#201D1A",
+          "#282421",
+          "#2D2925",
+          "#767471",
+          "#B6B4B3",
+          "#E6E5E5"
+        ]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Soft Ink",
+        "canonical": "#5C544B",
+        "tonalRamp": [
+          "#1C1916",
+          "#2E2A26",
+          "#403B34",
+          "#514A42",
+          "#5C544B",
+          "#95908A",
+          "#C6C3C0",
+          "#EBEAE9"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#E3DACC",
+        "tonalRamp": [
+          "#44413D",
+          "#726D66",
+          "#9F998F",
+          "#C8C0B4",
+          "#E3DACC",
+          "#EDE7DE",
+          "#F5F2ED",
+          "#FCFBF9"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "One page title per page; the signed-out headline."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Section and card headings."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Scene titles, control labels, module headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Interface copy, 68ch max for descriptions."
+      },
+      "reading": {
+        "displayName": "Reading",
+        "purpose": "Premises, thread posts and the writer's own words."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Small labels; never below 12px."
+      }
+    },
+    "shadows": [
+      {
+        "name": "resting",
+        "value": "0 1px 2px rgb(45 41 37/.06), 0 3px 10px rgb(45 41 37/.05)",
+        "purpose": "Cards, posts, the sheet."
+      },
+      {
+        "name": "lifted",
+        "value": "0 2px 4px rgb(45 41 37/.05), 0 12px 26px -10px rgb(45 41 37/.24)",
+        "purpose": "Hover, the sign-in slip, picked cards."
+      },
+      {
+        "name": "floating",
+        "value": "0 4px 8px rgb(45 41 37/.06), 0 30px 60px -22px rgb(45 41 37/.38)",
+        "purpose": "Dialogs, command menu, focus timer face."
+      }
+    ],
+    "motion": [
+      {
+        "name": "motion-fast",
+        "value": "150ms",
+        "purpose": "Hover and colour changes."
+      },
+      {
+        "name": "motion-med",
+        "value": "220ms",
+        "purpose": "Most state changes and entrances."
+      },
+      {
+        "name": "motion-slow",
+        "value": "280ms",
+        "purpose": "Dialogs, petals, ticks."
+      },
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(.2,.7,.3,1)",
+        "purpose": "Default easing."
+      },
+      {
+        "name": "ease-settle",
+        "value": "cubic-bezier(.34,1.32,.64,1)",
+        "purpose": "The playful settle: turn pop, picked card, spin wheel. Zeroed with every motion token under reduced motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "compact",
+        "value": "600px"
+      },
+      {
+        "name": "phone",
+        "value": "760px"
+      },
+      {
+        "name": "desk-rail",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled action in a region.",
+      "html": "<button class=\"ds-btn-primary\">I replied</button>",
+      "css": ".ds-btn-primary{min-height:40px;padding:8px 16px;border:0;border-radius:10px;background:var(--accent,#56715B);color:var(--on-accent,#FBF8F2);font:600 14px/1.2 Figtree,'Segoe UI',sans-serif;box-shadow:0 1px 0 rgb(0 0 0/.14);cursor:pointer;transition:filter .15s,transform .15s}.ds-btn-primary:hover{filter:brightness(1.06);transform:translateY(-1px)}.ds-btn-primary:active{transform:translateY(1px) scale(.98)}.ds-btn-primary:focus-visible{outline:2px solid var(--focus,#2F5F63);outline-offset:2px}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Every other action.",
+      "html": "<button class=\"ds-btn-secondary\">Their reply came in</button>",
+      "css": ".ds-btn-secondary{min-height:40px;padding:8px 14px;border:1px solid var(--border,#E3DACC);border-radius:10px;background:var(--surface,#FBF8F2);color:var(--text,#2D2925);font:600 14px/1.2 Figtree,'Segoe UI',sans-serif;cursor:pointer;transition:background .15s,box-shadow .15s}.ds-btn-secondary:hover{background:var(--surface-muted,#F5EFE6)}.ds-btn-secondary:focus-visible{outline:2px solid var(--focus,#2F5F63);outline-offset:2px}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Every input, select and textarea.",
+      "html": "<label class=\"ds-field\">Email address<input type=\"email\" placeholder=\"you@example.com\"></label>",
+      "css": ".ds-field{display:grid;gap:6px;font:600 14px Figtree,'Segoe UI',sans-serif;color:var(--text,#2D2925)}.ds-field input{min-height:40px;padding:8px 12px;border:1px solid var(--border-strong,#8A7E70);border-radius:10px;background:var(--surface,#FBF8F2);color:inherit;font:400 14.5px Figtree,'Segoe UI',sans-serif}.ds-field input:focus-visible{outline:2px solid var(--focus,#2F5F63);border-color:transparent}"
+    },
+    {
+      "name": "Turn Chips",
+      "kind": "chip",
+      "refersTo": "chip-your-turn",
+      "description": "Your turn filled plum, their turn blue outline, queued brown tint.",
+      "html": "<span class=\"ds-chip ds-yours\">Your turn</span> <span class=\"ds-chip ds-theirs\">Their turn</span> <span class=\"ds-chip ds-queued\">Queued</span>",
+      "css": ".ds-chip{display:inline-flex;align-items:center;padding:2px 8px;border-radius:6px;font:600 12px/1.5 Figtree,'Segoe UI',sans-serif}.ds-yours{background:var(--turn,#86506A);color:var(--surface,#FBF8F2)}.ds-theirs{box-shadow:inset 0 0 0 1px var(--wait,#4D6488);color:var(--wait,#4D6488)}.ds-queued{background:var(--dorm-t,#ECE3D8);color:var(--muted,#5C544B)}"
+    },
+    {
+      "name": "Scene Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A tracked scene on the Dashboard.",
+      "html": "<article class=\"ds-card\"><span class=\"ds-tag\">Your turn</span><h3>Harbor at dusk</h3><p>Rain on the docks.</p><button class=\"ds-act\">I replied</button></article>",
+      "css": ".ds-card{display:grid;gap:8px;justify-items:start;max-width:360px;padding:14px;border-radius:14px;background:var(--surface,#FBF8F2);box-shadow:0 1px 2px rgb(45 41 37/.06),0 3px 10px rgb(45 41 37/.05);transition:box-shadow .22s}.ds-card:hover{box-shadow:0 2px 4px rgb(45 41 37/.05),0 12px 26px -10px rgb(45 41 37/.24)}.ds-card h3{margin:0;font:600 15px Figtree,'Segoe UI',sans-serif}.ds-card p{margin:0;font:400 17px/1.5 Newsreader,Georgia,serif;color:var(--muted,#5C544B)}.ds-tag{padding:2px 8px;border-radius:6px;background:var(--turn,#86506A);color:var(--surface,#FBF8F2);font:600 12px Figtree,'Segoe UI',sans-serif}.ds-act{min-height:40px;padding:8px 16px;border:0;border-radius:10px;background:var(--accent,#56715B);color:var(--on-accent,#FBF8F2);font:600 14px Figtree,'Segoe UI',sans-serif}"
+    },
+    {
+      "name": "Folder Tab Nav",
+      "kind": "nav",
+      "refersTo": "",
+      "description": "Sidebar drawer; the active link joins the sheet.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-link is-active\" href=\"#\">Dashboard</a><a class=\"ds-link\" href=\"#\">Parking lot</a><a class=\"ds-link\" href=\"#\">Characters</a></nav>",
+      "css": ".ds-nav{display:grid;gap:2px;width:240px;padding:10px 0 10px 12px;background:var(--canvas,#F3EEE5)}.ds-link{display:flex;align-items:center;min-height:40px;padding:9px 12px;border-radius:10px 0 0 10px;color:var(--muted,#5C544B);font:500 15px Figtree,'Segoe UI',sans-serif;text-decoration:none;transition:background .15s,color .15s}.ds-link:hover{color:var(--text,#2D2925);background:var(--surface-muted,#F5EFE6)}.ds-link.is-active{background:var(--surface,#FBF8F2);color:var(--text,#2D2925)}.ds-link:focus-visible{outline:2px solid var(--focus,#2F5F63)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Writer's Desk",
+    "overview": "The app is a writer's desk at night. The page is paper under a desk lamp; the work happens on a sheet laid over it, with a second sheet peeking out underneath. Navigation is folder tabs; optional tools sit in a desk rail. The feel is tactile and playful inside a calm, readable frame: buttons press, cards settle with a small overshoot, the spin wheel lands, ticks and posts arrive in order. Type and the turn colours carry the personality, not decoration. Dark mode is a re-tinted night desk.",
+    "keyCharacteristics": [
+      "Warm paper ground, one sheet per page, a second sheet behind it.",
+      "Young Serif headlines, Figtree interface text, Newsreader for writing and premises.",
+      "Turn colours as the product's own language: plum for your turn, blue outline for their turn, a quiet brown for queued.",
+      "One filled sage button per area; everything else secondary or text.",
+      "Springy, physical motion that switches off completely under reduced motion."
+    ],
+    "rules": [
+      {
+        "name": "The Turn Colour Rule",
+        "body": "Plum, blue and brown mean your turn, their turn and queued. Never use them as decoration or for anything else.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Sage Button Rule",
+        "body": "Each region gets at most one filled sage button. Everything else is secondary, text or danger.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tinted Text Rule",
+        "body": "Labels on tinted surfaces use soft ink, not faint ink, so they pass AA in both themes.",
+        "section": "colors"
+      },
+      {
+        "name": "The 12px Floor Rule",
+        "body": "Nothing people read is set below 12px.",
+        "section": "typography"
+      },
+      {
+        "name": "The No Kicker Rule",
+        "body": "No small label sits above a heading. The heading carries its own weight; type information goes after the title, not above it.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Elevation Rule",
+        "body": "A surface declares elevation once: a hairline or a shadow, never both.",
+        "section": "elevation"
+      },
+      {
+        "name": "The No Nested Cards Rule",
+        "body": "A card never sits inside another card. Group inner items with a tint or a hairline instead.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep the Writer's Desk tokens; desk themes may change only the accent and its tint.",
+      "Do use one filled sage button per region.",
+      "Do keep turn colours for turn meaning only: plum yours, blue outline theirs, brown queued.",
+      "Do set the writer's words in Newsreader and interface text in Figtree.",
+      "Do run motion on the --motion-* and --ease-* tokens so reduced motion turns it off.",
+      "Do keep touch targets at 44px on phones and text at 12px or larger."
+    ],
+    "donts": [
+      "Don't put a small label above a heading.",
+      "Don't nest cards, or give one surface both a hairline and a shadow.",
+      "Don't add a bar down one side of a rounded box.",
+      "Don't hard-code colours in components; only canvas export and trading-card themes hold colours as data.",
+      "Don't use faint ink on tinted surfaces."
+    ]
+  }
+}

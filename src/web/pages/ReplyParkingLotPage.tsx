@@ -35,16 +35,16 @@ function DraftCard({ draft, options, reload, converted }: { draft: ReplyDraft; o
   }
 
   return <article className="tracking-card" data-pick-id={draft.id}>
-    <p className="eyebrow">{{ reply: 'Owed reply', plotting: 'Plotting or DM', starter_idea: 'Starter idea', note: 'General note' }[draft.purpose]}</p>
     <h3>{draft.title}</h3>
+    <p className="field-help draft-kind">{{ reply: 'Owed reply', plotting: 'Plotting or DM', starter_idea: 'Starter idea', note: 'General note' }[draft.purpose]}</p>
     {draft.characterIds.length > 0 && <p className="field-help">For: {draft.characterIds.map(id => options.characters.find(character => character.id === id)?.name).filter(Boolean).join(', ')}</p>}
     {draft.reminderAt && <p>{new Date(draft.reminderAt).getTime() <= Date.now() ? 'Overdue - ' : 'Reminder - '}<time dateTime={draft.reminderAt}>{new Date(draft.reminderAt).toLocaleDateString()}</time></p>}
     <p className="preserve-lines">{draft.notes.slice(0, 300)}{draft.notes.length > 300 ? '.' : ''}</p>
     {draft.sourceUrl && <p><a className="draft-source" href={draft.sourceUrl} target="_blank" rel="noopener noreferrer">Open source</a></p>}
     <div className="actions">
       {(draft.purpose === 'reply' || draft.purpose === 'starter_idea') && <button disabled={busy} onClick={() => { setConverting(!converting); setEditing(false) }}>Convert to Tumblr</button>}
-      <button disabled={busy} onClick={() => { setEditing(!editing); setConverting(false) }}>Edit draft</button>
-      <button disabled={busy} onClick={() => void update({ state: 'archived' })}>{draft.purpose==='plotting'?'Mark wrapped':'Archive draft'}</button>
+      <button className="secondary-button" disabled={busy} onClick={() => { setEditing(!editing); setConverting(false) }}>Edit draft</button>
+      <button className="secondary-button" disabled={busy} onClick={() => void update({ state: 'archived' })}>{draft.purpose==='plotting'?'Mark wrapped':'Archive draft'}</button>
       <button className="danger-button" disabled={busy} onClick={() => { if (!window.confirm('Delete this saved item permanently?')) return; void api(`/reply-drafts/${draft.id}`, 'DELETE').then(reload).catch(problem => setError(problem.message)) }}>Delete draft</button>
     </div>
     {editing && <form className="tracking-form" onSubmit={event => { event.preventDefault(); const data = new FormData(event.currentTarget); setNotes(String(data.get('notes') ?? '')); void update({ title: data.get('title'), notes: String(data.get('notes') ?? ''), purpose: data.get('purpose'), sourceUrl: data.get('sourceUrl') || null, reminderAt: data.get('reminder') ? new Date(`${data.get('reminder')}T00:00:00.000Z`).toISOString() : null }) }}>
@@ -64,7 +64,7 @@ function PlottingPulse({ drafts }: { drafts: ReplyDraft[] }) {
   const open=plotting.length-due-later, total=Math.max(plotting.length,1)
   const dueEnd=Math.round(due/total*100), laterEnd=dueEnd+Math.round(later/total*100)
   const openItems=drafts.filter(draft=>draft.state==='open').map(draft=>({id:draft.id,label:draft.title}))
-  return <section className="plotting-pulse tracking-card summary-card" aria-label="Plotting pulse"><div className="plotting-donut" style={{'--due':`${dueEnd}%`,'--later':`${laterEnd}%`} as CSSProperties}><strong>{plotting.length}</strong><span>plots</span></div><div><p className="eyebrow">Plotting pulse</p><h3>{plotting.length ? `${due} follow-up${due===1?'':'s'} due` : 'No plotting DMs parked'}</h3><p>{later} later · {open} open-ended. Mark a conversation wrapped when it is settled to clear it from the pulse.</p><SpinWheel items={openItems} empty="Nothing parked right now."/></div></section>
+  return <section className="plotting-pulse tracking-card summary-card" aria-label="Plotting pulse"><div className="plotting-donut" style={{'--due':`${dueEnd}%`,'--later':`${laterEnd}%`} as CSSProperties}><strong>{plotting.length}</strong><span>plots</span></div><div><h2>{plotting.length ? `${due} follow-up${due===1?'':'s'} due` : 'No plotting DMs parked'}</h2><p>{later} later · {open} open-ended. Mark a conversation wrapped when it is settled to clear it from the pulse.</p><SpinWheel items={openItems} empty="Nothing parked right now."/></div></section>
 }
 
 export default function ReplyParkingLotPage() {
@@ -108,11 +108,11 @@ export default function ReplyParkingLotPage() {
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
     <label className="lane-filter">Show<select value={overdue ? 'overdue' : 'open'} onChange={event => setOverdue(event.target.value === 'overdue')}><option value="open">All open drafts</option><option value="overdue">Overdue drafts</option></select></label>
     <PlottingPulse drafts={drafts}/>
-    {drafts.filter(draft=>draft.purpose==='plotting').length>0&&<section className="parking-lane" aria-labelledby="plotting-lane"><p className="eyebrow">Conversation lane</p><h3 id="plotting-lane">Plotting & DM follow-ups</h3>{drafts.filter(draft=>draft.purpose==='plotting').map(draft => <DraftCard key={`${draft.id}:${draft.updatedAt}`} draft={draft} options={options} reload={reload} converted={() => setMessage('Reply converted. Find its branch on your Dashboard.')} />)}</section>}
-    {drafts.filter(draft=>draft.purpose!=='plotting').length>0&&<section className="parking-lane" aria-labelledby="writing-lane"><p className="eyebrow">Writing lane</p><h3 id="writing-lane">Drafts, replies & ideas</h3>{drafts.filter(draft=>draft.purpose!=='plotting').map(draft => <DraftCard key={`${draft.id}:${draft.updatedAt}`} draft={draft} options={options} reload={reload} converted={() => setMessage('Reply converted. Find its branch on your Dashboard.')} />)}</section>}
+    {drafts.filter(draft=>draft.purpose==='plotting').length>0&&<section className="parking-lane" aria-labelledby="plotting-lane"><h2 id="plotting-lane">Plotting & DM follow-ups</h2>{drafts.filter(draft=>draft.purpose==='plotting').map(draft => <DraftCard key={`${draft.id}:${draft.updatedAt}`} draft={draft} options={options} reload={reload} converted={() => setMessage('Reply converted. Find its branch on your Dashboard.')} />)}</section>}
+    {drafts.filter(draft=>draft.purpose!=='plotting').length>0&&<section className="parking-lane" aria-labelledby="writing-lane"><h2 id="writing-lane">Drafts, replies & ideas</h2>{drafts.filter(draft=>draft.purpose!=='plotting').map(draft => <DraftCard key={`${draft.id}:${draft.updatedAt}`} draft={draft} options={options} reload={reload} converted={() => setMessage('Reply converted. Find its branch on your Dashboard.')} />)}</section>}
     {!drafts.length && <p>No {overdue ? 'overdue' : 'open'} replies parked.</p>}
     <details className="tracking-card parking-add">
-      <summary><span><span className="eyebrow">New item</span><strong>Save something for later</strong></span><span aria-hidden="true">+</span></summary>
+      <summary><span><strong>Save something for later</strong></span><span aria-hidden="true">+</span></summary>
       <form className="tracking-form" onSubmit={park}>
         <label>Draft title<input name="title" required maxLength={300} /></label><label>What is this for?<select name="purpose" value={parkingPurpose} onChange={event=>setParkingPurpose(event.target.value as typeof parkingPurpose)}><option value="reply">An owed reply</option><option value="plotting">Plotting or a DM follow-up</option><option value="starter_idea">A starter idea</option><option value="note">A general note</option></select></label><label>Draft notes<textarea name="notes" maxLength={20000} defaultValue={restoreDraftLocal('park:new') ?? ''} onChange={event => saveDraftLocal('park:new', event.target.value)} /></label><label>Characters (optional)<select name="characterIds" multiple size={Math.min(5, Math.max(2, options.characters.length))}>{options.characters.map(character => <option key={character.id} value={character.id}>{character.name}</option>)}</select><span className="field-help">Choose more than one when this is a shared plot or multi-muse thread.</span></label><label>Partner (optional)<select name="partnerId"><option value="">Choose later</option>{options.partners.map(partner => <option key={partner.id} value={partner.id}>{partner.name}</option>)}</select></label><label>Or type a new partner<input name="partnerText" maxLength={200} placeholder="name or Tumblr blog" /></label><label>Source URL<input type="url" name="sourceUrl" maxLength={2000} /></label><label>Reminder date<input type="date" name="reminder" /></label><button disabled={busy}>{({reply:'Park reply',plotting:'Save plotting note',starter_idea:'Save starter idea',note:'Save note'} as const)[parkingPurpose]}</button>
       </form>

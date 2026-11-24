@@ -91,7 +91,7 @@ test('existing data survives the redesign: every page shows it and nothing is ch
   await expect(drawer.getByLabel('Your recap / next step')).toHaveValue('Next: Zohra spots the bet.')
   await expect(drawer.getByLabel('Partner muse names')).toHaveValue('Zohra, Mateo')
   await expect(drawer.getByLabel('Reminder to check back')).toHaveValue('2026-12-01')
-  await expect(drawer.getByLabel('Stable premise')).toHaveValue('Watching a fight in the Pit.')
+  await expect(drawer.getByLabel('Scene premise')).toHaveValue('Watching a fight in the Pit.')
   await page.keyboard.press('Escape')
   await expect(drawer).toBeHidden()
   const catherine = page.locator('article.branch-card').filter({ hasText: 'nora × Catherine' })
