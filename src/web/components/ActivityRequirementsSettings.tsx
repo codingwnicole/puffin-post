@@ -9,14 +9,23 @@ type Data = { groups: Group[]; characters: Character[]; blogs: Blog[]; requireme
 type Form = { id: string; groupId: string; scope: 'group'|'character'|'blog'; characterId: string; blogIdentifier: string; intervalDays: number; reminderBeforeHours: number; reminderDue: boolean; reminderOverdue: boolean; graceHours: number; enabled: boolean; allowManual: boolean; timezone: string }
 const fresh = (): Form => ({ id: '', groupId: '', scope: 'group', characterId: '', blogIdentifier: '', intervalDays: 7, reminderBeforeHours: 24, reminderDue: true, reminderOverdue: true, graceHours: 0, enabled: true, allowManual: false, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' })
 
+function parseData(value: unknown): Data {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Activity requirements could not be loaded.')
+  const data = value as Record<string, unknown>
+  if (!Array.isArray(data.groups) || !Array.isArray(data.characters) || !Array.isArray(data.blogs) || !Array.isArray(data.requirements)) {
+    throw new Error('Activity requirements could not be loaded.')
+  }
+  return data as Data
+}
+
 export default function ActivityRequirementsSettings() {
   const [data, setData] = useState<Data>({ groups: [], characters: [], blogs: [], requirements: [] })
   const [form, setForm] = useState<Form>(fresh)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
-  const load = async () => setData(await api<Data>('/activity-requirements'))
-  useEffect(() => { let active = true; void api<Data>('/activity-requirements').then(value => { if (active) setData(value) }).catch(problem => { if (active) setError((problem as Error).message) }); return () => { active = false } }, [])
+  const load = async () => setData(parseData(await api<unknown>('/activity-requirements')))
+  useEffect(() => { let active = true; void api<unknown>('/activity-requirements').then(value => { if (active) setData(parseData(value)) }).catch(problem => { if (active) setError((problem as Error).message) }); return () => { active = false } }, [])
   const characters = useMemo(() => data.characters.filter(character => character.groupId === form.groupId), [data.characters, form.groupId])
   const blogs = useMemo(() => data.blogs.filter(blog => blog.groupId === form.groupId), [data.blogs, form.groupId])
 

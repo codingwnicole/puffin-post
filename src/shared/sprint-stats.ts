@@ -2,6 +2,28 @@ export interface SprintAggregate { words: number; replies: number; sessions: num
 export interface SprintStats { timezone: string; today: SprintAggregate; thisWeek: SprintAggregate; allTime: SprintAggregate; mostRecent: { words: number; replies: number; endedAt: string; title: string } | null }
 export interface SprintRow { wordsCredited: number; repliesCompleted: number; endedAt: string; title: string }
 
+function isCount(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 }
+
+/** Validate API data before the sidebar renders it; stale or incomplete responses must not crash the app shell. */
+export function isSprintStats(value: unknown): value is SprintStats {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const stats = value as Record<string, unknown>
+  const isAggregate = (entry: unknown): entry is SprintAggregate => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false
+    const aggregate = entry as Record<string, unknown>
+    return isCount(aggregate.words) && isCount(aggregate.replies) && isCount(aggregate.sessions)
+  }
+  const recent = stats.mostRecent
+  const isRecent = recent === null || (
+    Boolean(recent) && typeof recent === 'object' && !Array.isArray(recent) &&
+    isCount((recent as Record<string, unknown>).words) &&
+    isCount((recent as Record<string, unknown>).replies) &&
+    typeof (recent as Record<string, unknown>).endedAt === 'string' &&
+    typeof (recent as Record<string, unknown>).title === 'string'
+  )
+  return typeof stats.timezone === 'string' && isAggregate(stats.today) && isAggregate(stats.thisWeek) && isAggregate(stats.allTime) && isRecent
+}
+
 function zonedParts(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).formatToParts(date)
   const values = Object.fromEntries(parts.map(part => [part.type, part.value]))

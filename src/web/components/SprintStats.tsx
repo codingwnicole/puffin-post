@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../lib/api'
-import type { SprintStats as Stats } from '../../shared/sprint-stats'
+import { isSprintStats, type SprintStats as Stats } from '../../shared/sprint-stats'
 
 export default function SprintStats({ compact = false }: { compact?: boolean }) {
   const [stats, setStats] = useState<Stats | null>(null)
@@ -11,7 +11,10 @@ export default function SprintStats({ compact = false }: { compact?: boolean }) 
     let active = true
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'
     void api<Stats>(`/sprints/stats?timezone=${encodeURIComponent(timezone)}`)
-      .then(value => { if (active) setStats(value) })
+      .then(value => {
+        if (!isSprintStats(value)) throw new Error('The server returned incomplete sprint totals.')
+        if (active) setStats(value)
+      })
       .catch(problem => { if (active) setError((problem as Error).message || 'Saved sprint totals could not be loaded.') })
       .finally(() => { if (active) setLoading(false) })
     return () => { active = false }

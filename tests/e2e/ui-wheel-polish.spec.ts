@@ -42,6 +42,9 @@ async function mock(page: Page, branches = [scene, { ...scene, id: 'b2', title: 
     const path = new URL(route.request().url()).pathname
     let body: unknown = []
     if (path === '/api/auth/session') body = { user: { id: 'u1' } }
+    else if (path === '/api/sprints/stats') body = { timezone: 'UTC', today: { words: 0, replies: 0, sessions: 0 }, thisWeek: { words: 0, replies: 0, sessions: 0 }, allTime: { words: 0, replies: 0, sessions: 0 }, mostRecent: null }
+    else if (path === '/api/activity-requirements') body = { groups: [], characters: [], blogs: [], requirements: [] }
+    else if (path === '/api/notifications/preferences') body = { inAppEnabled: true, pushEnabled: false, pushDevices: 0, globalMuted: false, notifyReplies: true, notifyReminders: true, notifyPossibleThreads: true, notifyActivityRequirements: true, timezone: 'UTC', quietStartLocal: null, quietEndLocal: null, emailAvailable: false }
     else if (path === '/api/inbox') body = { branches, yourTurnCount: branches.filter(row => row.status === 'your_turn').length, overdueDraftCount: 0, dueSoonCount: 0 }
     else if (path === '/api/starters/options') body = { characters, partners: [], groups: [] }
     else if (path === '/api/characters') body = characters

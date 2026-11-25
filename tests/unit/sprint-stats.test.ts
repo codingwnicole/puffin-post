@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { calendarDaysAfter, sprintStatsBoundaries, summarizeSoloSprints } from '../../src/shared/sprint-stats'
+import { calendarDaysAfter, isSprintStats, sprintStatsBoundaries, summarizeSoloSprints } from '../../src/shared/sprint-stats'
 
 describe('persisted sprint statistics', () => {
   it('uses local calendar boundaries across daylight-saving changes', () => {
@@ -24,5 +24,12 @@ describe('persisted sprint statistics', () => {
     expect(stats.thisWeek.words).toBe(1250)
     expect(stats.allTime).toEqual({ words: 1250, replies: 3, sessions: 2 })
     expect(stats.mostRecent?.title).toBe('Morning replies')
+  })
+
+  it('accepts valid totals and rejects incomplete or legacy mock responses', () => {
+    const aggregate = { words: 0, replies: 0, sessions: 0 }
+    expect(isSprintStats({ timezone: 'UTC', today: aggregate, thisWeek: aggregate, allTime: aggregate, mostRecent: null })).toBe(true)
+    expect(isSprintStats([])).toBe(false)
+    expect(isSprintStats({ timezone: 'UTC', today: {}, thisWeek: aggregate, allTime: aggregate, mostRecent: null })).toBe(false)
   })
 })
