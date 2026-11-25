@@ -55,7 +55,8 @@ export function renderPage(share: ShareRow, char: CharRow, card: CardProfile, st
   const frontSvg = share.style === 'card' ? renderToString(createElement(Side, { side: 'front', name, profile: card, stats, portrait: char.portraitObjectKey || char.iconObjectKey ? `/c/${slug}/portrait` : null, moodboard: [], uid: 'f' })) : ''
   const backSvg = share.style === 'card' ? renderToString(createElement(Side, { side: 'back', name, profile: card, stats: share.showStats ? stats : { total: 0, mine: 0, theirs: 0, rps: [] }, portrait: null, moodboard: [], uid: 'b' })) : ''
 
-  const songLine = (card.song || '') + (card.artist ? ' — ' + card.artist : '')
+  const songTitle = card.song || card.artist || ''
+  const songArtist = card.song && card.artist ? card.artist : ''
   const facts = (card.facts || []).filter(Boolean)
   const tracks = (card.tracklist || []).filter(Boolean).slice(0, 10)
 
@@ -70,15 +71,17 @@ export function renderPage(share: ShareRow, char: CharRow, card: CardProfile, st
   }
 
   let playlistHtml = ''
+  let hasPlaylistEmbed = false
   if (share.showPlaylist && card.playlistUrl) {
     const parsed = parsePlaylist(card.playlistUrl)
     if (parsed) {
+      hasPlaylistEmbed = true
       const label = parsed.provider === 'spotify' ? 'Spotify' : parsed.provider === 'apple' ? 'Apple Music' : 'YouTube'
       const embedHeight = parsed.provider === 'spotify' ? '580' : parsed.provider === 'apple' ? '450' : '315'
       const previewTracks = tracks.slice(0, 5)
       const trackPreviewHtml = previewTracks.length > 0 ? `<ol class="track-preview">${previewTracks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ol>` : ''
       const embedSrc = parsed.provider === 'spotify' ? parsed.embedUrl + (parsed.embedUrl.includes('?') ? '&' : '?') + 'theme=0' : parsed.embedUrl
-      playlistHtml = `<section class="section playlist-section"><h2 class="section-title">Playlist</h2>${parsed.provider === 'spotify' ? `<div class="playlist-embed"><iframe src="${escapeHtml(embedSrc)}" title="Spotify playlist" height="${embedHeight}" allow="encrypted-media; fullscreen; picture-in-picture" loading="eager"></iframe></div>` : `${trackPreviewHtml}<div class="playlist-embed" data-playlist-container data-embed-src="${escapeHtml(embedSrc)}" data-embed-height="${embedHeight}"><button type="button" class="btn-accent" data-playlist-load>Load the ${label} player</button><p>Loads ${label}’s player, which follows ${label}’s privacy policy.</p></div>`}</section>`
+      playlistHtml = `<section id="playlist" class="section playlist-section"><h2 class="section-title">Playlist</h2>${parsed.provider === 'spotify' ? `<div class="playlist-embed"><iframe src="${escapeHtml(embedSrc)}" title="Spotify playlist" height="${embedHeight}" allow="encrypted-media; fullscreen; picture-in-picture" loading="eager"></iframe></div>` : `${trackPreviewHtml}<div class="playlist-embed" data-playlist-container data-embed-src="${escapeHtml(embedSrc)}" data-embed-height="${embedHeight}"><button type="button" class="btn-accent" data-playlist-load>Load the ${label} player</button><p>Loads ${label}'s player, which follows ${label}'s privacy policy.</p></div>`}</section>`
     }
   }
 
@@ -107,6 +110,12 @@ export function renderPage(share: ShareRow, char: CharRow, card: CardProfile, st
   const heroMediaHtml = share.style === 'card'
     ? `<div class="hero-media"><span class="favorite-halo" aria-hidden="true"></span><div class="hero-card" data-card-tilt>${publicCardHtml}</div></div>`
     : `<div class="hero-media hero-media-stats">${portraitHtml}</div>`
+  const heroSongHtml = songTitle ? `<div class="hero-song-card">
+  <span class="hero-song-symbol" aria-hidden="true">♫</span>
+  <div class="hero-song-copy"><span class="hero-song-label">Theme song</span><strong class="hero-song-title">${escapeHtml(songTitle)}</strong>${songArtist ? `<span class="hero-song-artist">${escapeHtml(songArtist)}</span>` : ''}</div>
+  <span class="hero-song-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+  ${hasPlaylistEmbed ? '<a class="hero-song-link" href="#playlist">Jump to playlist <span aria-hidden="true">↓</span></a>' : ''}
+</div>` : ''
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -136,6 +145,18 @@ ${noindex ? '<meta name="robots" content="noindex,nofollow">' : ''}
 @media(max-width:420px){.stat-row{gap:5px}.stat-card{padding:10px 4px}.stat-num{font-size:25px}.stat-label{font-size:9px}.detail-grid{grid-template-columns:1fr}.detail-wide{grid-column:auto}.footer{flex-direction:column;text-align:center}}
 @media(hover:hover) and (pointer:fine){.hero-card:hover{filter:drop-shadow(var(--shadow-x,0px) var(--shadow-y,22px) var(--shadow-blur,28px) rgb(29 26 22/.34))}.card-controls a:hover{text-decoration:underline}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.hero-card,.public-card-inner,.hero-text,.section{transition:none;animation:none;filter:none}.hero-card{transform:none}}
+.hero-text{align-self:stretch;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:12px}
+.hero-song-card{display:grid;grid-template-columns:36px minmax(0,1fr) auto;align-items:center;gap:8px 12px;width:min(100%,640px);margin-top:auto;padding:14px 16px;border:1px solid color-mix(in srgb,var(--favorite) 30%,var(--line));border-radius:16px;background:linear-gradient(115deg,color-mix(in srgb,var(--favorite) 12%,var(--sheet)),var(--sheet));box-shadow:var(--e1);text-align:left}
+.hero-song-symbol{display:grid;place-items:center;width:36px;height:36px;border-radius:12px;background:color-mix(in srgb,var(--favorite) 17%,var(--sheet-2));color:var(--favorite);font-size:19px}
+.hero-song-copy{display:grid;gap:2px;min-width:0}
+.hero-song-label{font:650 10px/1.3 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--subtle)}
+.hero-song-title{color:var(--ink);font-weight:700;line-height:1.25;overflow-wrap:anywhere}
+.hero-song-artist{color:var(--ink-2);font-size:13px;line-height:1.35;overflow-wrap:anywhere}
+.hero-song-wave{grid-column:3;grid-row:1;display:flex;align-items:center;gap:3px;height:32px;padding:0 4px}
+.hero-song-wave i{display:block;width:3px;height:8px;border-radius:99px;background:var(--favorite);opacity:.72}
+.hero-song-wave i:nth-child(2),.hero-song-wave i:nth-child(8){height:14px}.hero-song-wave i:nth-child(3),.hero-song-wave i:nth-child(7){height:21px}.hero-song-wave i:nth-child(4),.hero-song-wave i:nth-child(6){height:11px}.hero-song-wave i:nth-child(5){height:26px}
+.hero-song-link{grid-column:2/4;justify-self:start;display:inline-flex;align-items:center;gap:6px;min-height:36px;color:var(--accent);font-size:13px;font-weight:650;text-decoration:none}.hero-song-link:hover{text-decoration:underline}
+@media(max-width:820px){.hero-text{align-self:auto;align-items:center}.hero-song-card{grid-template-columns:36px minmax(0,1fr);width:min(100%,620px);margin-top:8px}.hero-song-wave{grid-column:2;grid-row:1}.hero-song-link{grid-column:2;min-height:44px}}
 </style>
 </head>
 <body>
@@ -151,7 +172,7 @@ ${card.age ? `<span><strong>${escapeHtml(card.age)}</strong> years old</span>` :
 ${card.birthdate ? `<span>Born <strong>${escapeHtml(card.birthdate)}</strong></span>` : ''}
 ${card.favoriteColor && card.favoriteColor !== '#b07a9e' ? `<span class="hero-color"><span class="hero-color-swatch" style="background:${safeFavorite}"></span>${escapeHtml(safeFavorite)}</span>` : ''}
 </div>
-${songLine ? `<p class="hero-song">${escapeHtml(songLine)}</p>` : ''}
+${heroSongHtml}
 </div>
 </header>
 <div class="content-grid">${factsHtml}${detailsHtml}${moodboardHtml}${boardHtml}${playlistHtml}${tracklistHtml}${statsHtml}</div>

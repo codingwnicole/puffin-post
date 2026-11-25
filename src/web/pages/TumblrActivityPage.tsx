@@ -151,7 +151,7 @@ export default function TumblrActivityPage() {
   return <section aria-labelledby="activity-title">
     {adding && trackingOptions && <AddThreadDialog options={trackingOptions} busy={addBusy} error={addError} postUrl={postUrl(adding) ?? ''} characterId={selectedCharacters[adding.id] ?? ''} source={`From Tumblr activity: ${adding.id.startsWith('post:') ? 'a recent post on ' + blogLabel(adding.blogIdentifier) : (adding.actor === 'anonymous' ? 'a Tumblr member' : blogLabel(adding.actor)) + ' tagged ' + blogLabel(adding.blogIdentifier)}. Check the details, then add it. The premise is yours to write; the post is shown below the field for reference.`} onSubmit={event => void addMention(event)} onClose={() => setAdding(null)} />}
     <h1 className="page-heading" id="activity-title">Tumblr activity</h1>
-    <p className="page-description">New asks and tagged starters from the blogs assigned to your characters, in one small review queue.</p>
+    <p className="page-description">New asks, tagged starters, and possible threads from your connected Tumblr blogs, in one small review queue.</p>
     {error && <p role="alert">{error}</p>}{message && <p role="status" className="success-pulse">{message}</p>}
     {failedBlogs.length > 0 && <p role="alert" className="refresh-warning">Could not load: {failedBlogs.map(blog => blogLabel(blog.blogIdentifier)).join(', ')}. Items from those blogs are missing from this list.</p>}
     {diagnostics.length > 0 && <p role="alert" className="refresh-warning">Could not check {diagnostics.join('; ')}</p>}

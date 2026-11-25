@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api, type TrackingOptions } from '../lib/api'
 
-type Resolution = { title?:string; suggestedTitle?:string; parsedCharacterNames?:string[]; preview?:string; summary?:string; sourceBlogAssigned:boolean; participants:string[];suggestedPartner?:string|null;titleNeedsPartner?:boolean;characterName?:string; candidates:{characterId:string;characterName:string;characterTag:string|null}[] }
+type Resolution = { title?:string; suggestedTitle?:string; parsedCharacterNames?:string[]; preview?:string; summary?:string; sourceBlogAssigned:boolean; sourceBlogOwned?:boolean; participants:string[];suggestedPartner?:string|null;titleNeedsPartner?:boolean;characterName?:string; candidates:{characterId:string;characterName:string;characterTag:string|null}[] }
 const blogLabel=(value:string)=>value.replace(/\.tumblr\.com$/i,'')
 
 export default function StarterFields({options,title='',characterId='',postUrl:initialPostUrl=''}:{options:TrackingOptions;title?:string;characterId?:string;postUrl?:string}) {
@@ -24,7 +24,8 @@ export default function StarterFields({options,title='',characterId='',postUrl:i
       setManualPartner(current=>current||result.parsedCharacterNames?.find(name=>name.localeCompare(options.characters.find(character=>character.id===chosenCharacter)?.name??'',undefined,{sensitivity:'accent'})!==0)||'')
       if(result.candidates.length===1){setSelectedCharacter(result.candidates[0].characterId);setMessage(`Matched ${result.candidates[0].characterName}. Review the suggested details below.`)}
       else if(result.candidates.length)setMessage('More than one character matches this post. Choose the right one below.')
-      else if(!result.sourceBlogAssigned)setMessage("This looks like another writer's starter. Choose the character who owes the reply.")
+      else if(result.sourceBlogOwned)setMessage('This post is from one of your connected blogs. Choose the character for this scene.')
+      else if(!result.sourceBlogAssigned)setMessage("This post isn't from one of your assigned or connected blogs. Choose the character who owes the reply.")
       else setMessage('No character rule matches this post. You can still choose the character yourself.')
     } catch(error) { setMessage((error as Error).message) }
   }

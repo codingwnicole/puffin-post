@@ -133,7 +133,9 @@ export function starterRoutes() {
     // A newly created character and Tumblr's primary blog can legitimately be
     // absent from character_blogs for a moment. Connected account metadata is
     // still authoritative about which side of a reblog chain belongs to us.
-    const ownBlogIdentifiers = new Set(ownBlogs.results.length ? ownBlogs.results.map(blog => canonicalBlogIdentifier(blog.blogIdentifier)) : connectedBlogs)
+    // Active account metadata is authoritative for all blogs the user owns,
+    // including a primary blog that has not been assigned to this character.
+    const ownBlogIdentifiers = new Set([...connectedBlogs, ...ownBlogs.results.map(blog => canonicalBlogIdentifier(blog.blogIdentifier))])
     const activities = await client.getThreadActivity(clickedPost.rootBlogIdentifier, clickedPost.rootPostId)
     const participants = new Set(activities.map(activity => activity.blogIdentifier).filter(blog => !ownBlogIdentifiers.has(blog)))
     if (!ownBlogIdentifiers.has(clickedPost.rootBlogIdentifier)) participants.add(clickedPost.rootBlogIdentifier)
@@ -160,7 +162,7 @@ export function starterRoutes() {
     const userMuse = { value:ownName??null, source:ownName?'confirmed_character_assignment':'unresolved', confidence:ownName?'high':'none', evidence:ownName?`Character assignment ${characterId}`:null }
     const previewText = extractDirectReplyText(clickedPost.voices,clickedPost.blogIdentifier)
     const latestReplyPreview = { value:previewText, source:previewText?'structured_metadata':'unresolved', confidence:previewText?'high':'none', evidence:previewText?`Post ${clickedPost.id} by ${clickedPost.blogIdentifier}`:null }
-    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:ownName, userMuse, titleField, suggestedTitle:autoTitle, titleNeedsPartner: !confirmedPartnerNames.length && !partnerHandle, parsedCharacterNames:confirmedPartnerNames, partnerMuses, premise, latestReplyPreview, preview:previewText, summary:premise.value ?? '', sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [...clickedPost.threadPostIds, ...post.threadPostIds, reference.postId]) }
+    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:ownName, userMuse, titleField, suggestedTitle:autoTitle, titleNeedsPartner: !confirmedPartnerNames.length && !partnerHandle, parsedCharacterNames:confirmedPartnerNames, partnerMuses, premise, latestReplyPreview, preview:previewText, summary:premise.value ?? '', sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, sourceBlogOwned:connectedBlogs.has(reference.blogIdentifier) || rules.results.length > 0, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [...clickedPost.threadPostIds, ...post.threadPostIds, reference.postId]) }
   }
 
   async function findOrCreatePartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, blogIdentifier:string) {
@@ -242,8 +244,9 @@ export function starterRoutes() {
     if (found?.tags?.length) await applyPostTags(scope, starter.id, found.tags)
     const directReply = latestPost && latest ? extractDirectReplyText(latestPost.voices, latest.activity.blogIdentifier) : null
     const latestReplyExcerpt = directReply ? directReply.replace(/\s+/gu, ' ').trim().slice(0, 500) : null
+    const initialTurn = found && found.ownBlogIdentifiers.includes(found.threadRootBlogId) ? 'their_turn' : 'your_turn'
     const branch = (partnerId || !found)
-      ? await upsertReplyBranch({ ...scope, starterId: starter.id, partnerId, status: latest?.status ?? 'your_turn', latestPostId: latest?.activity.postId, lastPoster: latest?.activity.blogIdentifier, lastActivityAt: latest?.activity.timestamp, latestReplyExcerpt,
+      ? await upsertReplyBranch({ ...scope, starterId: starter.id, partnerId, status: latest?.status ?? initialTurn, latestPostId: latest?.activity.postId, lastPoster: latest?.activity.blogIdentifier, lastActivityAt: latest?.activity.timestamp, latestReplyExcerpt,
           latestReplySource: latestReplyExcerpt ? 'structured_metadata' : 'unresolved', latestReplyConfidence: latestReplyExcerpt ? 'high' : 'none',
           latestReplyEvidence: latest?.activity ? `Post ${latest.activity.postId} by ${latest.activity.blogIdentifier}` : '',
           partnerMuses: found?.partnerMuses.value ?? [], partnerMusesSource: found?.partnerMuses.source ?? 'unresolved', partnerMusesConfidence: found?.partnerMuses.confidence ?? 'none', partnerMusesEvidence: found?.partnerMuses.evidence })
