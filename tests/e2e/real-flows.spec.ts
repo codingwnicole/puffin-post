@@ -39,16 +39,16 @@ test('a) a thread and its draft survive a reload and a fresh password sign-in', 
   expect((await page.request.post('/api/reply-drafts', { data: { title: 'Owed reply', notes: 'Half-written paragraph that must survive' } })).status()).toBe(201)
 
   await page.goto('/#inbox')
-  await expect(page.getByText(title, { exact: true }).first()).toBeVisible()
+  await expect(page.locator('article.branch-card').getByText(title, { exact: true })).toBeVisible()
   await page.reload()
-  await expect(page.getByText(title, { exact: true }).first()).toBeVisible()
+  await expect(page.locator('article.branch-card').getByText(title, { exact: true })).toBeVisible()
 
   expect((await page.request.post('/api/auth/sign-out')).ok()).toBe(true)
   expect((await page.request.get('/api/inbox')).status()).toBe(401)
   expect((await page.request.post('/api/auth/password-sign-in', { data: { email, password } })).ok()).toBe(true)
 
   await page.goto('/#inbox')
-  await expect(page.getByText(title, { exact: true }).first()).toBeVisible()
+  await expect(page.locator('article.branch-card').getByText(title, { exact: true })).toBeVisible()
   const inbox = await (await page.request.get('/api/inbox')).json() as { branches: Array<{ id: string; notes: string }> }
   expect(inbox.branches.find(branch => branch.id === branchId)?.notes).toBe('Thread notes kept')
   await page.goto('/#parking-lot')

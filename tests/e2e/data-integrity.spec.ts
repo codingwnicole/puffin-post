@@ -82,7 +82,7 @@ test('existing data survives the redesign: every page shows it and nothing is ch
   // ---------- Dashboard: sections, threads, premises, labels, branch fields ----------
   await page.goto('/#dashboard'); await page.reload()
   await expect(page.getByRole('heading', { name: 'Tortuga Harbor' })).toBeVisible({ timeout: 15000 })
-  for (const text of ['nora × Catherine', 'nora × Zohra — The Pit', 'hippolyte × ishani', 'She only came to this part of the island to free one of her own.', 'Watching a fight in the Pit.']) await expect(page.getByText(text, { exact: true })).toBeVisible()
+  for (const text of ['nora × Catherine', 'nora × Zohra — The Pit', 'hippolyte × ishani', 'She only came to this part of the island to free one of her own.', 'Watching a fight in the Pit.']) await expect(page.locator('article.branch-card').getByText(text, { exact: true })).toBeVisible()
   const zohra = page.locator('article.branch-card').filter({ hasText: 'nora × Zohra' })
   await expect(zohra.locator('.turn-badge')).toHaveText('Their turn')
   await zohra.getByRole('button', { name: /Show scene details/ }).click()
@@ -135,8 +135,8 @@ test('existing data survives the redesign: every page shows it and nothing is ch
 
   // ---------- Parking lot and planner ----------
   await page.goto('/#parking-lot'); await page.reload()
-  await expect(page.getByText('Reply to Diana')).toBeVisible({ timeout: 15000 })
-  await expect(page.getByText('Plot with lavendarseagreen')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Reply to Diana', exact: true })).toBeVisible({ timeout: 15000 })
+  await expect(page.getByRole('heading', { name: 'Plot with lavendarseagreen', exact: true })).toBeVisible()
   await page.goto('/#planner'); await page.reload()
   await expect(page.getByText('Odile Fenn').first()).toBeVisible({ timeout: 15000 })
 

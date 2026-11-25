@@ -1,3 +1,5 @@
+import { renderPage } from '../../src/routes/public-share'
+import { emptyCard, THEMES } from '../../src/web/components/TradingCard'
 import { expect, test, type Page } from '@playwright/test'
 import { readFile } from 'node:fs/promises'
 import { resolve, sep } from 'node:path'
@@ -43,6 +45,10 @@ async function mock(page: Page, branches = [scene, { ...scene, id: 'b2', title: 
     else if (path === '/api/inbox') body = { branches, yourTurnCount: branches.filter(row => row.status === 'your_turn').length, overdueDraftCount: 0, dueSoonCount: 0 }
     else if (path === '/api/starters/options') body = { characters, partners: [], groups: [] }
     else if (path === '/api/characters') body = characters
+    else if (path === '/api/settings') body = { connections: [], workspaces: [], user: { email: 'writer@example.test' }, refresh: {} }
+    else if (path === '/api/support') body = { items: [], canManage: false }
+    else if (path === '/api/roadmap') body = { items: [], canManage: false }
+    else if (path === '/api/tumblr-activity') body = { asks: [], mentions: [], threadCandidates: [], blogs: [], diagnostics: [] }
     else if (path === '/api/character-planner') body = { plans: [], hasMore: false, nextCursor: null }
     else if (path === '/api/reply-drafts') body = drafts
     else if (path === '/api/tumblr-activity/unread-count') body = { count: 0 }
@@ -307,5 +313,101 @@ test('desktop and mobile screenshots', async ({ page }) => {
     if (!process.env.UI_CAPTURE_BASELINE) await page.getByRole('dialog').getByRole('button', { name: 'Spin', exact: true }).click()
     await page.screenshot({ path: `test-results/ui-polish/${stage}-${route}-wheel-${width}.png` })
     if (!process.env.UI_CAPTURE_BASELINE) await page.keyboard.press('Escape')
+  }
+})
+
+test('profile uses the shared card editor and exports under the production image policy', async ({ page }) => {
+  await mock(page)
+  await page.route('**/api/characters', route => route.fulfill({ json: [{ ...characters[0], card: emptyCard(), portraitObjectKey: 'portrait' }] }))
+  await page.route('**/api/characters/c1/portrait**', route => route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64') }))
+  // Production blocks blob: image URLs. Export must work without widening that policy.
+  if (process.env.UI_TEST_DIST) await page.route('http://localhost:5173/', async route => {
+    await route.fulfill({ contentType: 'text/html', body: await readFile(resolve(process.env.UI_TEST_DIST!, 'index.html')), headers: { 'Content-Security-Policy': "img-src 'self' data: https://*.tumblr.com" } })
+  })
+  await page.goto('/#character/c1')
+  await page.getByRole('button', { name: 'Edit card', exact: true }).click()
+  const editor = page.getByRole('dialog', { name: "Wren's trading card" })
+  await expect(editor).toBeVisible()
+  await editor.getByRole('tab', { name: 'Playlist & board' }).click()
+  await expect(editor.locator('form form')).toHaveCount(0)
+  await editor.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await page.getByRole('button', { name: 'View card', exact: true }).click()
+  const viewer = page.getByRole('dialog', { name: "Wren's card" })
+  const downloaded = page.waitForEvent('download')
+  await viewer.getByRole('button', { name: 'Download', exact: true }).click()
+  expect((await downloaded).suggestedFilename()).toMatch(/\.png$/)
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await viewer.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.goto('/#characters')
+  await page.getByRole('button', { name: 'Cards', exact: true }).click()
+  const cardDownload = page.waitForEvent('download')
+  await page.locator('.tcard-tile').getByRole('button', { name: /Download/ }).click()
+  expect((await cardDownload).suggestedFilename()).toMatch(/\.png$/)
+})
+
+test('public profile follows the card palette and fills its media panels', async ({ page }) => {
+  const html = renderPage(
+    { id: 's', workspaceId: 'w', characterId: 'c', slug: 'preview', style: 'card', showMoodboard: 1, showPlaylist: 1, showStats: 1, indexable: 0, previewObjectKey: null, disabledByModerator: 0 },
+    { name: 'Wren', iconObjectKey: null, portraitObjectKey: null, cardJson: null },
+    { ...emptyCard(), theme: 'vamp', nickname: 'Wren Marlowe', boardUrl: 'https://www.pinterest.com/wren/moodboard/', playlistUrl: 'https://open.spotify.com/playlist/1234567890123456789012' },
+    { total: 3, mine: 2, theirs: 1, rps: [] }, [], 'http://localhost:5173')
+  await page.route('https://**/*', route => route.fulfill({ body: '', contentType: 'text/html' }))
+  await page.route('**/share.js', async route => route.fulfill({ contentType: 'text/javascript', body: await readFile(resolve('public/share.js')) }))
+  await page.route('**/c/preview', route => route.fulfill({ contentType: 'text/html', body: html, headers: { 'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-src https://open.spotify.com https://petracoding.github.io" } }))
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 })
+    await page.goto('/c/preview')
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Wren Marlowe')
+    expect(await page.locator('.hero-name em').evaluate(el => getComputedStyle(el).fontStyle)).toBe('italic')
+    expect(await page.locator('body').evaluate(el => getComputedStyle(el).getPropertyValue('--paper').trim())).toBe(THEMES.vamp.bg[1])
+    await expect(page.locator('.playlist-embed iframe')).toHaveAttribute('src', /open.spotify.com\/embed/)
+    const board = await page.locator('.board-embed').boundingBox()
+    const section = await page.locator('.moodboard-section').boundingBox()
+    expect(board!.height).toBeGreaterThanOrEqual(580)
+    expect(section!.y + section!.height - board!.y - board!.height).toBeLessThan(30)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    await page.screenshot({ path: `test-results/ui/public-profile-${width}.png`, fullPage: true })
+    const popupReady = page.waitForEvent('popup')
+    await page.getByRole('link', { name: 'Open PNG preview', exact: true }).click()
+    const popup = await popupReady
+    await expect(popup.getByRole('img', { name: 'Character card PNG preview' })).toBeVisible()
+    expect(await popup.locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1320)
+    await popup.close()
+  }
+})
+
+test('your-turn colors follow every selected dashboard palette in both modes', async ({ page }) => {
+  await mock(page)
+  await page.goto('/#dashboard')
+  await expect(page.locator('article.branch-card').first()).toBeVisible()
+  for (const mode of ['light', 'dark']) for (const desk of ['meadow', 'tidepool', 'lavender', 'mushroom']) {
+    const colors = await page.evaluate(({ mode, desk }) => {
+      const root = document.documentElement
+      root.dataset.theme = mode; root.dataset.desk = desk
+      const style = getComputedStyle(root)
+      return { turn: style.getPropertyValue('--turn').trim(), accent: style.getPropertyValue('--accent').trim(), tint: style.getPropertyValue('--turn-t').trim(), highlight: style.getPropertyValue('--highlight').trim() }
+    }, { mode, desk })
+    expect(colors.turn, `${desk} ${mode}`).toBe(colors.accent)
+    expect(colors.tint, `${desk} ${mode}`).toBe(colors.highlight)
+  }
+})
+
+test('usability walkthrough: all main pages fit desktop and phone with named controls', async ({ page }) => {
+  test.setTimeout(120000)
+  await mock(page)
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  const pages = ['dashboard', 'characters', 'character/c1', 'parking-lot', 'planner', 'activity', 'connections', 'tools', 'tools/focus', 'tools/sprints', 'settings', 'roadmap', 'support', 'terms', 'privacy', 'cookies']
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 })
+    for (const route of pages) {
+      await page.goto('/#' + route)
+      const names: Record<string, RegExp> = { dashboard: /^Your turn$/, characters: /Characters/, 'character/c1': /^Wren$/, 'parking-lot': /Parking Lot/, planner: /Character planner/, activity: /Tumblr activity/, connections: /Connected accounts/, tools: /Writing tools/, 'tools\/focus': /^Focus$/, 'tools/sprints': /Writing sprints/, settings: /Settings/, roadmap: /Site roadmap/, support: /Support/, terms: /Terms/, privacy: /Privacy/, cookies: /Cookie/ }
+      await expect(page.getByRole('heading', { level: 1, name: names[route] }).first(), route).toBeVisible()
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${route} at ${width}`).toBe(true)
+      const unnamed = await page.getByRole('button', { name: '', exact: true }).evaluateAll(buttons => buttons.filter(button => button.getBoundingClientRect().width > 0).length)
+      expect(unnamed, `${route} unnamed controls`).toBe(0)
+      await page.screenshot({ path: `test-results/ui/usability-${route.replaceAll('/', '-')}-${width}.png`, animations: 'disabled' })
+    }
   }
 })

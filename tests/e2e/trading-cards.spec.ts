@@ -61,7 +61,7 @@ test('make a trading card, see it in the Cards view, flip it, and download it as
   await expect(tile.locator('[data-side=front]')).toContainText('Little Fox')
   await expect(tile.locator('[data-side=front] [data-symbol]').first()).toHaveText('☾')
   await expect(tile.locator('[data-side=back]')).toContainText('Hates the rain')
-  await expect(tile.locator('[data-side=back]')).toContainText('YOUR TURN')
+  await expect(tile.locator('[data-side=back]')).toContainText('MY TURN')
   const flip = tile.getByRole('button', { name: /Flip Wren Marlowe/ })
   await flip.click(); await expect(flip).toHaveAttribute('aria-pressed', 'true')
   await page.waitForTimeout(800); await page.screenshot({ path: 'test-results/cards-view-back-1280.png' })

@@ -36,7 +36,8 @@ test('spin the wheel opens a focused dialog, picks a your-turn thread, and opens
   const picked = (await status.locator('h3').textContent()) ?? ''
   expect(titles).toContain(picked)
   await expect(wheel.getByRole('link', { name: 'Open Thread' })).toHaveAttribute('href', /#starter\//)
-  await expect(page).toHaveURL(/#inbox$/)
+  // The legacy inbox route canonicalizes to Dashboard; opening the wheel stays there.
+  await expect(page).toHaveURL(/#dashboard$/)
   await page.setViewportSize({ width: 1280, height: 900 }); await page.evaluate(() => window.scrollTo(0, 0)); await page.screenshot({ path: 'test-results/t9d-inbox-1280.png' })
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' }); await page.screenshot({ path: 'test-results/t9d-inbox-1280-dark.png' }); await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' })
   await page.setViewportSize({ width: 375, height: 812 }); await page.screenshot({ path: 'test-results/t9d-inbox-375.png', fullPage: true })
