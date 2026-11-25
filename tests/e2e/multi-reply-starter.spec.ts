@@ -166,11 +166,11 @@ test('shows a refresh warning only on the affected branch in inbox and starter d
   })
   const check = async () => {
     await expand(page,'Friend')
-    await expect(card(page,'Friend').getByRole('status')).toHaveText('Refresh needs attention: Tumblr refresh failed (503)')
+    await expect(card(page,'Friend').locator('.refresh-warning')).toHaveText('Refresh needs attention: Tumblr refresh failed (503)')
     await page.keyboard.press('Escape')
     await expand(page,'Other')
     await expect(card(page,'Other').getByLabel('Status')).toBeVisible()
-    await expect(card(page,'Other').getByRole('status')).toHaveCount(0)
+    await expect(card(page,'Other').locator('.refresh-warning')).toHaveCount(0)
     await page.keyboard.press('Escape')
   }
   await page.goto('/')
