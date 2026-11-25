@@ -4,6 +4,17 @@ import { setCookie } from 'hono/cookie'
 import type { Env } from '../worker'
 import { requireWorkspace, requireSession } from '../auth/sessions'
 
+export async function deleteWorkspaceUploads(bucket: R2Bucket, workspaceId: string) {
+  for (const prefix of [`characters/${workspaceId}/`, `character-plans/${workspaceId}/`]) {
+    // Re-list the first page after deleting it; no cursor can skip remaining objects.
+    while (true) {
+      const page = await bucket.list({ prefix })
+      if (page.objects.length) await bucket.delete(page.objects.map(object => object.key))
+      if (!page.truncated) break
+    }
+  }
+}
+
 const COOKIE = '__Host-threadums_session'
 
 // Every table that carries a workspace_id, children before the parents they point at. Live D1
@@ -98,13 +109,9 @@ export function settingsRoutes() {
     statements.push(c.env.DB.prepare('DELETE FROM sessions WHERE user_id=?').bind(identity.userId))
     statements.push(c.env.DB.prepare('DELETE FROM magic_links WHERE email=?').bind(userRow.email))
     statements.push(c.env.DB.prepare('DELETE FROM users WHERE id=?').bind(identity.userId))
+    // Keep the account/session available for retry if object cleanup fails.
+    for (const ws of soleWorkspaces) await deleteWorkspaceUploads(c.env.ICONS, ws)
     await c.env.DB.batch(statements)
-    // R2 icons live under characters/<workspaceId>/... — list by prefix for
-    // sole-member workspaces we just deleted. Shared workspaces keep theirs.
-    for (const ws of soleWorkspaces) {
-      const list = await c.env.ICONS.list({ prefix: `characters/${ws}/` })
-      if (list.objects.length) await c.env.ICONS.delete(list.objects.map(o => o.key))
-    }
     setCookie(c, COOKIE, '', { secure: true, httpOnly: true, sameSite: 'Lax', path: '/', maxAge: 0 })
     return c.body(null, 204)
   })

@@ -2,6 +2,71 @@
 ;(function () {
   'use strict'
 
+  // Render from the public SVG rather than relying on an old R2 preview, which may
+  // be missing after an edit or a previously blocked owner-side canvas export.
+  function asData(blob) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader()
+      reader.onload = function () { resolve(String(reader.result)) }
+      reader.onerror = function () { reject(new Error('Could not read the card image')) }
+      reader.readAsDataURL(blob)
+    })
+  }
+  function imageFrom(src) {
+    return new Promise(function (resolve, reject) {
+      var image = new Image()
+      image.onload = function () { resolve(image) }
+      image.onerror = function () { reject(new Error('Could not draw the card')) }
+      image.src = src
+    })
+  }
+  var preparingPng = false
+  document.querySelectorAll('[data-png-preview]').forEach(function (link) {
+    link.addEventListener('click', async function (event) {
+      event.preventDefault()
+      if (preparingPng) return
+      var preview = window.open('', '_blank')
+      var status = document.querySelector('[data-png-status]')
+      if (status) { status.hidden = false; status.textContent = 'Preparing PNG preview…' }
+      if (!preview) { if (status) status.textContent = 'Allow popups to open the PNG preview, then try again.'; return }
+      preview.opener = null
+      preview.document.title = 'Card PNG preview'
+      preview.document.body.textContent = 'Preparing PNG preview…'
+      preparingPng = true
+      try {
+        var canvas = document.createElement('canvas')
+        canvas.width = 1320; canvas.height = 860
+        var context = canvas.getContext('2d')
+        if (!context) throw new Error('This browser could not prepare the PNG')
+        var sides = document.querySelectorAll('.public-card-face > svg')
+        if (sides.length !== 2) throw new Error('Could not find both card sides')
+        for (var i = 0; i < sides.length; i++) {
+          var svg = sides[i].cloneNode(true)
+          svg.setAttribute('width', '640'); svg.setAttribute('height', '860')
+          var images = svg.querySelectorAll('image')
+          for (var j = 0; j < images.length; j++) {
+            var response = await fetch(images[j].getAttribute('href'))
+            if (!response.ok) throw new Error('Could not load the card portrait. Please try again.')
+            images[j].setAttribute('href', await asData(await response.blob()))
+          }
+          var svgData = await asData(new Blob([new XMLSerializer().serializeToString(svg)], { type: 'image/svg+xml;charset=utf-8' }))
+          context.drawImage(await imageFrom(svgData), i * 680, 0, 640, 860)
+        }
+        var png = canvas.toDataURL('image/png')
+        var image = preview.document.createElement('img')
+        image.src = png; image.alt = 'Character card PNG preview'
+        image.style.maxWidth = '100%'
+        var download = preview.document.createElement('a')
+        download.href = png; download.download = 'character-card.png'; download.textContent = 'Download PNG'
+        preview.document.body.replaceChildren(download, image)
+        if (status) status.textContent = 'PNG preview opened.'
+      } catch (error) {
+        preview.close()
+        if (status) status.textContent = error.message || 'Could not prepare the PNG. Please try again.'
+      } finally { preparingPng = false }
+    })
+  })
+
   // Card flip: toggles data-flipped on the card container
   document.querySelectorAll('[data-card-flip]').forEach(function (button) {
     var target = document.getElementById(button.getAttribute('data-card-flip'))

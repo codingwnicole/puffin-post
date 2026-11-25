@@ -53,7 +53,7 @@ test('share lifecycle: enable, public page, snippets, rotate, disable', async ({
   // X-Robots-Tag should be noindex (indexable defaults to false)
   expect(response!.headers()['x-robots-tag']).toContain('noindex')
   // Name visible
-  await expect(publicPage.locator('h1')).toContainText('Sage Blackthorn')
+  await expect(publicPage.locator('h1')).toHaveText('Sage')
   // Stats are no longer a share option: they show whenever the card has them (SharePanel always saves showStats).
   // Screenshot at 1280
   await publicPage.screenshot({ path: 'test-results/share-public-1280.png' })
@@ -77,7 +77,7 @@ test('share lifecycle: enable, public page, snippets, rotate, disable', async ({
   const publicPage3 = await publicCtx3.newPage()
   await publicPage3.goto(`${APP}/c/${slug}`)
   // Simple card renders — portrait circle, no SVG card
-  await expect(publicPage3.locator('h1')).toContainText('Sage Blackthorn')
+  await expect(publicPage3.locator('h1')).toHaveText('Sage')
   await expect(publicPage3.locator('svg[data-side=front]')).toHaveCount(0)
   await publicCtx3.close()
 

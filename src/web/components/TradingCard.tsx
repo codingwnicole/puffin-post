@@ -106,9 +106,12 @@ export function Side({ side, name, profile, stats, portrait, moodboard = [], uid
       {box(favoriteY, 44)}<text x={60} y={favoriteY + 27} {...label}>FAVORITE COLOR</text><rect x={430} y={favoriteY + 10} width={150} height={24} rx={6} fill={profile.favoriteColor} stroke={t.ink} strokeOpacity={.5} />
     </> : side === 'back' ? <>
       {box(70, 200)}<text x={60} y={100} {...label}>THREAD STATS</text>
-      {([['THREADS', stats.total], ['YOUR TURN', stats.mine], ['THEIR TURN', stats.theirs]] as const).map(([what, value], i) => <g key={what}><text x={133 + i * 187} y={185} textAnchor="middle" fill={t.ink} fontFamily={t.font} fontSize={64}>{value}</text><text x={133 + i * 187} y={215} textAnchor="middle" {...label}>{what}</text></g>)}
-      <text x={60} y={249} {...label}>WRITES IN</text>
-      {stats.rps.length ? wrap(stats.rps.join(' / '), 52, 2).map((line, i) => <text key={line+i} x={190} y={247 + i * 18} {...body} fontSize={17}>{line}</text>) : <text x={190} y={249} {...body} fontSize={17}>No RP section assigned</text>}
+      {([['THREADS', stats.total], ['MY TURN', stats.mine], ['THEIR TURN', stats.theirs]] as const).map(([what, value], i) => <g key={what}><text x={133 + i * 187} y={185} textAnchor="middle" fill={t.ink} fontFamily={t.font} fontSize={64}>{value}</text><text x={133 + i * 187} y={215} textAnchor="middle" {...label}>{what}</text></g>)}
+      {stats.rps.length > 0 && <>
+        <path d="M200 231H308M332 231H440" stroke={t.accent} strokeOpacity={.55} />
+        <path d="M320 227L324 231L320 235L316 231Z" fill={t.accent} />
+        {wrap(stats.rps.join(' · '), 52, 2).map((line, i) => <text key={line+i} x={320} y={247 + i * 17} textAnchor="middle" fill={t.accent} fontFamily={t.font} fontStyle="italic" fontSize={18}>{line}</text>)}
+      </>}
       {box(286, 250)}<text x={60} y={316} {...label}>FUN FACTS</text>
       {(() => { const facts = [0,1,2,3,4].map(i => (profile.facts[i] || '-').slice(0, 60)); let fs = 19; let wr: string[][] = []; for (; fs >= 14; fs--) { wr = facts.map(f => wrap(f, Math.round(56 * 19 / fs), 2)); if (wr.reduce((s, l) => s + l.length, 0) * Math.round(fs * 1.35) <= 180) break } const lh = Math.round(fs * 1.35); let y = 358; return facts.map((_, i) => { const sy = y; y += wr[i].length * lh + 2; return <g key={i}>{glyph ? symbolText(66, sy, 16) : <circle cx={66} cy={sy - 6} r={3} fill={t.accent} />}{wr[i].map((line, j) => <text key={j} x={88} y={sy + j * lh} {...body} fontSize={fs}>{line}</text>)}</g> }) })()}
       {box(552, 120, { width: 272 })}{box(552, 120, { x: 328, width: 272 })}
@@ -194,8 +197,10 @@ async function drawSide(context: CanvasRenderingContext2D, svg: SVGSVGElement, p
   const moodImages = Array.from(clone.querySelectorAll('image[data-moodboard]'))
   if (moodData) moodImages.forEach((image, i) => { if (moodData[i]) image.setAttribute('href', moodData[i]!); else image.remove() })
   for (const image of Array.from(clone.querySelectorAll('image')).filter(image => !image.hasAttribute('data-moodboard'))) { if (portrait) image.setAttribute('href', portrait); else image.remove() }
-  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml;charset=utf-8' }))
-  try { context.drawImage(await loadImage(url), x, 0, width, height) } finally { URL.revokeObjectURL(url) }
+  // The app allows data: images but deliberately blocks blob: image sources.
+  // Keep rasterisation compatible with that policy, including share-preview generation.
+  const url = await blobToData(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml;charset=utf-8' }))
+  context.drawImage(await loadImage(url), x, 0, width, height)
 }
 
 /** Fetches moodboard URLs and returns a data URL for each (GIFs reduced to their first frame). */

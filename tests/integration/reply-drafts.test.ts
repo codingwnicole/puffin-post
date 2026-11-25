@@ -6,6 +6,25 @@ beforeEach(async () => { fixture = await trackingFixture() }, 30_000)
 afterEach(async () => { await fixture?.dispose() })
 const draftInput = { title: 'Owed DM', notes: 'Keep these notes', sourceUrl: 'https://discord.com/channels/@me/123', reminderAt: '2020-01-01T00:00:00.000Z' }
 
+it('keeps primary and multiple character assignments consistent, including clearing and conflicting inputs', async () => {
+  const draft = await (await fixture.request('/api/reply-drafts','POST',draftInput)).json() as any
+  for (const patch of [{characterIds:['character-a']}, {characterId:null}, {characterId:'character-a'}, {characterIds:[],characterId:'character-a'}]) {
+    const response = await fixture.request(`/api/reply-drafts/${draft.id}`,'PATCH',patch)
+    expect(response.status).toBe(200)
+    const result = await response.json() as any
+    expect(result.characterId).toBe(result.characterIds[0] ?? null)
+    if ('characterIds' in patch) expect(result.characterIds).toEqual(patch.characterIds)
+  }
+})
+
+it('rolls back draft text and primary assignment when updating the character links fails', async () => {
+  const draft = await (await fixture.request('/api/reply-drafts','POST',draftInput)).json() as any
+  await fixture.env.DB.exec("CREATE TRIGGER fail_draft_link BEFORE INSERT ON reply_draft_characters BEGIN SELECT RAISE(ABORT, 'simulated failure'); END;")
+  expect((await fixture.request(`/api/reply-drafts/${draft.id}`,'PATCH',{notes:'Must roll back',characterIds:['character-a']})).status).toBe(500)
+  const rows = await (await fixture.request('/api/reply-drafts')).json() as any[]
+  expect(rows[0]).toMatchObject({notes:draftInput.notes,characterId:null,characterIds:[]})
+})
+
 it('creates optional-reference drafts, filters open/overdue and archives without exposing other workspaces', async () => {
   const response = await fixture.request('/api/reply-drafts','POST',draftInput)
   expect(response.status).toBe(201)

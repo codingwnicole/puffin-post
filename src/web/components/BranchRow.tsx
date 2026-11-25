@@ -7,6 +7,7 @@ import Icon from './Icon'
 import { useNativeDialog } from '../lib/dialog'
 import { toast } from '../lib/toast'
 import { runSceneMove, useSceneMoving } from '../lib/motion'
+import { tumblrThreadHref } from '../lib/tumblr-links'
 
 export const statusLabel = (status: string) => status.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase())
 // Turn status is told apart by icon, label and shape (filled vs outlined), never colour alone.
@@ -119,12 +120,7 @@ export default function BranchRow({ branch, options, onChange, showAvatar = true
   const archived = branch.starterArchived === 1 || Boolean(branch.archivedAt) || branch.status === 'archived'
   // The latest reply lives on whoever posted it; pairing its id with the starter's blog linked to a post that doesn't exist.
   // Built only where the link renders (non-manual scenes), like the old inline expression.
-  const tumblrHref = () => {
-    const latest = branch.latestPostId && branch.lastPoster
-      ? { blog: branch.lastPoster, post: branch.latestPostId }
-      : { blog: branch.rootBlogId, post: branch.rootPostId }
-    return `https://www.tumblr.com/${encodeURIComponent(latest.blog.replace(/\.tumblr\.com$/, ''))}/${encodeURIComponent(latest.post)}`
-  }
+  const tumblrHref = () => tumblrThreadHref(branch) ?? undefined
   const partner = branch.partnerLabel ? cleanPartner(branch.partnerLabel) : 'writing partner'
   const displayTitle = /^(Tumblr thread|Untitled scene)$/i.test(branch.title) ? `${branch.characterName} × ${partner}` : branch.title
   const summary = branch.description || 'No scene summary yet — open this card to add one.'
