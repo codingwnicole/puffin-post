@@ -66,7 +66,7 @@ export async function trackingFixture() {
       const rootId = stub?.reblogged_root_id
       const rootName = stub?.reblogged_root_name
       const trail = stub?.trail ?? null
-      return new Response(JSON.stringify({ response:{ posts:[{ blog_name:blog, id_string:id, tags: stub?.tags ?? ['ooc','open','a/o'], content: stub?.content, reblogged_root_id: rootId ?? null, reblogged_root_name: rootName ?? null, trail }] } }), { status:200, headers:{'content-type':'application/json'} })
+      return new Response(JSON.stringify({ response:{ posts:[{ blog_name:blog, id_string:id, timestamp:stub?.timestamp??1000, tags: stub?.tags ?? ['ooc','open','a/o'], content: stub?.content, reblogged_root_id: rootId ?? null, reblogged_root_name: rootName ?? null, reblogged_from_id:stub?.reblogged_from_id??null, reblogged_from_name:stub?.reblogged_from_name??null, trail }] } }), { status:200, headers:{'content-type':'application/json'} })
     }
     if (url.includes('/notes?')) {
       const notesStub = (globalThis as any).__tumblrStubNotes
@@ -76,7 +76,8 @@ export async function trackingFixture() {
     return new Response(JSON.stringify({ response:{ user:{ blogs:[{ name:'a' },{ name:'b' }] } } }), { status:200, headers:{'content-type':'application/json'} })
   }
   const platform = await getPlatformProxy<Env>({ persist: false })
-  const env = { ...platform.env, APP_ORIGIN: 'https://threadums.test', SESSION_SECRET: 'test-only-session-secret-with-32-characters', TOKEN_ENCRYPTION_KEY:'test-only-encryption-key-with-32-chars', TUMBLR_CONSUMER_KEY:'key', TUMBLR_CONSUMER_SECRET:'secret' }
+  const ephemeralTestKey = () => crypto.randomUUID() + crypto.randomUUID()
+  const env = { ...platform.env, APP_ORIGIN: 'https://threadums.test', SESSION_SECRET: ephemeralTestKey(), TOKEN_ENCRYPTION_KEY: ephemeralTestKey(), TUMBLR_CONSUMER_KEY:'invalid-fixture-key', TUMBLR_CONSUMER_SECRET:'invalid-fixture-secret' }
   for (const file of (await readdir('src/db/migrations')).sort()) {
     const sql = await readFile(`src/db/migrations/${file}`, 'utf8')
     await env.DB.batch(sqlStatements(sql).map(s => env.DB.prepare(s)))
@@ -90,7 +91,7 @@ export async function trackingFixture() {
       env.DB.prepare('INSERT INTO characters (id,workspace_id,name) VALUES (?,?,?)').bind(`character-${id}`,id,`Character ${id}`),
       env.DB.prepare('INSERT INTO partners (id,workspace_id,blog_identifier,display_label) VALUES (?,?,?,?)').bind(`partner-${id}`,id,`${id}.tumblr.com`,`Partner ${id}`),
     ])
-    const cipher = await encryptToken(`token-${id}`, env.TOKEN_ENCRYPTION_KEY)
+    const cipher = await encryptToken('integration-fixture-token', env.TOKEN_ENCRYPTION_KEY)
     await env.DB.batch([
       env.DB.prepare('INSERT INTO tumblr_connections (id,workspace_id,token_encrypted,token_secret_encrypted,account_metadata_json) VALUES (?,?,?,?,?)').bind(`connection-${id}`,id,cipher,cipher,JSON.stringify({ blogs:[`${id}.tumblr.com`] })),
       env.DB.prepare('INSERT INTO character_blogs (id,workspace_id,character_id,tumblr_connection_id,blog_identifier,display_label) VALUES (?,?,?,?,?,?)').bind(`blog-${id}`,id,`character-${id}`,`connection-${id}`,`${id}.tumblr.com`,id),

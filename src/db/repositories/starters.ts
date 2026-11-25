@@ -7,7 +7,11 @@ export async function getStarter(scope: WorkspaceScope, id: string): Promise<Sta
     title, source, root_post_id AS rootPostId, root_blog_id AS rootBlogId, thread_root_id AS threadRootId, thread_root_blog_id AS threadRootBlogId, description, created_at AS createdAt,
     premise, archived, archived_at AS archivedAt,
     title_source AS titleSource, title_confidence AS titleConfidence, title_evidence AS titleEvidence,
-    title_manual_override_at AS titleManualOverrideAt, description_source AS descriptionSource,
+    title_manual_override_at AS titleManualOverrideAt, starter_author_status AS starterAuthorStatus,
+    starter_author_blog_id AS starterAuthorBlogId, starter_author_blog_uuid AS starterAuthorBlogUuid,
+    starter_author_source AS starterAuthorSource, starter_author_confidence AS starterAuthorConfidence,
+    starter_author_evidence AS starterAuthorEvidence, starter_author_checked_at AS starterAuthorCheckedAt,
+    thread_root_resolved AS threadRootResolved, description_source AS descriptionSource,
     description_confidence AS descriptionConfidence, description_evidence AS descriptionEvidence,
     description_manual_override_at AS descriptionManualOverrideAt, premise_source AS premiseSource,
     premise_confidence AS premiseConfidence, premise_evidence AS premiseEvidence,
@@ -38,6 +42,14 @@ export interface Starter {
   titleConfidence: string
   titleEvidence: string
   titleManualOverrideAt: string | null
+  starterAuthorStatus: 'user' | 'partner' | 'unresolved'
+  starterAuthorBlogId: string | null
+  starterAuthorBlogUuid: string | null
+  starterAuthorSource: string
+  starterAuthorConfidence: 'high' | 'none'
+  starterAuthorEvidence: string
+  starterAuthorCheckedAt: string | null
+  threadRootResolved: number
   descriptionSource: string
   descriptionConfidence: string
   descriptionEvidence: string
@@ -67,6 +79,14 @@ export interface CreateStarterInput extends WorkspaceScope {
   premiseSource?: string
   premiseConfidence?: string
   premiseEvidence?: string
+  starterAuthorStatus?: 'user' | 'partner' | 'unresolved'
+  starterAuthorBlogId?: string | null
+  starterAuthorBlogUuid?: string | null
+  starterAuthorSource?: string
+  starterAuthorConfidence?: 'high' | 'none'
+  starterAuthorEvidence?: string
+  starterAuthorCheckedAt?: string | null
+  threadRootResolved?: boolean
 }
 
 /** The tracked thread any of these post ids belongs to (a starter root, the
@@ -104,7 +124,11 @@ export async function createStarter(input: CreateStarterInput): Promise<Starter>
     title, source, root_post_id AS rootPostId, root_blog_id AS rootBlogId, thread_root_id AS threadRootId,
     thread_root_blog_id AS threadRootBlogId, description, created_at AS createdAt, premise, archived, archived_at AS archivedAt,
     title_source AS titleSource, title_confidence AS titleConfidence, title_evidence AS titleEvidence,
-    title_manual_override_at AS titleManualOverrideAt, description_source AS descriptionSource,
+    title_manual_override_at AS titleManualOverrideAt, starter_author_status AS starterAuthorStatus,
+    starter_author_blog_id AS starterAuthorBlogId, starter_author_blog_uuid AS starterAuthorBlogUuid,
+    starter_author_source AS starterAuthorSource, starter_author_confidence AS starterAuthorConfidence,
+    starter_author_evidence AS starterAuthorEvidence, starter_author_checked_at AS starterAuthorCheckedAt,
+    thread_root_resolved AS threadRootResolved, description_source AS descriptionSource,
     description_confidence AS descriptionConfidence, description_evidence AS descriptionEvidence,
     description_manual_override_at AS descriptionManualOverrideAt, premise_source AS premiseSource,
     premise_confidence AS premiseConfidence, premise_evidence AS premiseEvidence,
@@ -120,6 +144,10 @@ export async function createStarter(input: CreateStarterInput): Promise<Starter>
     source: 'tumblr', rootPostId: input.rootPostId, rootBlogId: input.rootBlogId, threadRootId, threadRootBlogId, postUrl: `https://${input.rootBlogId}/post/${input.rootPostId}`,
     description: input.description ?? '', createdAt: new Date().toISOString(), premise: input.premise ?? '', archived: 0, archivedAt: null,
     titleSource: input.titleSource ?? 'legacy', titleConfidence: input.titleConfidence ?? 'none', titleEvidence: input.titleEvidence ?? '', titleManualOverrideAt: input.titleSource === 'manual' ? new Date().toISOString() : null,
+    starterAuthorStatus: input.starterAuthorStatus ?? 'unresolved', starterAuthorBlogId: input.starterAuthorBlogId ?? null,
+    starterAuthorBlogUuid: input.starterAuthorBlogUuid ?? null, starterAuthorSource: input.starterAuthorSource ?? 'unresolved',
+    starterAuthorConfidence: input.starterAuthorConfidence ?? 'none', starterAuthorEvidence: input.starterAuthorEvidence ?? '',
+    starterAuthorCheckedAt: input.starterAuthorCheckedAt ?? null, threadRootResolved: input.threadRootResolved ? 1 : 0,
     descriptionSource: input.descriptionSource ?? 'legacy', descriptionConfidence: input.descriptionConfidence ?? 'none', descriptionEvidence: input.descriptionEvidence ?? '', descriptionManualOverrideAt: input.descriptionSource === 'manual' ? new Date().toISOString() : null,
     premiseSource: input.premiseSource ?? 'legacy', premiseConfidence: input.premiseConfidence ?? 'none', premiseEvidence: input.premiseEvidence ?? '', premiseManualOverrideAt: input.premiseSource === 'manual' ? new Date().toISOString() : null,
   }
@@ -127,12 +155,15 @@ export async function createStarter(input: CreateStarterInput): Promise<Starter>
     await db.prepare(`
     INSERT INTO starters (id, workspace_id, character_id, rp_group_id, title, source, root_post_id, root_blog_id, thread_root_id, thread_root_blog_id,
       description, created_at, premise, title_source, title_confidence, title_evidence, description_source, description_confidence, description_evidence,
-      premise_source, premise_confidence, premise_evidence)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      premise_source, premise_confidence, premise_evidence, starter_author_status, starter_author_blog_id, starter_author_blog_uuid,
+      starter_author_source, starter_author_confidence, starter_author_evidence, starter_author_checked_at, thread_root_resolved)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).bind(starter.id, workspaceId, starter.characterId, starter.groupId, starter.title, starter.source,
     starter.rootPostId, starter.rootBlogId, starter.threadRootId, starter.threadRootBlogId, starter.description, starter.createdAt, starter.premise,
     starter.titleSource, starter.titleConfidence, starter.titleEvidence, starter.descriptionSource, starter.descriptionConfidence, starter.descriptionEvidence,
-    starter.premiseSource, starter.premiseConfidence, starter.premiseEvidence).run()
+    starter.premiseSource, starter.premiseConfidence, starter.premiseEvidence, starter.starterAuthorStatus,
+    starter.starterAuthorBlogId, starter.starterAuthorBlogUuid, starter.starterAuthorSource, starter.starterAuthorConfidence,
+    starter.starterAuthorEvidence, starter.starterAuthorCheckedAt, starter.threadRootResolved).run()
   } catch (error) {
     // A concurrent create of the same thread can slip between the check above and
     // this insert and win the unique index. Return the winner's row, never a 500.
@@ -143,6 +174,41 @@ export async function createStarter(input: CreateStarterInput): Promise<Starter>
     throw error
   }
   return { ...starter, postUrl: `https://${starter.threadRootBlogId}/post/${starter.threadRootId}` }
+}
+
+/** Improve a prior unresolved root only from a newly verified Tumblr identity.
+ * A positive account match can upgrade a former partner result after a newly
+ * connected account is refreshed. No title, premise, muse, or character field
+ * is touched here. */
+export async function updateStarterAttribution(scope: WorkspaceScope, id: string, input: {
+  rootPostId: string
+  rootBlogIdentifier: string
+  rootResolved: boolean
+  attribution: { status: 'user' | 'partner' | 'unresolved'; blogIdentifier: string | null; blogUuid: string | null; source: string; confidence: 'high' | 'none'; evidence: string }
+}): Promise<void> {
+  await requireMembership(scope.db, scope.userId, scope.workspaceId)
+  const current = await scope.db.prepare('SELECT starter_author_status AS status FROM starters WHERE workspace_id=? AND id=?').bind(scope.workspaceId, id).first<{status:'user'|'partner'|'unresolved'}>()
+  if (!current) throw new Error('Starter not found')
+  const upgrade = input.attribution.status === 'user' && current.status !== 'user'
+  const authorResolved = input.attribution.status !== 'unresolved' && (current.status === 'unresolved' || upgrade)
+  const now = new Date().toISOString()
+  await scope.db.prepare(`UPDATE starters SET
+    thread_root_id=CASE WHEN ? AND thread_root_resolved=0 THEN ? ELSE thread_root_id END,
+    thread_root_blog_id=CASE WHEN ? AND thread_root_resolved=0 THEN ? ELSE thread_root_blog_id END,
+    thread_root_resolved=CASE WHEN ? THEN 1 ELSE thread_root_resolved END,
+    starter_author_status=CASE WHEN ? THEN ? ELSE starter_author_status END,
+    starter_author_blog_id=CASE WHEN ? THEN ? ELSE starter_author_blog_id END,
+    starter_author_blog_uuid=CASE WHEN ? THEN ? ELSE starter_author_blog_uuid END,
+    starter_author_source=CASE WHEN ? THEN ? ELSE starter_author_source END,
+    starter_author_confidence=CASE WHEN ? THEN ? ELSE starter_author_confidence END,
+    starter_author_evidence=CASE WHEN ? THEN ? ELSE starter_author_evidence END,
+    starter_author_checked_at=?
+    WHERE workspace_id=? AND id=?`).bind(
+      input.rootResolved, input.rootPostId, input.rootResolved, input.rootBlogIdentifier, input.rootResolved,
+      authorResolved, input.attribution.status, authorResolved, input.attribution.blogIdentifier,
+      authorResolved, input.attribution.blogUuid, authorResolved, input.attribution.source,
+      authorResolved, input.attribution.confidence, authorResolved, input.attribution.evidence,
+      now, scope.workspaceId, id).run()
 }
 
 export async function updateStarterTitle(scope: WorkspaceScope, id: string, title?: string, description?: string): Promise<Starter> {

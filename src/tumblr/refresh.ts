@@ -13,6 +13,7 @@ export interface RefreshInput {
   workspaceId: string
   starterId: string
   rootBlogIdentifier: string
+  rootAuthorIsUser?: boolean
   ownBlogIdentifiers: string[]
   branches: RefreshBranch[]
   activities: TumblrActivity[]
@@ -21,7 +22,7 @@ export interface RefreshInput {
 
 export interface RefreshResult { updatedBranchIds:string[]; detectedActivityCount:number }
 
-export function latestDirectExchange(ownBlogIdentifiers:string[], rootBlogIdentifier:string, partnerBlogIdentifier:string, activities:TumblrActivity[]) {
+export function latestDirectExchange(ownBlogIdentifiers:string[], rootBlogIdentifier:string, partnerBlogIdentifier:string, activities:TumblrActivity[], rootAuthorIsUser = ownBlogIdentifiers.includes(rootBlogIdentifier)) {
   const ownBlogs = new Set(ownBlogIdentifiers)
   let latest: { activity:TumblrActivity; status:'your_turn'|'their_turn' } | undefined
   for (const activity of [...activities].sort((left,right) => left.timestamp.localeCompare(right.timestamp))) {
@@ -29,7 +30,7 @@ export function latestDirectExchange(ownBlogIdentifiers:string[], rootBlogIdenti
     const isOwnActivity = ownBlogs.has(activity.blogIdentifier)
     const parent = activity.parentBlogIdentifier ?? ''
     // A partner reblogging from you (or from your root) means their turn is over; you owe the next reply.
-    if (isPartnerActivity && (ownBlogs.has(parent) || parent === rootBlogIdentifier && ownBlogs.has(rootBlogIdentifier))) latest = { activity, status:'your_turn' }
+    if (isPartnerActivity && (ownBlogs.has(parent) || parent === rootBlogIdentifier && rootAuthorIsUser)) latest = { activity, status:'your_turn' }
     // Your reblog from that partner means you have replied and are waiting on them.
     // Skip when the partner IS one of your own blogs (shared blog) — the activity is ambiguous there.
     if (isOwnActivity && parent === partnerBlogIdentifier && !ownBlogs.has(partnerBlogIdentifier)) latest = { activity, status:'their_turn' }
@@ -44,7 +45,7 @@ export async function refreshStarterBranches(input:RefreshInput, apply:(branch:R
   const updatedBranchIds:string[] = []
   for (const branch of input.branches) {
     if (!branch.partnerBlogIdentifier) continue
-    const latest = latestDirectExchange(input.ownBlogIdentifiers,input.rootBlogIdentifier,branch.partnerBlogIdentifier,input.activities)
+    const latest = latestDirectExchange(input.ownBlogIdentifiers,input.rootBlogIdentifier,branch.partnerBlogIdentifier,input.activities,input.rootAuthorIsUser)
     if (!latest || latest.activity.postId === branch.latestPostId) continue
     await apply(branch, latest.activity, latest.status)
     updatedBranchIds.push(branch.id)

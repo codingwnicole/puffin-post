@@ -13,6 +13,7 @@ export const branchSchema = z.object({
 export const starterSchema = z.object({
   characterId: reference, title: z.string().trim().max(300).optional(),
   postUrl: z.string().trim().max(2000).optional(),
+  initialTurn: z.enum(['your_turn', 'their_turn']).optional(),
   groupId: reference.nullable().optional(),
   partnerBlogIdentifier: z.string().trim().max(200).nullable().optional(),
   partnerName: z.string().trim().max(200).nullable().optional(),
