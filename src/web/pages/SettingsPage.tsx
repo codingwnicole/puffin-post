@@ -3,6 +3,33 @@ import { api, clearApiCache } from '../lib/api'
 import ThemeMenu from '../components/ThemeMenu'
 import { openOnboardingTour } from '../components/OnboardingTour'
 
+function waitForActivatedWorker(registration:ServiceWorkerRegistration):Promise<void>{
+ return new Promise((resolve,reject)=>{
+  const watched=new Set<ServiceWorker>()
+  const timeout=window.setTimeout(()=>finish(new Error('The notification service did not finish starting. Reload the page, then try again.')),10000)
+  function finish(error?:Error){
+   window.clearTimeout(timeout)
+   registration.removeEventListener('updatefound',watchInstalling)
+   for(const worker of watched)worker.removeEventListener('statechange',check)
+   if(error)reject(error);else resolve()
+  }
+  function watch(worker:ServiceWorker|null){
+   if(!worker||watched.has(worker))return
+   watched.add(worker)
+   worker.addEventListener('statechange',check)
+  }
+  function check(){
+   watch(registration.installing)
+   watch(registration.waiting)
+   watch(registration.active)
+   if(registration.active?.state==='activated')finish()
+  }
+  function watchInstalling(){watch(registration.installing);check()}
+  registration.addEventListener('updatefound',watchInstalling)
+  check()
+ })
+}
+
 export default function SettingsPage(){
  const [settings,setSettings]=useState<any>(null),[groups,setGroups]=useState<any[]>([]),[groupName,setGroupName]=useState(''),[password,setPassword]=useState(''),[pushEnabled,setPushEnabled]=useState(false),[message,setMessage]=useState(''),[testingPush,setTestingPush]=useState(false),[deleteConfirm,setDeleteConfirm]=useState(''),[deletingAccount,setDeletingAccount]=useState(false)
  const load=()=>api('/settings').then(setSettings).catch(e=>setMessage(e.message))
@@ -16,11 +43,11 @@ export default function SettingsPage(){
    const permission=Notification.permission==='granted'?'granted':await Notification.requestPermission()
    if(permission!=='granted')throw new Error('Allow browser notifications to turn them on.')
 
-   // register() can resolve while a brand-new worker is still installing. PushManager
-   // requires an active worker, so wait for the browser's ready registration first.
-   await navigator.serviceWorker.register('/puffin-post-sw.js')
-   const registration=await navigator.serviceWorker.ready
-   if(!registration.active)throw new Error('The notification service is still starting. Wait a moment, then try again.')
+   // register() can resolve while the worker is installing or activating. The
+   // registration.active property includes workers that are only activating, so
+   // wait until this exact registration reaches the activated state before subscribe().
+   const registration=await navigator.serviceWorker.register('/puffin-post-sw.js',{scope:'/'})
+   await waitForActivatedWorker(registration)
 
    const key=await api<{publicKey:string}>('/push/public-key')
    const bytes=Uint8Array.from(atob(key.publicKey.replaceAll('-','+').replaceAll('_','/').padEnd(Math.ceil(key.publicKey.length/4)*4,'=')),x=>x.charCodeAt(0))
