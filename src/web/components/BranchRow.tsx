@@ -179,7 +179,7 @@ export default function BranchRow({ branch, options, onChange, showAvatar = true
           </fieldset>
           <fieldset className="drawer-fieldset">
             <legend>Your next step</legend>
-            <label className="drawer-field-wide">Your recap<textarea name="userRecap" rows={3} maxLength={1000} defaultValue={branch.userRecap ?? ''} placeholder="What do you want to remember before your next reply?"/></label>
+            <label className="drawer-field-wide">Your recap / next step<textarea name="userRecap" rows={3} maxLength={1000} defaultValue={branch.userRecap ?? ''} placeholder="What do you want to remember before your next reply?"/></label>
             <label className="drawer-field-wide">Thread notes<textarea name="notes" rows={3} maxLength={20000} defaultValue={branch.notes}/></label>
           </fieldset>
           <fieldset className="drawer-fieldset">
