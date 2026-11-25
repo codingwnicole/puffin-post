@@ -5,6 +5,7 @@ import { requireWorkspace } from '../auth/sessions'
 import { createTumblrClient, type TumblrNotification, type TumblrPost } from '../tumblr/client'
 import { decryptToken } from '../tumblr/oauth'
 import { checkRateLimit } from '../auth/rate-limits'
+import { canonicalBlogIdentifier } from '../tumblr/normalize'
 
 const MENTION_TYPES = new Set(['mention', 'mention_in_post', 'mention_in_reply', 'user_mention', 'note_mention'])
 type ConnectedBlog = { tokenEncrypted: string; tokenSecretEncrypted: string; blogIdentifier: string }
@@ -23,26 +24,41 @@ export function tumblrActivityRoutes() {
       return c.json({ error: 'Too many activity refreshes. Wait a minute and try again.' }, 429)
     }
     // ?blog= filters to one canonical blog; ?before=<unix seconds> pages to older items.
-    const blogFilter = c.req.query('blog') || null
+    const blogFilter = c.req.query('blog') ? canonicalBlogIdentifier(c.req.query('blog')!) : null
     const beforeParam = c.req.query('before')
     // Accept unix seconds or the ISO oldestTimestamp the page sends back; Tumblr wants unix seconds.
     const beforeMs = !beforeParam ? NaN : /^\d+$/.test(beforeParam) ? Number(beforeParam) * 1000 : Date.parse(beforeParam)
     if (beforeParam && Number.isNaN(beforeMs)) return c.json({ error: 'before must be a unix timestamp or ISO date' }, 400)
     const before = beforeParam ? Math.floor(beforeMs / 1000) : null
-    // De-duplicate by canonical blog: a blog linked by two characters/connections must be fetched once.
-    const rows = await scope.db.prepare(`
-      SELECT cb.blog_identifier AS blogIdentifier,
-        (SELECT tc.token_encrypted FROM tumblr_connections tc
-           WHERE tc.workspace_id = cb.workspace_id AND tc.id = cb.tumblr_connection_id AND tc.status = 'active'
-           ORDER BY tc.created_at LIMIT 1) AS tokenEncrypted,
-        (SELECT tc.token_secret_encrypted FROM tumblr_connections tc
-           WHERE tc.workspace_id = cb.workspace_id AND tc.id = cb.tumblr_connection_id AND tc.status = 'active'
-           ORDER BY tc.created_at LIMIT 1) AS tokenSecretEncrypted
-      FROM character_blogs cb
-      WHERE cb.workspace_id = ?${blogFilter ? ' AND cb.blog_identifier = ?' : ''}
-        AND EXISTS (SELECT 1 FROM tumblr_connections tc WHERE tc.workspace_id = cb.workspace_id AND tc.id = cb.tumblr_connection_id AND tc.status = 'active')
-      GROUP BY cb.blog_identifier
-    `).bind(...(blogFilter ? [scope.workspaceId, blogFilter] : [scope.workspaceId])).all<ConnectedBlog>()
+    // Every blog returned by an active Tumblr connection is eligible for the
+    // activity feed. Character assignments guide tracking, but shouldn't hide
+    // an unassigned primary or sideblog's own starters from the review queue.
+    const connections = await scope.db.prepare(`
+      SELECT id, token_encrypted AS tokenEncrypted, token_secret_encrypted AS tokenSecretEncrypted,
+        account_metadata_json AS metadata
+      FROM tumblr_connections WHERE workspace_id=? AND status='active' ORDER BY created_at
+    `).bind(scope.workspaceId).all<{id:string;tokenEncrypted:string;tokenSecretEncrypted:string;metadata:string}>()
+    const connectionById = new Map(connections.results.map(connection => [connection.id, connection]))
+    const rowsByBlog = new Map<string, ConnectedBlog>()
+    const addConnectedBlog = (identifier: unknown, connection: {tokenEncrypted:string;tokenSecretEncrypted:string} | undefined) => {
+      if (typeof identifier !== 'string' || !connection) return
+      const blogIdentifier = canonicalBlogIdentifier(identifier)
+      if (blogIdentifier) rowsByBlog.set(blogIdentifier, rowsByBlog.get(blogIdentifier) ?? { blogIdentifier, tokenEncrypted:connection.tokenEncrypted, tokenSecretEncrypted:connection.tokenSecretEncrypted })
+    }
+    for (const connection of connections.results) {
+      try {
+        const metadata = JSON.parse(connection.metadata) as {blogs?:unknown}
+        if (Array.isArray(metadata.blogs)) for (const blog of metadata.blogs) addConnectedBlog(blog, connection)
+      } catch { /* assigned blogs below can still supply an active connection */ }
+    }
+    const assignedBlogs = await scope.db.prepare(`
+      SELECT cb.blog_identifier AS blogIdentifier, cb.tumblr_connection_id AS connectionId
+      FROM character_blogs cb JOIN tumblr_connections tc
+        ON tc.workspace_id=cb.workspace_id AND tc.id=cb.tumblr_connection_id AND tc.status='active'
+      WHERE cb.workspace_id=?
+    `).bind(scope.workspaceId).all<{blogIdentifier:string;connectionId:string}>()
+    for (const blog of assignedBlogs.results) addConnectedBlog(blog.blogIdentifier, connectionById.get(blog.connectionId))
+    const rows = [...rowsByBlog.values()].filter(blog => !blogFilter || blog.blogIdentifier === blogFilter)
     const dismissed = await scope.db.prepare(`
       SELECT blog_identifier AS blogIdentifier, post_id AS postId
       FROM activity_dismissals WHERE workspace_id = ?
@@ -70,7 +86,7 @@ export function tumblrActivityRoutes() {
     // Tumblr calls per request so a large workspace cannot consume unbounded API quota.
     let remainingFetches = 100
     const budget = { remaining: () => remainingFetches, consume: () => { remainingFetches -= 1 } }
-    const responses = await Promise.all(rows.results.map(async row => {
+    const responses = await Promise.all(rows.map(async row => {
       const client = createTumblrClient({ consumerKey: c.env.TUMBLR_CONSUMER_KEY, consumerSecret: c.env.TUMBLR_CONSUMER_SECRET, token: await decryptToken(row.tokenEncrypted, c.env.TOKEN_ENCRYPTION_KEY), tokenSecret: await decryptToken(row.tokenSecretEncrypted, c.env.TOKEN_ENCRYPTION_KEY), budget })
       try {
         // Only asks and mentions are shown here; reblog signals are for the background sync, and
@@ -109,7 +125,6 @@ export function tumblrActivityRoutes() {
       .map(post => [threadKey(post.rootBlogIdentifier, post.rootPostId), post] as const)).values()]
       .map(post => ({ id: `post:${post.blogIdentifier}:${post.id}`, blogIdentifier: post.blogIdentifier, actor: post.blogIdentifier, timestamp: post.timestamp, postId: post.id, preview: post.preview ?? post.title ?? null, sourceUrl: post.postUrl ?? `https://www.tumblr.com/${post.blogIdentifier.replace(/\.tumblr\.com$/i, '')}/${post.id}`, threadKey: threadKey(post.rootBlogIdentifier, post.rootPostId) }))
       .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
-      .slice(0, 12)
     return c.json({ asks: notifications.filter(notification => notification.type === 'ask'), mentions: notifications.filter(notification => mentionTypes.has(notification.type)), threadCandidates, blogs: responses.map(response => ({ blogIdentifier: response.blogIdentifier, status: response.status, error: response.error, oldestTimestamp: response.oldestTimestamp, exhausted: response.exhausted })), diagnostics })
   })
   app.post('/dismissals', async c => {

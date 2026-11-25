@@ -7,7 +7,29 @@ export default function SettingsPage(){
  const [settings,setSettings]=useState<any>(null),[groups,setGroups]=useState<any[]>([]),[groupName,setGroupName]=useState(''),[password,setPassword]=useState(''),[pushEnabled,setPushEnabled]=useState(false),[message,setMessage]=useState(''),[testingPush,setTestingPush]=useState(false),[deleteConfirm,setDeleteConfirm]=useState(''),[deletingAccount,setDeletingAccount]=useState(false)
  const load=()=>api('/settings').then(setSettings).catch(e=>setMessage(e.message))
  useEffect(()=>{load();api<any[]>('/rp-groups').then(setGroups).catch(()=>{});api<{enabled:boolean}>('/push/subscription').then(value=>setPushEnabled(value.enabled)).catch(()=>{})},[])
- async function togglePush(){try{setMessage('');if(pushEnabled){await api('/push/subscription','DELETE');setPushEnabled(false);setMessage('Browser notifications turned off.');return}if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))throw new Error('This browser does not support push notifications');if(Notification.permission==='denied')throw new Error('Notifications are blocked for RP Thread Buddy in this browser. Allow them in browser site settings, then try again.');const key=await api<{publicKey:string}>('/push/public-key'),registration=await navigator.serviceWorker.register('/puffin-post-sw.js'),bytes=Uint8Array.from(atob(key.publicKey.replaceAll('-','+').replaceAll('_','/').padEnd(Math.ceil(key.publicKey.length/4)*4,'=')),x=>x.charCodeAt(0)),subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes});await api('/push/subscription','POST',{endpoint:subscription.endpoint});setPushEnabled(true);setMessage('Browser notifications are on. Send a test to confirm this device can show one.')}catch(error){setMessage((error as Error).message)}}
+ async function togglePush(){
+  try{
+   setMessage('')
+   if(pushEnabled){await api('/push/subscription','DELETE');setPushEnabled(false);setMessage('Browser notifications turned off.');return}
+   if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))throw new Error('This browser does not support push notifications')
+   if(Notification.permission==='denied')throw new Error('Notifications are blocked for RP Thread Buddy in this browser. Allow them in browser site settings, then try again.')
+   const permission=Notification.permission==='granted'?'granted':await Notification.requestPermission()
+   if(permission!=='granted')throw new Error('Allow browser notifications to turn them on.')
+
+   // register() can resolve while a brand-new worker is still installing. PushManager
+   // requires an active worker, so wait for the browser's ready registration first.
+   await navigator.serviceWorker.register('/puffin-post-sw.js')
+   const registration=await navigator.serviceWorker.ready
+   if(!registration.active)throw new Error('The notification service is still starting. Wait a moment, then try again.')
+
+   const key=await api<{publicKey:string}>('/push/public-key')
+   const bytes=Uint8Array.from(atob(key.publicKey.replaceAll('-','+').replaceAll('_','/').padEnd(Math.ceil(key.publicKey.length/4)*4,'=')),x=>x.charCodeAt(0))
+   const subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes})
+   await api('/push/subscription','POST',{endpoint:subscription.endpoint})
+   setPushEnabled(true)
+   setMessage('Browser notifications are on. Send a test to confirm this device can show one.')
+  }catch(error){setMessage((error as Error).message)}
+ }
  async function testPush(){try{setTestingPush(true);setMessage('');if(!('serviceWorker'in navigator)||Notification.permission!=='granted')throw new Error('Turn on browser notifications first.');const registration=await navigator.serviceWorker.ready;await registration.showNotification('RP Thread Buddy test',{body:'This browser can receive RP Thread Buddy notifications.',icon:'/favicon.svg',tag:'rp-thread-buddy-test',data:{url:'/#settings'}});setMessage('Test notification sent. It may appear in your system notification area.')}catch(error){setMessage((error as Error).message)}finally{setTestingPush(false)}}
  return <section aria-labelledby="settings-title"><h1 id="settings-title" className="page-heading">Settings</h1><p className="page-description">Manage your workspace, account, and reminders.</p>{message&&<p role="status" className="success-pulse">{message}</p>}
  <section className="settings-section appearance-settings"><h2>Appearance</h2><ThemeMenu/></section>

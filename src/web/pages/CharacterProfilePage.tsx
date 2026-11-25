@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties, type FormEvent } from 'react'
-import { api, apiUpload, staleGet } from '../lib/api'
+import { api, apiUpload, staleGet, type TrackingOptions } from '../lib/api'
 import { useNativeDialog } from '../lib/dialog'
 import TradingCard, { downloadCard, emptyCard, normalizeCard, THEMES, type CardProfile, type CardStats } from '../components/TradingCard'
 import CardEditor from '../components/CardEditor'
@@ -7,6 +7,8 @@ import SharePanel from '../components/SharePanel'
 import Icon from '../components/Icon'
 import { parsePlaylist } from '../../shared/embeds'
 import { fitImage, IMAGE_ACCEPT, IMAGE_HINT } from '../lib/uploads'
+import type { InboxBranch } from '../../db/repositories/branches'
+import BranchRow from '../components/BranchRow'
 
 type Character = { id: string; name: string; color: string | null; state: string; notes: string | null; iconObjectKey: string | null; portraitObjectKey: string | null; card?: CardProfile | null; threadCounts?: { total: number; mine: number; theirs: number } }
 type Group = { id: string; name: string; characterIds: string[] }
@@ -17,6 +19,9 @@ const SERVICE_LABEL = { spotify: 'Spotify', youtube: 'YouTube', apple: 'Apple Mu
 export default function CharacterProfilePage({ id }: { id: string }) {
   const [rows, setRows] = useState<Character[]>([])
   const [groups, setGroups] = useState<Group[]>([])
+  const [branches, setBranches] = useState<InboxBranch[]>([])
+  const [trackingOptions, setTrackingOptions] = useState<TrackingOptions>({ characters: [], partners: [] })
+  const [threadLoadError, setThreadLoadError] = useState('')
   const [items, setItems] = useState<MoodboardItem[]>([])
   const [card, setCard] = useState<CardProfile | null>(null)
   const [moodUrls, setMoodUrls] = useState<string[]>([])
@@ -40,13 +45,16 @@ export default function CharacterProfilePage({ id }: { id: string }) {
   // sections and thread counts (on the character), the card, and the moodboard tiles.
   const reload = async (active: () => boolean = () => activeRef.current) => {
     try {
-      const [characters, groupRows, board] = await Promise.all([
+      const [characters, groupRows, board, inbox, options] = await Promise.all([
         staleGet<Character[]>('/characters'),
         staleGet<Group[]>('/rp-groups'),
         api<MoodboardItem[]>(`/characters/${id}/moodboard`).catch(() => [] as MoodboardItem[]),
+        api<{branches:InboxBranch[]}>(`/inbox?characterId=${encodeURIComponent(id)}`).then(data => ({ branches: data.branches, loadError: '' }), problem => ({ branches: [] as InboxBranch[], loadError: (problem as Error).message })),
+        staleGet<TrackingOptions>('/starters/options').catch(() => ({ characters: [], partners: [] })),
       ])
       if (!active()) return
       setRows(characters); setGroups(groupRows);
+      setBranches(inbox.branches); setTrackingOptions(options); setThreadLoadError(inbox.loadError)
       const boardItems = Array.isArray(board) ? board : (board as { items?: MoodboardItem[] }).items ?? []
       setItems(boardItems)
       setMoodUrls(boardItems.filter(item => item.kind === 'image').map(item => `/api/characters/${id}/moodboard/${item.id}/image`))
@@ -149,6 +157,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
             <button type="button" className="secondary-button" onClick={() => setShowCard(true)}>View card</button>
             <button type="button" onClick={() => setEditingCard(true)}>Edit card</button>
             <button type="button" className="secondary-button" onClick={() => setSharing(true)}>Share</button>
+            <a className="button secondary-button" href={'#dashboard?characterId=' + encodeURIComponent(row.id)}>View threads</a>
             <a href="#characters">Back to characters</a>
           </div>
         </div>
@@ -229,6 +238,18 @@ export default function CharacterProfilePage({ id }: { id: string }) {
 
           {profile.tracklist.some(track => track.trim()) && <section className="profile-section rd-profile-tracklist" aria-labelledby="tracklist-title"><div className="profile-section-head"><div><h2 id="tracklist-title">Tracklist</h2></div></div><ol className="profile-tracklist">{profile.tracklist.filter(track => track.trim()).slice(0, 10).map((track, i) => <li key={i}>{track}</li>)}</ol></section>}
         </aside>
+
+        <section className="profile-section rd-profile-threads" aria-labelledby="profile-threads-title">
+          <div className="profile-section-head rd-profile-threads-head">
+            <div><h2 id="profile-threads-title">Tracked threads</h2></div>
+            <a className="text-button" href={'#dashboard?characterId=' + encodeURIComponent(row.id)}>Open in dashboard</a>
+          </div>
+          {threadLoadError
+            ? <p role="alert" className="profile-empty">Could not load this character's threads. <a href={'#dashboard?characterId=' + encodeURIComponent(row.id)}>Open the filtered dashboard.</a></p>
+            : branches.length
+            ? <div className="rd-profile-thread-list">{branches.map(branch => <BranchRow key={branch.id} branch={branch} options={trackingOptions} onChange={reload} />)}</div>
+            : <p className="profile-empty">No active threads for {row.name} yet. <a href={'#dashboard?characterId=' + encodeURIComponent(row.id)}>Add one from the dashboard.</a></p>}
+        </section>
 
         {profile.boardUrl && <a className="profile-board rd-profile-board" href={profile.boardUrl} target="_blank" rel="noopener noreferrer" style={{ '--board-a': theme.bg[0], '--board-b': theme.bg[1] } as CSSProperties}><Icon name="pin" /><span className="profile-board-text"><strong>Full moodboard on Pinterest</strong><small>{boardName.replace(/-/g, ' ')} · by {new URL(profile.boardUrl).hostname}</small></span></a>}
       </div>

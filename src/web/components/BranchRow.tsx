@@ -21,13 +21,14 @@ const cleanPartner = (value: string) => value.replace(/\.tumblr\.com$/i, '').rep
 // showAvatar=false inside a character stack, whose header already shows the character.
 export default function BranchRow({ branch, options, onChange, showAvatar = true }: { branch: InboxBranch; options: TrackingOptions; onChange: () => Promise<void>; showAvatar?: boolean }) {
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
   const [busy, setBusy] = useState(false)
+  const [saveState, setSaveState] = useState<'saved'|'unsaved'|'saving'|'error'>('saved')
   const [expanded, setExpanded] = useState(false)
   const [addingLabel, setAddingLabel] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const dialogRef = useRef<HTMLDialogElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
+  const premiseRef = useRef<HTMLTextAreaElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   useNativeDialog(dialogRef, expanded)
   // React removes the dialog on close, which skips the browser's own focus return; send focus back to the card.
@@ -40,6 +41,12 @@ export default function BranchRow({ branch, options, onChange, showAvatar = true
   const sceneMoving = useSceneMoving()
   const status = statusOverride ?? branch.status
   const toggleExpanded = () => setExpanded(current => !current)
+  useEffect(() => {
+    if (!expanded || !premiseRef.current) return
+    const field = premiseRef.current
+    field.style.height = 'auto'
+    field.style.height = Math.min(field.scrollHeight, 360) + 'px'
+  }, [expanded, branch.description])
   // Pop once when a thread becomes your turn while on screen (not on every page load).
   const previousStatus = useRef(status)
   const pop = previousStatus.current !== status && status === 'your_turn'
@@ -71,10 +78,11 @@ export default function BranchRow({ branch, options, onChange, showAvatar = true
   const snapshot = (form: HTMLFormElement) => new URLSearchParams(new FormData(form) as unknown as Record<string, string>).toString()
   async function save(form: HTMLFormElement) {
     const current = snapshot(form)
-    if (current === savedSnapshot.current) return
+    if (current === savedSnapshot.current) { setSaveState('saved'); return }
     const data = new FormData(form)
     setBusy(true)
     setError('')
+    setSaveState('saving')
     try {
       const partnerMuses=String(data.get('partnerMuses')??'').split(',').map(name=>name.trim()).filter(Boolean).slice(0,8)
       const branchPatch:Record<string,unknown>={}
@@ -82,7 +90,7 @@ export default function BranchRow({ branch, options, onChange, showAvatar = true
       const partnerValue=String(data.get('partnerId')??'')||null
       const notesValue=String(data.get('notes')??'')
       const nextCheckValue=data.get('nextCheckAt')?new Date(`${data.get('nextCheckAt')}T09:00:00.000Z`).toISOString():null
-      if(statusValue!==branch.status)branchPatch.status=statusValue
+      if(data.has('status')&&statusValue!==branch.status)branchPatch.status=statusValue
       if(partnerValue!==branch.partnerId)branchPatch.partnerId=partnerValue
       if(notesValue!==branch.notes)branchPatch.notes=notesValue
       if((nextCheckValue?.slice(0,10)??null)!==(branch.nextCheckAt?.slice(0,10)??null))branchPatch.nextCheckAt=nextCheckValue
@@ -92,11 +100,12 @@ export default function BranchRow({ branch, options, onChange, showAvatar = true
       if(Object.keys(branchPatch).length)requests.push(api(`/branches/${branch.id}`, 'PATCH', branchPatch))
       const title=String(data.get('title')??''),description=String(data.get('description')??'')
       if(title!==branch.title||description!==(branch.description??'')) requests.push(api(`/starters/${branch.starterId}`, 'PATCH', {...(title!==branch.title?{title}:{}),...(description!==(branch.description??'')?{description}:{})}))
-      if(!requests.length){savedSnapshot.current=current;return}
+      if(!requests.length){savedSnapshot.current=current;setSaveState('saved');return}
       await Promise.all(requests)
       savedSnapshot.current = current
-      await onChange()
-    } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) }
+      setSaveState('saved')
+      try { await onChange() } catch (problem) { setError((problem as Error).message) }
+    } catch (problem) { setError((problem as Error).message);setSaveState('error') } finally { setBusy(false) }
   }
 
   // Closing saves first: the form autosaves on blur, and closing the drawer would otherwise skip that blur.
@@ -152,18 +161,45 @@ export default function BranchRow({ branch, options, onChange, showAvatar = true
         <a className="button secondary-button" href={`#starter/${branch.starterId}`}>Thread details &amp; archive settings</a>
       </div>
       <div className="thread-tags">{tags.map(tag => <span key={tag.id}>{tag.displayLabel}<button type="button" aria-label={`Remove ${tag.displayLabel}`} onClick={() => void api(`/tags/${tag.id}/starters/${branch.starterId}`, 'DELETE').then(loadTags, problem => setError((problem as Error).message))}>×</button></span>)}{addingLabel ? <form className="label-add" onSubmit={event => void addLabel(event)}><label>New label<input name="label" maxLength={60} autoFocus placeholder="important, event, past…" /></label><button type="submit">Add</button><button type="button" className="secondary-button" onClick={() => setAddingLabel(false)}>Cancel</button></form> : <button type="button" className="text-button" onClick={() => setAddingLabel(true)}>+ Add label</button>}</div>
+      {!archived&&<div className="scene-drawer-turn-actions" aria-label="Update thread turn">
+        {status === 'your_turn'
+          ? <button type="button" disabled={busy || statusOverride !== null} onClick={() => void setTurn('their_turn')}>I replied</button>
+          : status === 'their_turn'
+            ? <button type="button" className="secondary-button" disabled={busy || statusOverride !== null} onClick={() => void setTurn('your_turn')}>Their reply came in</button>
+            : <><button type="button" className="secondary-button" disabled={busy || statusOverride !== null} onClick={() => void setTurn('your_turn')}>Your turn</button><button type="button" className="secondary-button" disabled={busy || statusOverride !== null} onClick={() => void setTurn('their_turn')}>Their turn</button></>}
+      </div>}
       {branch.refreshError && <p className="refresh-warning" role="status"><strong>Refresh needs attention:</strong> {branch.refreshError}</p>}
-      <div className="branch-manage"><p className="field-help">Edits save automatically when you leave a field.</p><form ref={formRef} className="tracking-form branch-editor" onSubmit={event => event.preventDefault()} onFocus={event => { savedSnapshot.current ??= snapshot(event.currentTarget) }} onBlur={event => void save(event.currentTarget)}>
-        <label className="branch-notes">Scene label<input name="title" maxLength={300} defaultValue={branch.title}/><span className="field-help">Try {branch.characterName.toLowerCase()} × partner #1 — premise.</span></label>
-        <label className="branch-notes">Scene premise<input name="description" maxLength={20000} defaultValue={branch.description ?? ''} placeholder="A short summary of the starter scene"/></label>
-        <label>Partner muse names<input name="partnerMuses" maxLength={500} defaultValue={(branch.partnerMuses??[]).join(', ')} placeholder={partner}/><span className="field-help">If unknown, leave the Tumblr handle as your reference.</span></label>
-        <label className="branch-notes">Your recap / next step<textarea name="userRecap" maxLength={1000} defaultValue={branch.userRecap ?? ''} placeholder="Your own reminder. Tumblr sync never changes this."/></label>
-        {!archived&&<label>Status<select name="status" defaultValue={branch.status}>{REPLY_STATUSES.filter(status=>status!=='archived').map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>}
-        <label>Partner<select name="partnerId" defaultValue={branch.partnerId ?? ''}><option value="">No partner</option>{options.partners.map(partnerOption => <option key={partnerOption.id} value={partnerOption.id}>{partnerOption.name}</option>)}</select></label>
-        <label className="branch-notes">Thread notes<textarea name="notes" maxLength={20000} defaultValue={branch.notes}/></label>
-        <label>Reminder to check back<input name="nextCheckAt" type="date" defaultValue={branch.nextCheckAt?.slice(0, 10) ?? ''}/><span className="field-help">Thread Buddy includes this in browser reminders on or after the date.</span></label>
-        <span className="autosave-note"><span className="save-state" aria-hidden={!busy} style={{opacity:busy?1:0}}>Saving…</span><span className="save-state" aria-hidden={busy} style={{opacity:busy?0:1}}>{error ? 'Not saved' : 'Saved automatically'}</span></span>{branch.starterArchived === 1 && <button type="button" className="secondary-button" disabled={busy} onClick={async () => { try { setBusy(true); setError(''); await api(`/starters/${branch.starterId}/restore`, 'POST'); await onChange() } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) } }}>Restore thread</button>}{branch.status==='archived'&&branch.starterArchived!==1&&<button type="button" className="secondary-button" disabled={busy} onClick={async()=>{try{setBusy(true);setError('');await api(`/branches/${branch.id}/restore`,'POST');await onChange()}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}}>Restore reply</button>}{!archived&&<button type="button" className="secondary-button" disabled={busy} onClick={async()=>{try{setBusy(true);setError('');await api(`/branches/${branch.id}/archive`,'POST');await onChange()}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}}>Archive reply</button>}<button type="button" className="danger-button" disabled={busy} onClick={() => setConfirmDelete(true)}>Delete thread</button>{confirmDelete && <div className="inline-confirm" role="alert"><p><strong>Delete this entire thread and every reply branch?</strong> This can't be undone.</p><div><button type="button" className="danger-button" disabled={busy} onClick={() => void deleteThread()}>{busy ? 'Deleting…' : 'Delete thread'}</button><button type="button" className="secondary-button" onClick={() => setConfirmDelete(false)}>Keep it</button></div></div>}{error && <p role="alert">{error}</p>}
-      </form></div>
+      <div className="branch-manage">
+        <p className="field-help">Changes save when you leave a field.</p>
+        <form ref={formRef} className="tracking-form branch-editor" onSubmit={event => event.preventDefault()} onFocus={event => { savedSnapshot.current ??= snapshot(event.currentTarget) }} onChange={() => setSaveState('unsaved')} onBlur={event => void save(event.currentTarget)}>
+          <fieldset className="drawer-fieldset">
+            <legend>Scene</legend>
+            <label>Scene label<input name="title" maxLength={300} defaultValue={branch.title}/><span className="field-help">Try {branch.characterName.toLowerCase()} - partner #1 - premise.</span></label>
+            <label className="drawer-field-wide">Scene premise<textarea ref={premiseRef} name="description" rows={3} maxLength={20000} defaultValue={branch.description ?? ''} onInput={event => { event.currentTarget.style.height = 'auto'; event.currentTarget.style.height = Math.min(event.currentTarget.scrollHeight, 360) + 'px' }} placeholder="A short summary of the starter scene"/></label>
+          </fieldset>
+          <fieldset className="drawer-fieldset">
+            <legend>Your next step</legend>
+            <label className="drawer-field-wide">Your recap<textarea name="userRecap" rows={3} maxLength={1000} defaultValue={branch.userRecap ?? ''} placeholder="What do you want to remember before your next reply?"/></label>
+            <label className="drawer-field-wide">Thread notes<textarea name="notes" rows={3} maxLength={20000} defaultValue={branch.notes}/></label>
+          </fieldset>
+          <fieldset className="drawer-fieldset">
+            <legend>Tracking</legend>
+            <label>Writing partner<select name="partnerId" defaultValue={branch.partnerId ?? ''}><option value="">No partner</option>{options.partners.map(partnerOption => <option key={partnerOption.id} value={partnerOption.id}>{partnerOption.name}</option>)}</select></label>
+            <label>Partner muse names<input name="partnerMuses" maxLength={500} defaultValue={(branch.partnerMuses??[]).join(', ')} placeholder={partner}/><span className="field-help">If unknown, leave the Tumblr handle as your reference.</span></label>
+            {!archived&&<label>Status<select key={status} name="status" defaultValue={status}>{REPLY_STATUSES.filter(status=>status!=='archived').map(status => <option key={status} value={status}>{statusLabel(status)}</option>)}</select></label>}
+            <label>Reminder to check back<input name="nextCheckAt" type="date" defaultValue={branch.nextCheckAt?.slice(0, 10) ?? ''}/><span className="field-help">Thread Buddy includes this in browser reminders on or after the date.</span></label>
+          </fieldset>
+          <div className="branch-editor-footer">
+            <span className="branch-save-state" role="status" aria-live="polite">{saveState === 'unsaved' ? 'Unsaved changes' : saveState === 'saving' ? 'Saving...' : saveState === 'error' ? 'Could not save' : 'All changes saved'}</span>
+            {branch.starterArchived === 1 && <button type="button" className="secondary-button" disabled={busy} onClick={async () => { try { setBusy(true); setError(''); await api('/starters/' + branch.starterId + '/restore', 'POST'); await onChange() } catch (problem) { setError((problem as Error).message) } finally { setBusy(false) } }}>Restore thread</button>}
+            {branch.status==='archived'&&branch.starterArchived!==1&&<button type="button" className="secondary-button" disabled={busy} onClick={async()=>{try{setBusy(true);setError('');await api('/branches/' + branch.id + '/restore','POST');await onChange()}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}}>Restore reply</button>}
+            {!archived&&<button type="button" className="secondary-button" disabled={busy} onClick={async()=>{try{setBusy(true);setError('');await api('/branches/' + branch.id + '/archive','POST');await onChange()}catch(problem){setError((problem as Error).message)}finally{setBusy(false)}}}>Archive reply</button>}
+            <button type="button" className="danger-button" disabled={busy} onClick={() => setConfirmDelete(true)}>Delete thread</button>
+          </div>
+          {confirmDelete && <div className="inline-confirm" role="alert"><p><strong>Delete this entire thread and every reply branch?</strong> This can't be undone.</p><div><button type="button" className="danger-button" disabled={busy} onClick={() => void deleteThread()}>{busy ? 'Deleting...' : 'Delete thread'}</button><button type="button" className="secondary-button" onClick={() => setConfirmDelete(false)}>Keep it</button></div></div>}
+          {error && <p role="alert">{error}</p>}
+        </form>
+      </div>
     </div></dialog>}
   </article>
 }
