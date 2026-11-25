@@ -28,6 +28,9 @@ import { publicShareRoutes, shareAdminRoutes } from './routes/public-share'
 import { roadmapRoutes } from './routes/roadmap'
 import { sprintRoutes } from './routes/sprints'
 import { sprintRoomRoutes } from './routes/sprint-rooms'
+import { characterProfileRoutes } from './routes/character-profiles'
+import { activityRequirementRoutes, sendActivityRequirementReminders } from './routes/activity-requirements'
+import { notificationPreferenceRoutes } from './routes/notification-preferences'
 import type { SprintRoom } from './sprints/room'
 export { SprintRoom } from './sprints/room'
 
@@ -124,12 +127,15 @@ export function createApp(env: Env, options: { mailSender?: MailSender } = {}): 
   app.route('/api/tumblr', tumblrRoutes())
   app.route('/api/connections', connectionRoutes())
   app.route('/api/characters', characterRoutes())
+  app.route('/api/character-profiles', characterProfileRoutes())
   app.route('/api/partners', partnerRoutes())
   app.route('/api/tags', tagRoutes())
   app.route('/api', exportRoutes())
   app.route('/api/settings', settingsRoutes())
   app.route('/api/rp-groups', groupRoutes())
+  app.route('/api/activity-requirements', activityRequirementRoutes())
   app.route('/api/push',pushRoutes())
+  app.route('/api/notifications/preferences', notificationPreferenceRoutes())
   app.route('/api/title-styles',titleStyleRoutes())
   app.route('/api/tumblr-activity',tumblrActivityRoutes())
   app.route('/api/character-planner',characterPlannerRoutes())
@@ -164,6 +170,7 @@ export default {
     ctx.waitUntil(Promise.all([
       runRefreshBatch(env, new Date(), 60, { runId }),
       sendDuePushes(env),
+      sendActivityRequirementReminders(env),
       env.DB.prepare('DELETE FROM rate_limits WHERE window_start < ?').bind(cleanupCutoff).run(),
       env.DB.prepare('DELETE FROM magic_links WHERE expires_at < ? OR consumed_at < ?').bind(cleanupCutoff, cleanupCutoff).run(),
       env.DB.prepare('DELETE FROM sessions WHERE expires_at < ? OR revoked_at < ?').bind(cleanupCutoff, cleanupCutoff).run(),

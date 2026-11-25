@@ -11,13 +11,13 @@ const BLOG_LIST_MAX_AGE_MS = 10 * 60_000
  * sideblogs become assignable without reconnecting, and follow renames by Tumblr's permanent blog id:
  * the old name is replaced in this workspace's assignments and threads. */
 async function refreshBlogList(scope: WorkspaceScope, env: Env, row: { id: string; status: string; account_metadata_json: string; token: string; secret: string }, now = new Date()) {
-  let meta: { blogs?: string[]; uuids?: Record<string, string>; refreshedAt?: string } = {}
+  let meta: { blogs?: string[]; uuids?: Record<string, string>; aliases?: Record<string, string>; refreshedAt?: string } = {}
   try { meta = JSON.parse(row.account_metadata_json) } catch { /* treat as never refreshed */ }
   if (row.status !== 'active' || !row.token || (meta.refreshedAt && now.getTime() - Date.parse(meta.refreshedAt) < BLOG_LIST_MAX_AGE_MS)) return row.account_metadata_json
   let next: ReturnType<typeof blogMetadata>
   try {
     const client = createTumblrClient({ consumerKey: env.TUMBLR_CONSUMER_KEY, consumerSecret: env.TUMBLR_CONSUMER_SECRET, token: await decryptToken(row.token, env.TOKEN_ENCRYPTION_KEY), tokenSecret: await decryptToken(row.secret, env.TOKEN_ENCRYPTION_KEY) })
-    next = blogMetadata(await client.getBlogs(), now)
+    next = blogMetadata(await client.getBlogs(), now, meta)
   } catch { return row.account_metadata_json } // Tumblr down or rate limited: keep the last known list.
   const writes = [scope.db.prepare('UPDATE tumblr_connections SET account_metadata_json=? WHERE workspace_id=? AND id=?').bind(JSON.stringify(next), scope.workspaceId, row.id)]
   for (const [uuid, oldName] of Object.entries(meta.uuids ?? {})) {

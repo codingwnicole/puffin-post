@@ -16,7 +16,7 @@ function sessionSecret(): string {
 
 function sqlString(value: string): string { return `'${value.replaceAll("'", "''")}'` }
 
-export async function createSignedInUser(page: Page, options: { email?: string; password?: string } = {}) {
+export async function createSignedInUser(page: Page, options: { email?: string; password?: string; skipPasswordSetup?: boolean } = {}) {
   const email = options.email ?? `e2e-${randomUUID()}@example.test`
   const password = options.password ?? 'correct horse battery'
   const userId = randomUUID(), workspaceId = randomUUID(), token = randomBytes(32).toString('hex')
@@ -48,7 +48,9 @@ export async function createSignedInUser(page: Page, options: { email?: string; 
   } finally { rmSync(resolve(process.cwd(), sqlFile), { force: true }) }
   // Current Chromium rejects a Secure cookie set against an http:// URL; localhost still sends it over http.
   await page.context().addCookies([{ name: '__Host-threadums_session', value: `${token}.${signature}`, url: APP.replace('http:', 'https:'), secure: true, httpOnly: true, sameSite: 'Lax' }])
-  const passwordResponse = await page.request.post(`${APP}/api/auth/password`, { data: { password }, headers: { origin: APP } })
-  if (passwordResponse.status() !== 204) throw new Error(`E2E user setup could not set a password (${passwordResponse.status()})`)
+  if (!options.skipPasswordSetup) {
+    const passwordResponse = await page.request.post(`${APP}/api/auth/password`, { data: { password }, headers: { origin: APP } })
+    if (passwordResponse.status() !== 204) throw new Error(`E2E user setup could not set a password (${passwordResponse.status()})`)
+  }
   return { email, password, userId, workspaceId }
 }

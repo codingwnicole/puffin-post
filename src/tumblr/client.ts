@@ -12,7 +12,7 @@ function postText(content?: Array<{ text?: string }>, trail?: Array<{ content?: 
   return (text || fallback)?.slice(0, 6000)
 }
 
-export interface TumblrPost { blogIdentifier: string; id: string; rootPostId: string; rootBlogIdentifier: string; threadPostIds: string[]; timestamp: string; tags: string[]; title?: string; preview?: string; parserText?: string; postUrl?: string; /** Who wrote which text: the post's own content, then each trail entry. */ voices?: { blogIdentifier: string; text: string }[] }
+export interface TumblrPost { blogIdentifier: string; id: string; rootPostId: string; rootBlogIdentifier: string; rootResolved?: boolean; parentBlogIdentifier?: string | null; threadPostIds: string[]; timestamp: string; tags: string[]; title?: string; preview?: string; parserText?: string; postUrl?: string; /** Who wrote which text: the post's own content, then each trail entry. */ voices?: { blogIdentifier: string; text: string }[] }
 /** Inputs for thread-root resolution; TumblrPost satisfies it (so getPost and
  * getRecentPosts share this one resolver without raw reblog fields leaking
  * into the public post shape). */
@@ -25,11 +25,16 @@ function blogNameToIdentifier(name: string): string {
 }
 /** The (blog, post) the thread this post belongs to: reblogged_root_* if Tumblr
  * gave it, else the oldest trail entry (the root), else the post itself. */
-export function resolvePostThreadRoot(post: PostRootInput): { blogIdentifier: string; postId: string } {
+export function resolvePostThreadRoot(post: PostRootInput & { rebloggedFromId?: string; rebloggedFromName?: string }): { blogIdentifier: string; postId: string; resolved: boolean } {
   const trail = post.trail
-  const rootId = post.rebloggedRootId || (trail && trail.length ? trail[0].post.id : post.id)
-  const rootName = post.rebloggedRootName || (trail && trail.length ? trail[0].blog.name : post.blogIdentifier)
-  return { blogIdentifier: blogNameToIdentifier(rootName), postId: String(rootId) }
+  const rootTrailEntry = trail?.find(item => Boolean(item.post?.id && item.blog?.name))
+  if (post.rebloggedRootId && post.rebloggedRootName) return { blogIdentifier: blogNameToIdentifier(post.rebloggedRootName), postId: String(post.rebloggedRootId), resolved: true }
+  if (rootTrailEntry) return { blogIdentifier: blogNameToIdentifier(rootTrailEntry.blog.name), postId: String(rootTrailEntry.post.id), resolved: true }
+  // A post with no evidence of reblogging is its own starter. If Tumblr says
+  // it was reblogged but omits both root metadata and a usable trail, its
+  // author is not evidence about who wrote the original starter.
+  const hasReblogEvidence = Boolean(post.rebloggedFromId || post.rebloggedFromName)
+  return { blogIdentifier: blogNameToIdentifier(post.blogIdentifier), postId: String(post.id), resolved: !hasReblogEvidence }
 }
 // Tumblr sends unix seconds. Anything else (missing, a string, garbage) must not throw: a RangeError
 // here used to discard the whole post, so its reply excerpt was silently lost.
@@ -45,8 +50,17 @@ export interface TumblrBlog { identifier: string; uuid: string | null }
 export interface TumblrClient { getBlogs(): Promise<TumblrBlog[]> }
 /** Stored as tumblr_connections.account_metadata_json. `uuids` maps Tumblr's permanent blog id to
  * the current name, so a rename can be followed (names change; uuids don't). */
-export function blogMetadata(blogs: TumblrBlog[], now = new Date()) {
-  return { blogs: blogs.map(blog => blog.identifier), uuids: Object.fromEntries(blogs.filter(blog => blog.uuid).map(blog => [blog.uuid, blog.identifier])), refreshedAt: now.toISOString() }
+export function blogMetadata(blogs: TumblrBlog[], now = new Date(), previous: { uuids?: Record<string, string>; aliases?: Record<string, string> } = {}) {
+  const uuids = Object.fromEntries(blogs.filter(blog => blog.uuid).map(blog => [blog.uuid!, blog.identifier]))
+  const currentUuids = new Set(Object.keys(uuids))
+  // Keep old names only when Tumblr confirms the same stable UUID is still
+  // authorized on this account. This handles renamed blogs without ever
+  // matching a merely similar display name.
+  const aliases = Object.fromEntries(Object.entries(previous.aliases ?? {}).filter(([, uuid]) => currentUuids.has(uuid)))
+  for (const [uuid, oldName] of Object.entries(previous.uuids ?? {})) {
+    if (uuids[uuid] && uuids[uuid] !== oldName) aliases[oldName] = uuid
+  }
+  return { blogs: blogs.map(blog => blog.identifier), uuids, aliases, refreshedAt: now.toISOString() }
 }
 export interface TumblrActivity { postId: string; blogIdentifier: string; parentBlogIdentifier: string | null; timestamp: string; tags?: string[] }
 export interface TumblrClient { getThreadActivity(blogIdentifier: string, postId: string): Promise<TumblrActivity[]> }
@@ -86,16 +100,16 @@ export function createTumblrClient(config: { consumerKey: string; consumerSecret
   // back to the trail, and RPers trim trails, so trail[0] is just the partner's last reply and every
   // reply looked like a new thread. The single-post endpoint (/posts/{id}) is replaced by the list
   // endpoint filtered by id, which returns the same NPF post plus the reblog info.
-  type RawPost = { blog_name?: string; id_string?: string; id?: string | number; timestamp?: number | string; reblogged_root_id?: string | number; reblogged_root_name?: string; tags?: string[]; summary?: string; title?: string; post_url?: string; content?: Array<{ text?: string }>; trail?: Array<{ content?: Array<{ text?: string }>; blog?: { name?: string }; post?: { id?: string | number } }> }
+  type RawPost = { blog_name?: string; id_string?: string; id?: string | number; timestamp?: number | string; reblogged_root_id?: string | number; reblogged_root_name?: string; reblogged_from_id?: string | number; reblogged_from_name?: string; tags?: string[]; summary?: string; title?: string; post_url?: string; content?: Array<{ text?: string }>; trail?: Array<{ content?: Array<{ text?: string }>; blog?: { name?: string }; post?: { id?: string | number } }> }
   const toPost = (post: RawPost): TumblrPost | null => {
     if (!post.blog_name || (post.id_string ?? post.id) == null) return null
     const title = (post.title ?? post.summary)?.trim().replace(/\s+/g, ' ').slice(0, 300)
     const parserText = postText(post.content, post.trail, title)
     const blogIdentifier = `${post.blog_name}.tumblr.com`.toLowerCase(), id = String(post.id_string ?? post.id)
-    const root = resolvePostThreadRoot({ blogIdentifier, id, rebloggedRootId: post.reblogged_root_id == null ? undefined : String(post.reblogged_root_id), rebloggedRootName: post.reblogged_root_name, trail: post.trail?.filter(item => Boolean(item.post?.id && item.blog?.name)).map(item => ({ blog: { name: (item.blog as { name: string }).name }, post: { id: String((item.post as { id: string | number }).id) } })) })
+    const root = resolvePostThreadRoot({ blogIdentifier, id, rebloggedRootId: post.reblogged_root_id == null ? undefined : String(post.reblogged_root_id), rebloggedRootName: post.reblogged_root_name, rebloggedFromId: post.reblogged_from_id == null ? undefined : String(post.reblogged_from_id), rebloggedFromName: post.reblogged_from_name, trail: post.trail?.filter(item => Boolean(item.post?.id && item.blog?.name)).map(item => ({ blog: { name: (item.blog as { name: string }).name }, post: { id: String((item.post as { id: string | number }).id) } })) })
     const voices = [{ blogIdentifier, text: postText(post.content) ?? '' }, ...(post.trail ?? []).map(item => ({ blogIdentifier: `${item.blog?.name ?? ''}.tumblr.com`.toLowerCase(), text: postText(item.content) ?? '' }))].filter(voice => voice.text && voice.blogIdentifier !== '.tumblr.com')
     const threadPostIds = [...new Set([id, root.postId, ...(post.trail ?? []).flatMap(item => item.post?.id == null ? [] : [String(item.post.id)])])]
-    return { blogIdentifier, id, rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, threadPostIds, timestamp: tumblrTime(post.timestamp), tags: post.tags ?? [], title, preview: parserText?.slice(0, 700), parserText, postUrl: post.post_url, voices }
+    return { blogIdentifier, id, rootPostId: root.postId, rootBlogIdentifier: root.blogIdentifier, rootResolved: root.resolved, parentBlogIdentifier: post.reblogged_from_name ? blogNameToIdentifier(post.reblogged_from_name) : null, threadPostIds, timestamp: tumblrTime(post.timestamp), tags: post.tags ?? [], title, preview: parserText?.slice(0, 700), parserText, postUrl: post.post_url, voices }
   }
   const getPosts = async (url: string, failure: (status: number) => string) => {
     const response = await safeRun(url, { headers: { Authorization: await oauthAuthorizationHeader('GET', url, config.consumerKey, config.consumerSecret, config.token, config.tokenSecret) } })

@@ -5,13 +5,14 @@ import type { Env } from '../worker'
 import type { WorkspaceScope } from '../db/client'
 import { requireWorkspace } from '../auth/sessions'
 import { checkRateLimit } from '../auth/rate-limits'
-import { createStarter, findTrackedThread, getStarter, updateAutomaticStarterFields, updateStarterTitle } from '../db/repositories/starters'
+import { createStarter, findTrackedThread, getStarter, updateAutomaticStarterFields, updateStarterAttribution, updateStarterTitle } from '../db/repositories/starters'
 import { createReplyBranch, listInboxBranches, upsertReplyBranch } from '../db/repositories/branches'
 import { branchSchema, starterSchema } from './tracking-validation'
 import { canonicalBlogIdentifier, normalizeTumblrTag, parseTumblrPostReference } from '../tumblr/normalize'
 import { createTumblrClient } from '../tumblr/client'
 import { decryptToken } from '../tumblr/oauth'
 import { latestDirectExchange } from '../tumblr/refresh'
+import { attributeStarterAuthor, ownedTumblrBlogs } from '../tumblr/blog-identities'
 import { extractDirectReplyText, extractStablePremise, extractWhere, parsePartnerMuses } from '../tumblr/thread-parser'
 
 type Assignment = { id:string; characterId:string; characterTag:string|null; characterName:string }
@@ -127,18 +128,31 @@ export function starterRoutes() {
     const candidates = rules.results.filter(rule => !rule.characterTag || tags.has(rule.characterTag)).map(rule => ({ characterId:rule.characterId, characterName:rule.characterName, characterTag:rule.characterTag }))
     const ownBlogs = characterId ? await scope.db.prepare('SELECT blog_identifier AS blogIdentifier FROM character_blogs WHERE workspace_id=? AND character_id=?').bind(scope.workspaceId,characterId).all<{blogIdentifier:string}>() : { results:[] as {blogIdentifier:string}[] }
     const connectedAccounts = await scope.db.prepare("SELECT account_metadata_json AS metadata FROM tumblr_connections WHERE workspace_id=? AND status='active'").bind(scope.workspaceId).all<{metadata:string}>()
-    const connectedBlogs = new Set(connectedAccounts.results.flatMap(account => {
-      try { return (JSON.parse(account.metadata).blogs ?? []).map(canonicalBlogIdentifier) as string[] } catch { return [] as string[] }
-    }))
+    const ownedBlogs = ownedTumblrBlogs(connectedAccounts.results.map(account => account.metadata))
+    const connectedBlogs = ownedBlogs.identifiers
     // A newly created character and Tumblr's primary blog can legitimately be
     // absent from character_blogs for a moment. Connected account metadata is
     // still authoritative about which side of a reblog chain belongs to us.
     // Active account metadata is authoritative for all blogs the user owns,
     // including a primary blog that has not been assigned to this character.
     const ownBlogIdentifiers = new Set([...connectedBlogs, ...ownBlogs.results.map(blog => canonicalBlogIdentifier(blog.blogIdentifier))])
-    const activities = await client.getThreadActivity(clickedPost.rootBlogIdentifier, clickedPost.rootPostId)
+    // Notes can be temporarily unavailable (including for deleted starters).
+    // Keep the import usable, but only infer the starter author when Tumblr
+    // actually resolved the root and the connected-blog evidence is sufficient.
+    const notes = clickedPost.rootResolved
+      ? await client.getThreadActivity(clickedPost.rootBlogIdentifier, clickedPost.rootPostId).catch(() => [])
+      : []
+    const selectedActivity = clickedPost.parentBlogIdentifier && clickedPost.rootResolved ? [{
+      postId: clickedPost.id, blogIdentifier: clickedPost.blogIdentifier,
+      parentBlogIdentifier: clickedPost.parentBlogIdentifier, timestamp: clickedPost.timestamp,
+      tags: clickedPost.tags,
+    }] : []
+    const activityById = new Map([...notes, ...selectedActivity].map(activity => [activity.postId, activity]))
+    const activities = [...activityById.values()]
+    const starterAuthor = attributeStarterAuthor({ rootBlogIdentifier: clickedPost.rootBlogIdentifier,
+      rootResolved: Boolean(clickedPost.rootResolved), rootPostAvailable: Boolean(rootPost), ownedBlogs })
     const participants = new Set(activities.map(activity => activity.blogIdentifier).filter(blog => !ownBlogIdentifiers.has(blog)))
-    if (!ownBlogIdentifiers.has(clickedPost.rootBlogIdentifier)) participants.add(clickedPost.rootBlogIdentifier)
+    if (starterAuthor.status === 'partner' && starterAuthor.blogIdentifier) participants.add(starterAuthor.blogIdentifier)
     // The user's other blogs (sideblogs, other muses) stay choosable — own characters can RP together —
     // but are never picked automatically as the writing partner.
     const workspaceBlogs = new Set([...connectedBlogs, ...(await scope.db.prepare('SELECT blog_identifier AS b FROM character_blogs WHERE workspace_id=?').bind(scope.workspaceId).all<{b:string}>()).results.map(row => canonicalBlogIdentifier(row.b))])
@@ -162,7 +176,7 @@ export function starterRoutes() {
     const userMuse = { value:ownName??null, source:ownName?'confirmed_character_assignment':'unresolved', confidence:ownName?'high':'none', evidence:ownName?`Character assignment ${characterId}`:null }
     const previewText = extractDirectReplyText(clickedPost.voices,clickedPost.blogIdentifier)
     const latestReplyPreview = { value:previewText, source:previewText?'structured_metadata':'unresolved', confidence:previewText?'high':'none', evidence:previewText?`Post ${clickedPost.id} by ${clickedPost.blogIdentifier}`:null }
-    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:ownName, userMuse, titleField, suggestedTitle:autoTitle, titleNeedsPartner: !confirmedPartnerNames.length && !partnerHandle, parsedCharacterNames:confirmedPartnerNames, partnerMuses, premise, latestReplyPreview, preview:previewText, summary:premise.value ?? '', sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, sourceBlogOwned:connectedBlogs.has(reference.blogIdentifier) || rules.results.length > 0, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [...clickedPost.threadPostIds, ...post.threadPostIds, reference.postId]) }
+    return { client, reference, tags:[...tags], candidates, title:post.title, characterName:ownName, userMuse, titleField, suggestedTitle:autoTitle, titleNeedsPartner: !confirmedPartnerNames.length && !partnerHandle, parsedCharacterNames:confirmedPartnerNames, partnerMuses, premise, latestReplyPreview, preview:previewText, summary:premise.value ?? '', sourceBlogIdentifier:reference.blogIdentifier, sourceBlogAssigned:rules.results.length > 0, sourceBlogOwned:connectedBlogs.has(reference.blogIdentifier) || rules.results.length > 0, starterAuthor, participants:[...participants].sort(), suggestedPartner, activities, ownBlogIdentifiers:[...ownBlogIdentifiers], threadRootId:clickedPost.rootPostId, threadRootBlogId:clickedPost.rootBlogIdentifier, threadRootResolved:Boolean(clickedPost.rootResolved), existingStarterId: await findTrackedThread(scope.db, scope.workspaceId, [...clickedPost.threadPostIds, ...post.threadPostIds, reference.postId]) }
   }
 
   async function findOrCreatePartner(scope:Awaited<ReturnType<typeof requireWorkspace>>, blogIdentifier:string) {
@@ -216,11 +230,18 @@ export function starterRoutes() {
     const partnerBlog = found && (input.partnerBlogIdentifier ? canonicalBlogIdentifier(input.partnerBlogIdentifier) : found.suggestedPartner)
     if (found && found.participants.length > 0 && !partnerBlog) throw new HTTPException(400, { message:'Choose the writing partner for this thread' })
     if (found && partnerBlog && !found.participants.includes(partnerBlog)) throw new HTTPException(400, { message:'Choose a writing partner detected on this thread' })
-    const latest = found && partnerBlog ? latestDirectExchange(found.ownBlogIdentifiers,found.threadRootBlogId,partnerBlog,found.activities) : undefined
+    const latest = found && partnerBlog ? latestDirectExchange(found.ownBlogIdentifiers,found.threadRootBlogId,partnerBlog,found.activities,found.starterAuthor.status==='user') : undefined
     const latestPost = latest && found ? await found.client.getPost(latest.activity.blogIdentifier, latest.activity.postId).catch(() => null) : null
+    if (found && (partnerBlog || input.partnerName?.trim()) && !latest && found.starterAuthor.status === 'unresolved' && !input.initialTurn) {
+      throw new HTTPException(400, { message:'Tumblr could not verify who wrote the original starter. Choose whose turn it is before adding this thread.' })
+    }
     const manualId=crypto.randomUUID()
     // Already tracked (any blog, any character): reuse that thread, never a second copy.
     const existing = found?.existingStarterId ? await getStarter(scope, found.existingStarterId) : null
+    if (existing && found) await updateStarterAttribution(scope, existing.id, {
+      rootPostId: found.threadRootId, rootBlogIdentifier: found.threadRootBlogId,
+      rootResolved: found.threadRootResolved, attribution: found.starterAuthor,
+    })
     const manualTitle = Boolean(input.title?.trim())
     const manualDescription = Boolean(input.description?.trim())
     const autoTitleSource = found?.partnerMuses.value?.length ? found.partnerMuses.source : partnerBlog ? 'blog_fallback' : found?.characterName ? 'confirmed_character_assignment' : 'unresolved'
@@ -239,19 +260,28 @@ export function starterRoutes() {
       premiseSource:manualDescription ? 'manual' : found?.premise.source ?? 'unresolved',
       premiseConfidence:manualDescription ? 'high' : found?.premise.confidence ?? 'none',
       premiseEvidence:manualDescription ? 'Entered by the writer' : found?.premise.evidence ?? '',
+      starterAuthorStatus:found?.starterAuthor.status ?? 'unresolved',
+      starterAuthorBlogId:found?.starterAuthor.blogIdentifier ?? null,
+      starterAuthorBlogUuid:found?.starterAuthor.blogUuid ?? null,
+      starterAuthorSource:found?.starterAuthor.source ?? 'unresolved',
+      starterAuthorConfidence:found?.starterAuthor.confidence ?? 'none',
+      starterAuthorEvidence:found?.starterAuthor.evidence ?? '',
+      starterAuthorCheckedAt:new Date().toISOString(), threadRootResolved:Boolean(found?.threadRootResolved),
     })
+    const persistedStarter = existing ? await getStarter(scope, existing.id) : starter
     const partnerId=partnerBlog ? await findOrCreatePartner(scope,partnerBlog) : input.partnerName?.trim() ? await findOrCreateManualPartner(scope,input.partnerName) : null
     if (found?.tags?.length) await applyPostTags(scope, starter.id, found.tags)
     const directReply = latestPost && latest ? extractDirectReplyText(latestPost.voices, latest.activity.blogIdentifier) : null
     const latestReplyExcerpt = directReply ? directReply.replace(/\s+/gu, ' ').trim().slice(0, 500) : null
-    const initialTurn = found && found.ownBlogIdentifiers.includes(found.threadRootBlogId) ? 'their_turn' : 'your_turn'
+    const rootOwnerTurn = found?.starterAuthor.status === 'user' ? 'their_turn' : found?.starterAuthor.status === 'partner' ? 'your_turn' : null
+    const initialTurn = latest?.status ?? rootOwnerTurn ?? input.initialTurn ?? 'your_turn'
     const branch = (partnerId || !found)
-      ? await upsertReplyBranch({ ...scope, starterId: starter.id, partnerId, status: latest?.status ?? initialTurn, latestPostId: latest?.activity.postId, lastPoster: latest?.activity.blogIdentifier, lastActivityAt: latest?.activity.timestamp, latestReplyExcerpt,
+      ? await upsertReplyBranch({ ...scope, starterId: persistedStarter.id, partnerId, status: initialTurn, latestPostId: latest?.activity.postId, lastPoster: latest?.activity.blogIdentifier, lastActivityAt: latest?.activity.timestamp, latestReplyExcerpt,
           latestReplySource: latestReplyExcerpt ? 'structured_metadata' : 'unresolved', latestReplyConfidence: latestReplyExcerpt ? 'high' : 'none',
           latestReplyEvidence: latest?.activity ? `Post ${latest.activity.postId} by ${latest.activity.blogIdentifier}` : '',
           partnerMuses: found?.partnerMuses.value ?? [], partnerMusesSource: found?.partnerMuses.source ?? 'unresolved', partnerMusesConfidence: found?.partnerMuses.confidence ?? 'none', partnerMusesEvidence: found?.partnerMuses.evidence })
       : null
-    return c.json({ ...starter, branch }, 201)
+    return c.json({ ...persistedStarter, branch }, 201)
   })
 
   app.post('/resolve', async c => {

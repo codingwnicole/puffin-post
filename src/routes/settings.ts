@@ -22,6 +22,9 @@ const COOKIE = '__Host-threadums_session'
 // deleted). Keep in sync with migrations: a new workspace table goes above everything it references.
 // The lived-in account test in tests/integration/lifecycle.test.ts catches a wrong order.
 const WORKSPACE_TABLES = [
+  'rp_activity_requirement_deliveries','rp_activity_manual_logs','rp_activity_requirements',
+  'character_quiz_results','character_quiz_sources',
+  'user_activity_notifications',
   'activities',                        // -> starters, reply_branches
   'starter_tags',                      // -> starters, tags
   'reply_draft_characters',            // -> reply_drafts, characters

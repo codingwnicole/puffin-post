@@ -27,4 +27,19 @@ describe('thread roots with trimmed trails', () => {
     expect(urls[0]).toBe('https://api.tumblr.com/v2/blog/me.tumblr.com/posts?id=300&npf=true&reblog_info=true')
     expect(post.rootPostId).toBe('100')
   })
+  it('resolves a multigeneration trail to the oldest available root', async () => {
+    const client = createTumblrClient({ consumerKey:'k', consumerSecret:'s', token:'t', tokenSecret:'ts', fetch: (async () => new Response(JSON.stringify({ response:{ posts:[{
+      blog_name:'latest', id_string:'300', reblogged_from_id:'250', reblogged_from_name:'middle',
+      trail:[{blog:{name:'root'},post:{id:'100'}},{blog:{name:'middle'},post:{id:'250'}}],
+    }] } }), { status:200, headers:{'content-type':'application/json'} })) as typeof fetch })
+    const post = await client.getPost('latest.tumblr.com','300')
+    expect(post).toMatchObject({ rootPostId:'100', rootBlogIdentifier:'root.tumblr.com', rootResolved:true, parentBlogIdentifier:'middle.tumblr.com' })
+  })
+  it('leaves a reblog unresolved when Tumblr omits both root metadata and a usable trail', async () => {
+    const client = createTumblrClient({ consumerKey:'k', consumerSecret:'s', token:'t', tokenSecret:'ts', fetch: (async () => new Response(JSON.stringify({ response:{ posts:[{
+      blog_name:'latest', id_string:'300', reblogged_from_id:'250', reblogged_from_name:'middle', trail:[],
+    }] } }), { status:200, headers:{'content-type':'application/json'} })) as typeof fetch })
+    const post = await client.getPost('latest.tumblr.com','300')
+    expect(post).toMatchObject({ rootPostId:'300', rootBlogIdentifier:'latest.tumblr.com', rootResolved:false })
+  })
 })

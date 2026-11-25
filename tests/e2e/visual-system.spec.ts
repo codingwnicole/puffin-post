@@ -3,9 +3,8 @@ import { expect, test, type Page } from '@playwright/test'
 // T8d visual-system spec.
 //
 // Verifies the CSS detail layer: concentric radii, alpha borders, OKLCH token
-// contrast, icon-only-button accessible names, the save-button crossfade
-// (no layout shift, "Saved" only after OK, "Not saved" on failure), and the
-// three dark depth steps. The signed-in shell renders after
+// contrast, icon-only-button accessible names, stable autosave status layout,
+// and the three dark depth steps. The signed-in shell renders after
 // GET /api/auth/session answers, so the route mock drives all data.
 //
 // Colour math normalises through a canvas so oklch() resolves to rgba
@@ -164,27 +163,23 @@ test('icon consistency: every button has an accessible name', async ({ page }) =
   expect(unnamed).toEqual([])
 })
 
-test('save crossfade: fixed width, "Saved" only after OK, "Not saved" on failure', async ({ page }) => {
+test('autosave status keeps its layout when a save fails', async ({ page }) => {
   await signIn(page, { branch: true, failSave: true })
   await page.goto('/#inbox')
   const card = page.locator('.branch-card').first()
   await card.locator('.scene-card-trigger').click()
-  const note = page.locator('.autosave-note').first()
-  await expect(note).toBeVisible()
-  // Two stacked state spans in the same grid cell -> no layout shift.
-  const states = note.locator('.save-state')
-  expect(await states.count()).toBe(2)
-  const widthBefore = await note.evaluate(el => el.getBoundingClientRect().width)
-  // The idle state reads "Saved automatically" (no error yet).
-  expect(await note.locator('.save-state').last().textContent()).toContain('Saved automatically')
-  // Trigger a save that the server rejects; the note must flip to "Not saved".
-  const desc = card.locator('input[name="description"]')
+  const drawer = page.getByRole('dialog')
+  const state = drawer.locator('.branch-save-state')
+  await expect(state).toBeVisible()
+  const widthBefore = await state.evaluate(el => el.getBoundingClientRect().width)
+  await expect(state).toHaveText('All changes saved')
+  // Trigger a save that the server rejects; the drawer status must report it.
+  const desc = drawer.locator('textarea[name="description"]')
   await desc.fill('Changed premise that will fail to save')
   // Blur the field (focus leaves the form) to fire the form's delegated save.
   await desc.evaluate(el => (el as HTMLInputElement).blur())
-  await expect(note.locator('.save-state').last()).toContainText('Not saved', { timeout: 5000 })
-  expect(await note.locator('.save-state').last().textContent()).not.toContain('Saved automatically')
-  const widthAfter = await note.evaluate(el => el.getBoundingClientRect().width)
+  await expect(state).toHaveText('Could not save', { timeout: 5000 })
+  const widthAfter = await state.evaluate(el => el.getBoundingClientRect().width)
   expect(widthAfter).toBeCloseTo(widthBefore, 0)
 })
 

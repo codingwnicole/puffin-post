@@ -10,8 +10,9 @@ import { renderToString } from 'react-dom/server'
 import { createElement } from 'react'
 import { Side, emptyCard, normalizeCard, type CardProfile, type CardStats, THEMES } from '../web/components/TradingCard'
 import { parsePlaylist } from '../shared/embeds'
+import { emptyCharacterProfile, parsePublicCharacterProfile, type CharacterProfile, type ProfileSection } from '../shared/character-profile'
 
-type ShareRow = { id: string; workspaceId: string; characterId: string; slug: string; style: 'card' | 'stats'; showMoodboard: number; showPlaylist: number; showStats: number; indexable: number; previewObjectKey: string | null; disabledByModerator: number }
+type ShareRow = { id: string; workspaceId: string; characterId: string; slug: string; style: 'card' | 'stats'; showMoodboard: number; showPlaylist: number; showStats: number; indexable: number; previewObjectKey: string | null; disabledByModerator: number; publicProfileJson: string; publicProfilePublishedAt: string | null }
 type CharRow = { name: string; iconObjectKey: string | null; portraitObjectKey: string | null; cardJson: string | null }
 
 const PAGE_CSP = "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; frame-src https://open.spotify.com https://www.youtube-nocookie.com https://embed.music.apple.com https://assets.pinterest.com https://petracoding.github.io; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
@@ -26,7 +27,7 @@ function savedCard(cardJson: string | null): CardProfile {
 }
 
 async function loadShare(db: D1Database, slug: string): Promise<{ share: ShareRow; char: CharRow } | null> {
-  const share = await db.prepare('SELECT id, workspace_id AS workspaceId, character_id AS characterId, slug, style, show_moodboard AS showMoodboard, show_playlist AS showPlaylist, show_stats AS showStats, indexable, preview_object_key AS previewObjectKey, disabled_by_moderator AS disabledByModerator FROM character_shares WHERE slug=?').bind(slug).first<ShareRow>()
+  const share = await db.prepare('SELECT id, workspace_id AS workspaceId, character_id AS characterId, slug, style, show_moodboard AS showMoodboard, show_playlist AS showPlaylist, show_stats AS showStats, indexable, preview_object_key AS previewObjectKey, disabled_by_moderator AS disabledByModerator, public_profile_json AS publicProfileJson, public_profile_published_at AS publicProfilePublishedAt FROM character_shares WHERE slug=?').bind(slug).first<ShareRow>()
   if (!share || share.disabledByModerator) return null
   const char = await db.prepare('SELECT name, icon_object_key AS iconObjectKey, portrait_object_key AS portraitObjectKey, card_json AS cardJson FROM characters WHERE workspace_id=? AND id=?').bind(share.workspaceId, share.characterId).first<CharRow>()
   if (!char) return null
@@ -44,7 +45,13 @@ async function getStats(db: D1Database, workspaceId: string, characterId: string
   return { total: rows?.total ?? 0, mine: rows?.mine ?? 0, theirs: rows?.theirs ?? 0, rps: rps.results.map(r => r.name) }
 }
 
-export function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: CardStats, moodItems: { id: string; kind: string; pinId: string | null }[], appOrigin: string): string {
+export interface PublicProfileExtras {
+  profile?: CharacterProfile
+  quizzes?: Array<{ quizTitle: string | null; resultTitle: string; resultText: string; completedAt: string; sourceUrl: string | null }>
+  quicklinks?: Array<{ label: string; url: string }>
+}
+
+export function renderPage(share: ShareRow, char: CharRow, card: CardProfile, stats: CardStats, moodItems: { id: string; kind: string; pinId: string | null }[], appOrigin: string, extras: PublicProfileExtras = {}): string {
   const name = card.nickname.trim() || char.name
   const slug = share.slug
   const description = card.nickname || card.quote || 'A character card on RP Thread Buddy'
@@ -99,6 +106,40 @@ export function renderPage(share: ShareRow, char: CharRow, card: CardProfile, st
   const factsHtml = facts.length > 0 ? `<section class="section facts-section"><h2 class="section-title">Fun Facts</h2><ul class="fact-list">${facts.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul></section>` : ''
 
   const tracklistHtml = tracks.length > 0 ? `<section class="section tracklist-section"><h2 class="section-title">Tracklist</h2><ol class="track-list">${tracks.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ol></section>` : ''
+
+  const profile = extras.profile ?? emptyCharacterProfile()
+  const textSection = (enabled: boolean, title: string, value: string) => enabled && value.trim() ? `<section class="section profile-module"><h2 class="section-title">${title}</h2><p class="profile-prose">${escapeHtml(value).replace(/\n/gu, '<br>')}</p></section>` : ''
+  const listSection = (title: string, values: string[]) => values.length ? `<section class="section profile-module"><h2 class="section-title">${title}</h2><ul class="profile-list">${values.map(value => `<li>${escapeHtml(value)}</li>`).join('')}</ul></section>` : ''
+  const basics = profile.basics.enabled ? [
+    ['Pronouns', profile.basics.pronouns], ['Age', profile.basics.age], ['Birthday', profile.basics.birthday],
+    ['Occupation', profile.basics.occupation], ['Location', profile.basics.location],
+  ].filter((pair): pair is [string, string] => Boolean(pair[1].trim())) : []
+  const basicsHtml = basics.length ? `<section class="section profile-module"><h2 class="section-title">Character details</h2><div class="detail-grid">${basics.map(([label, value]) => `<div class="detail-item"><span class="detail-label">${label}</span><span>${escapeHtml(value)}</span></div>`).join('')}</div></section>` : ''
+  const personalityHtml = profile.personality.enabled
+    ? textSection(true, 'Personality', profile.personality.summary) + listSection('Traits', profile.personality.traits)
+    : ''
+  const quotes = profile.quotes.enabled ? profile.quotes.entries.filter(Boolean) : []
+  const quotesHtml = quotes.length ? `<section class="section profile-module"><h2 class="section-title">Character quotes</h2>${quotes.map(quote => `<blockquote class="profile-quote">&ldquo;${escapeHtml(quote)}&rdquo;</blockquote>`).join('')}</section>` : ''
+  const social = profile.social
+  const socialColor = /^#[0-9a-f]{6}$/iu.test(social.accentColor) ? social.accentColor : t.accent
+  const socialAvatar = char.portraitObjectKey || char.iconObjectKey ? `<img src="/c/${escapeHtml(slug)}/portrait" alt="" style="float:right;width:56px;height:56px;margin:0 0 10px 12px;border-radius:50%;object-fit:cover;border:1px solid var(--line)">` : ''
+  const socialHtml = social.enabled && (social.displayName || social.username || social.bio || social.posts.length)
+    ? `<section class="section profile-module fictional-profile" style="--profile-accent:${socialColor}">${socialAvatar}<p class="eyebrow">Fictional ${social.format === 'photo-journal' ? 'photo journal' : social.format === 'media-shelf' ? 'media shelf' : 'short-post profile'}</p><h2>${escapeHtml(social.displayName || name)}</h2>${social.username ? `<p class="profile-handle">@${escapeHtml(social.username)}</p>` : ''}${social.bio ? `<p class="profile-prose">${escapeHtml(social.bio)}</p>` : ''}${social.followers !== null || social.following !== null ? `<p class="profile-counts">${social.followers === null ? '' : `${social.followers.toLocaleString()} followers`}${social.followers !== null && social.following !== null ? ' · ' : ''}${social.following === null ? '' : `${social.following.toLocaleString()} following`}</p>` : ''}${social.posts.length ? `<ul class="profile-feed">${social.posts.map(post => `<li>${escapeHtml(post)}</li>`).join('')}</ul>` : ''}<p class="field-help">A fictional character profile. It is not connected to a real social account.</p></section>`
+    : ''
+  const quizHtml = profile.quizzes.enabled && extras.quizzes?.length
+    ? `<section class="section profile-module"><h2 class="section-title">Quizzes &amp; results</h2><div class="profile-quiz-list">${extras.quizzes.map(result => `<article><h3>${escapeHtml(result.resultTitle)}</h3>${result.quizTitle ? `<p class="detail-label">${escapeHtml(result.quizTitle)}</p>` : ''}${result.resultText ? `<p class="profile-prose">${escapeHtml(result.resultText).replace(/\n/gu, '<br>')}</p>` : ''}<time datetime="${escapeHtml(result.completedAt)}">${escapeHtml(new Date(result.completedAt).toLocaleDateString('en', { dateStyle: 'medium', timeZone: 'UTC' }))}</time>${result.sourceUrl ? `<p><a href="${escapeHtml(result.sourceUrl)}" target="_blank" rel="noopener noreferrer">Open quiz source</a></p>` : ''}</article>`).join('')}</div></section>`
+    : ''
+  const safeLinks = profile.quicklinks.enabled ? (extras.quicklinks ?? []).filter(link => { try { const url = new URL(link.url); return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password } catch { return false } }) : []
+  const quicklinksHtml = safeLinks.length ? `<section class="section profile-module"><h2 class="section-title">Quick links</h2><ul class="profile-list">${safeLinks.map(link => `<li><a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)}</a></li>`).join('')}</ul></section>` : ''
+  const profileSections: Record<ProfileSection, string> = {
+    introduction: textSection(profile.introduction.enabled, 'Introduction', profile.introduction.text),
+    biography: textSection(profile.biography.enabled, 'Biography', profile.biography.text), basics: basicsHtml, personality: personalityHtml,
+    relationships: profile.relationships.enabled ? listSection('Relationships', profile.relationships.entries) : '',
+    quotes: quotesHtml, songs: profile.songs.enabled ? listSection('Theme songs', profile.songs.entries) : '',
+    trivia: profile.trivia.enabled ? listSection('Trivia &amp; headcanons', profile.trivia.entries) : '',
+    social: socialHtml, quizzes: quizHtml, quicklinks: quicklinksHtml,
+  }
+  const profileHtml = profile.sectionOrder.map(section => profileSections[section]).filter(Boolean).join('')
 
   const safeFavorite = /^#[0-9a-f]{6}$/i.test(card.favoriteColor) ? card.favoriteColor : t.accent
   const initials = name.split(/\s+/).map(part => part[0] ?? '').join('').slice(0, 2).toUpperCase() || '?'
@@ -157,6 +198,7 @@ ${noindex ? '<meta name="robots" content="noindex,nofollow">' : ''}
 .hero-song-wave i:nth-child(2),.hero-song-wave i:nth-child(8){height:14px}.hero-song-wave i:nth-child(3),.hero-song-wave i:nth-child(7){height:21px}.hero-song-wave i:nth-child(4),.hero-song-wave i:nth-child(6){height:11px}.hero-song-wave i:nth-child(5){height:26px}
 .hero-song-link{grid-column:2/4;justify-self:start;display:inline-flex;align-items:center;gap:6px;min-height:36px;color:var(--accent);font-size:13px;font-weight:650;text-decoration:none}.hero-song-link:hover{text-decoration:underline}
 @media(max-width:820px){.hero-text{align-self:auto;align-items:center}.hero-song-card{grid-template-columns:36px minmax(0,1fr);width:min(100%,620px);margin-top:8px}.hero-song-wave{grid-column:2;grid-row:1}.hero-song-link{grid-column:2;min-height:44px}}
+.profile-module{grid-column:span 6}.profile-prose{overflow-wrap:anywhere}.profile-list{list-style:none;padding:0;margin:0;display:grid;gap:8px}.profile-list li,.profile-feed li{padding:10px 12px;border-radius:10px;background:var(--sheet-2);border:1px solid var(--line);overflow-wrap:anywhere}.profile-quote{margin:0 0 10px;padding:12px 14px;border-left:3px solid var(--favorite);background:var(--sheet-2);font:italic 18px/1.5 var(--font)}.fictional-profile{border-top:3px solid var(--profile-accent)}.fictional-profile h2{font:500 24px/1.2 var(--font);margin:0}.profile-handle,.profile-counts{color:var(--ink-2);font-size:13px;margin:2px 0}.profile-feed{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:8px}.profile-quiz-list{display:grid;gap:12px}.profile-quiz-list article{padding:12px;border-radius:12px;background:var(--sheet-2);border:1px solid var(--line)}.profile-quiz-list h3{margin:0;font:600 18px/1.3 var(--font)}.profile-quiz-list time{color:var(--subtle);font-size:12px}
 </style>
 </head>
 <body>
@@ -175,7 +217,7 @@ ${card.favoriteColor && card.favoriteColor !== '#b07a9e' ? `<span class="hero-co
 ${heroSongHtml}
 </div>
 </header>
-<div class="content-grid">${factsHtml}${detailsHtml}${moodboardHtml}${boardHtml}${playlistHtml}${tracklistHtml}${statsHtml}</div>
+<div class="content-grid">${factsHtml}${detailsHtml}${moodboardHtml}${boardHtml}${playlistHtml}${tracklistHtml}${statsHtml}${profileHtml}</div>
 <footer class="footer">
 <a href="${escapeHtml(appOrigin)}" class="footer-brand"><span class="footer-mark">RP</span>RP Thread Buddy</a>
 <div class="footer-right"><a href="${escapeHtml(appOrigin)}">Make your own</a><span> &middot; </span><details style="display:inline"><summary class="report-toggle">Report</summary><form method="POST" action="/c/${escapeHtml(slug)}/report" class="report-form"><textarea name="reason" maxlength="1000" required placeholder="Why are you reporting this page?"></textarea><button type="submit" class="btn-accent" style="margin-top:.35rem;padding:.4rem 1rem;font-size:.82rem">Send report</button></form></details></div>
@@ -215,9 +257,24 @@ export function publicShareRoutes() {
     const card = savedCard(char.cardJson)
     const stats = await getStats(c.env.DB, share.workspaceId, share.characterId)
     const moodItems = share.showMoodboard ? (await c.env.DB.prepare('SELECT id,kind,pin_id AS pinId FROM character_moodboard_items WHERE workspace_id=? AND character_id=? ORDER BY position').bind(share.workspaceId, share.characterId).all<{ id: string; kind: string; pinId: string | null }>()).results : []
+    // Only the explicit publish snapshot is public. The private character draft
+    // is never selected on this unauthenticated route.
+    const profile = share.publicProfilePublishedAt ? parsePublicCharacterProfile(share.publicProfileJson) : emptyCharacterProfile()
+    const [quizzes, quicklinks] = await Promise.all([
+      share.publicProfilePublishedAt && profile.quizzes.enabled
+        ? c.env.DB.prepare(`SELECT r.result_title AS resultTitle,r.result_text AS resultText,r.completed_at AS completedAt,q.title AS quizTitle,q.source_url AS sourceUrl
+          FROM character_quiz_results r LEFT JOIN character_quiz_sources q ON q.workspace_id=r.workspace_id AND q.id=r.quiz_source_id
+          WHERE r.workspace_id=? AND r.character_id=? AND r.visibility='public' ORDER BY r.completed_at DESC LIMIT 40`)
+          .bind(share.workspaceId, share.characterId).all<{ quizTitle: string | null; resultTitle: string; resultText: string; completedAt: string; sourceUrl: string | null }>()
+        : Promise.resolve({ results: [] as Array<{ quizTitle: string | null; resultTitle: string; resultText: string; completedAt: string; sourceUrl: string | null }> }),
+      share.publicProfilePublishedAt && profile.quicklinks.enabled
+        ? c.env.DB.prepare('SELECT label,url FROM character_quicklinks WHERE workspace_id=? AND character_id=? ORDER BY created_at LIMIT 30')
+          .bind(share.workspaceId, share.characterId).all<{ label: string; url: string }>()
+        : Promise.resolve({ results: [] as Array<{ label: string; url: string }> }),
+    ])
     const headers: Record<string, string> = { 'Content-Security-Policy': PAGE_CSP, 'Cache-Control': 'public, max-age=60' }
     if (!share.indexable) headers['X-Robots-Tag'] = 'noindex, nofollow'
-    return c.html(renderPage(share, char, card, stats, moodItems, c.env.APP_ORIGIN), 200, headers)
+    return c.html(renderPage(share, char, card, stats, moodItems, c.env.APP_ORIGIN, { profile, quizzes: quizzes.results, quicklinks: quicklinks.results }), 200, headers)
   })
 
   app.get('/:slug/embed', async c => {

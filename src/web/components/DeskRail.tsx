@@ -3,6 +3,7 @@ import { parsePlaylist } from '../../shared/embeds'
 import { api, clearDraftLocal, restoreDraftLocal, saveDraftLocal } from '../lib/api'
 import { isPaused, pause, phaseLength, resume, start, timeLeft, update, useFocus } from '../lib/focus'
 import Icon from './Icon'
+import SprintStats from './SprintStats'
 
 // The desk rail: a right-hand column on wide screens with the focus timer, a music player and a quick note.
 // It lives in AppShell, so music keeps playing while you move between pages. Phones get DeskBar instead, a slim
@@ -64,6 +65,7 @@ export default function DeskRail() {
       </section>
       <DeskMusic link={prefs.playlist} onLink={playlist => save({ ...prefs, playlist })} />
       <QuickNote />
+      <SprintStats compact />
     </div>}
   </aside>
 }
