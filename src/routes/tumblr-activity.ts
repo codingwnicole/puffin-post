@@ -13,8 +13,8 @@ type ConnectedBlog = { tokenEncrypted: string; tokenSecretEncrypted: string; blo
 export function tumblrActivityRoutes() {
   const app = new Hono<{ Bindings: Env }>()
 
-  app.get('/unread-count', async c => { const scope=await requireWorkspace(c); const row=await scope.db.prepare('SELECT count(*) AS count FROM activity_notification_deliveries WHERE workspace_id=? AND seen_at IS NULL').bind(scope.workspaceId).first<{count:number}>(); return c.json({count:row?.count??0}) })
-  app.post('/mark-seen', async c => { const scope=await requireWorkspace(c); await scope.db.prepare('UPDATE activity_notification_deliveries SET seen_at=? WHERE workspace_id=? AND seen_at IS NULL').bind(new Date().toISOString(),scope.workspaceId).run(); return c.body(null,204) })
+  app.get('/unread-count', async c => { const scope=await requireWorkspace(c); const row=await scope.db.prepare('SELECT count(*) AS count FROM user_activity_notifications WHERE workspace_id=? AND user_id=? AND seen_at IS NULL').bind(scope.workspaceId,scope.userId).first<{count:number}>(); return c.json({count:row?.count??0}) })
+  app.post('/mark-seen', async c => { const scope=await requireWorkspace(c); await scope.db.prepare('UPDATE user_activity_notifications SET seen_at=? WHERE workspace_id=? AND user_id=? AND seen_at IS NULL').bind(new Date().toISOString(),scope.workspaceId,scope.userId).run(); return c.body(null,204) })
 
   app.get('/', async c => {
     const scope = await requireWorkspace(c)

@@ -45,6 +45,18 @@ describe('writing sprint history and rooms', () => {
     expect((await f.request('/api/sprints', 'POST', { ...sprintInput(), replyText: 'private reply prose' })).status).toBe(400)
   })
 
+  it('aggregates saved sprint words once, by account, across history and the stats endpoint', async () => {
+    const f = await fixture()
+    const input = sprintInput()
+    expect((await f.request('/api/sprints', 'POST', input)).status).toBe(201)
+    expect((await f.request('/api/sprints', 'POST', input)).status).toBe(200)
+    const aStats = await (await f.request('/api/sprints/stats?timezone=America%2FChicago', 'GET', undefined, 'a')).json() as any
+    const bStats = await (await f.request('/api/sprints/stats?timezone=America%2FChicago', 'GET', undefined, 'b')).json() as any
+    expect(aStats.allTime).toEqual({ words: 420, replies: 3, sessions: 1 })
+    expect(aStats.mostRecent.title).toBe('Friday reply sprint')
+    expect(bStats.allTime).toEqual({ words: 0, replies: 0, sessions: 0 })
+  })
+
   it('creates a password-protected room, validates guests, and enforces capacity', async () => {
     const f = await fixture()
     const createdResponse = await f.request('/api/sprint-rooms', 'POST', {

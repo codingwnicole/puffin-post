@@ -2,6 +2,7 @@ import type { Env } from '../worker'
 import { createTumblrClient, TumblrRateLimitedError, type FetchBudget } from '../tumblr/client'
 import { decryptToken } from '../tumblr/oauth'
 import { canonicalBlogIdentifier } from '../tumblr/normalize'
+import { attributeStarterAuthor, ownedTumblrBlogs } from '../tumblr/blog-identities'
 import { refreshStarterBranches, type RefreshBranch } from '../tumblr/refresh'
 import { sendWorkspacePush } from '../routes/push'
 import { redact } from '../shared/redact'
@@ -20,7 +21,7 @@ export function replyExcerpt(preview: string | null | undefined): string | null 
   return (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trimEnd()
 }
 interface RefreshTarget { leadsCharacter: number; id: string; workspaceId: string; characterId: string; blogIdentifier: string; connectionId: string; tokenEncrypted: string; tokenSecretEncrypted: string }
-interface StarterRow { id: string; rootPostId: string; rootBlogId: string; archived: number }
+interface StarterRow { id: string; rootPostId: string; rootBlogId: string; archived: number; starterAuthorStatus: 'user'|'partner'|'unresolved'; threadRootResolved: number }
 interface BranchRow extends RefreshBranch { starterId: string; lastRefreshAt: string | null }
 
 // Cloudflare free plan: 50 fetch subrequests per invocation AND a SEPARATE
@@ -132,6 +133,14 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
   ) ORDER BY rn, lastAttempt, id LIMIT ?`).bind(now.toISOString(), now.toISOString(), options.workspaceId ?? null, options.workspaceId ?? null, effectiveLimit).all<RefreshTarget & { totalDue: number }>()
   const selected = candidates.results
   dueTargets = selected[0]?.totalDue ?? 0
+  const connectedMetadataRows = await db.prepare("SELECT workspace_id AS workspaceId, account_metadata_json AS metadata FROM tumblr_connections WHERE status='active'").all<{workspaceId:string;metadata:string}>()
+  const metadataByWorkspace = new Map<string, string[]>()
+  for (const row of connectedMetadataRows.results) {
+    const list = metadataByWorkspace.get(row.workspaceId) ?? []
+    list.push(row.metadata)
+    metadataByWorkspace.set(row.workspaceId, list)
+  }
+  const ownedBlogsByWorkspace = new Map([...metadataByWorkspace].map(([workspaceId, metadata]) => [workspaceId, ownedTumblrBlogs(metadata)]))
   let failed = 0, skipped = 0
   // A starter already refreshed through one target's blog is skipped for later
   // targets of the same character (main blog + sideblogs), so every thread's
@@ -165,14 +174,20 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
           if (item.targetPostId) signals.add(item.targetPostId)
         }
         const mentions = feed.filter(item => ['mention', 'mention_in_post', 'mention_in_reply', 'user_mention', 'note_mention'].includes(item.type))
-        // All mention dedupe inserts go out in ONE batch (one subrequest); the
-        // summary push (sent once per workspace after the loop) covers them.
+        // Dedupe mentions once, then create per-member unread cues for members
+        // whose in-app activity preferences allow them.
         if (mentions.length) {
           const stmts = mentions.map(mention => db.prepare('INSERT INTO activity_notification_deliveries (workspace_id,notification_key,created_at) VALUES (?,?,?) ON CONFLICT(workspace_id,notification_key) DO NOTHING RETURNING notification_key')
             .bind(target.workspaceId, `mention:${target.blogIdentifier}:${mention.id}`, now.toISOString()))
           const results = await db.batch(stmts)
-          const created = results.reduce((count, result) => count + (((result.results ?? []) as Array<{ notification_key?: string }>).filter(row => row.notification_key).length), 0)
+          const newKeys = results.flatMap(result => ((result.results ?? []) as Array<{ notification_key?: string }>).map(row => row.notification_key).filter((key): key is string => Boolean(key)))
+          const created = newKeys.length
           if (created) {
+            const recipients = await db.prepare(`SELECT m.user_id AS userId FROM memberships m LEFT JOIN notification_preferences p ON p.workspace_id=m.workspace_id AND p.user_id=m.user_id
+              WHERE m.workspace_id=? AND COALESCE(p.in_app_enabled,1)=1 AND COALESCE(p.notify_activity,1)=1`).bind(target.workspaceId).all<{userId:string}>()
+            const createdAt = now.toISOString()
+            if (recipients.results.length) await db.batch(newKeys.flatMap(key => recipients.results.map(recipient => db.prepare(`INSERT INTO user_activity_notifications (workspace_id,user_id,notification_key,created_at) VALUES (?,?,?,?) ON CONFLICT DO NOTHING`)
+              .bind(target.workspaceId, recipient.userId, key, createdAt))))
             const counts = summary.get(target.workspaceId) ?? { tagCount: 0, replyCount: 0 }
             summary.set(target.workspaceId, { tagCount: counts.tagCount + created, replyCount: counts.replyCount })
           }
@@ -191,7 +206,7 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
         JOIN starters s ON s.workspace_id=b.workspace_id AND s.id=b.starter_id
         WHERE b.workspace_id=? AND s.source='tumblr'
         ORDER BY b.last_refresh_at IS NULL DESC, b.last_refresh_at ASC, b.id ASC`).bind(target.workspaceId).all<BranchRow>()
-      const starterRows = await db.prepare('SELECT id, root_post_id AS rootPostId, root_blog_id AS rootBlogId, archived FROM starters WHERE workspace_id=? AND character_id=?').bind(target.workspaceId, target.characterId).all<StarterRow>()
+      const starterRows = await db.prepare('SELECT id, root_post_id AS rootPostId, root_blog_id AS rootBlogId, archived, starter_author_status AS starterAuthorStatus, thread_root_resolved AS threadRootResolved FROM starters WHERE workspace_id=? AND character_id=?').bind(target.workspaceId, target.characterId).all<StarterRow>()
       const branchesByStarter = new Map<string, BranchRow[]>()
       for (const branch of branches.results) {
         const list = branchesByStarter.get(branch.starterId) ?? []
@@ -220,6 +235,33 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
         if (doneStarterIds.has(starter.id)) continue
         if (budget.remaining() <= FINAL_WRITE_HEADROOM) { starterAborted = true; break }
         const root = canonicalBlogIdentifier(starter.rootBlogId)
+        const ownedBlogs = ownedBlogsByWorkspace.get(target.workspaceId) ?? ownedTumblrBlogs([])
+        const rootMatchesConnectedAccount = ownedBlogs.identifiers.has(root)
+        let rootAuthorIsUser = starter.starterAuthorStatus === 'user' || Boolean(starter.threadRootResolved && rootMatchesConnectedAccount)
+        if (starter.threadRootResolved && rootMatchesConnectedAccount && starter.starterAuthorStatus !== 'user') {
+          const attribution = attributeStarterAuthor({ rootBlogIdentifier:root, rootResolved:Boolean(starter.threadRootResolved), rootPostAvailable:false, ownedBlogs })
+          if (attribution.status === 'user') {
+            writes.push(db.prepare(`UPDATE starters SET starter_author_status='user',starter_author_blog_id=?,starter_author_blog_uuid=?,starter_author_source=?,starter_author_confidence='high',starter_author_evidence=?,starter_author_checked_at=? WHERE workspace_id=? AND id=? AND starter_author_status<>'user'`)
+              .bind(attribution.blogIdentifier, attribution.blogUuid, attribution.source, attribution.evidence, now.toISOString(), target.workspaceId, starter.id))
+          }
+        } else if (starter.starterAuthorStatus === 'unresolved' && starter.threadRootResolved && budget.remaining() > FINAL_WRITE_HEADROOM + 1) {
+          // A prior import may have seen a Tumblr outage while resolving the
+          // root. Retry that root on a later sync so a confirmed external author
+          // can be recorded, while preserving unresolved state on another miss.
+          try {
+            await client.getPost(root, starter.rootPostId)
+            const attribution = attributeStarterAuthor({ rootBlogIdentifier:root, rootResolved:true, rootPostAvailable:true, ownedBlogs })
+            if (attribution.status !== 'unresolved') {
+              rootAuthorIsUser = attribution.status === 'user'
+              writes.push(db.prepare(`UPDATE starters SET starter_author_status=?,starter_author_blog_id=?,starter_author_blog_uuid=?,starter_author_source=?,starter_author_confidence=?,starter_author_evidence=?,starter_author_checked_at=? WHERE workspace_id=? AND id=? AND starter_author_status='unresolved'`)
+                .bind(attribution.status, attribution.blogIdentifier, attribution.blogUuid, attribution.source, attribution.confidence, attribution.evidence, now.toISOString(), target.workspaceId, starter.id))
+            }
+          } catch (rootError) {
+            if (rootError instanceof TumblrRateLimitedError) throw rootError
+            if (rootError instanceof Error && rootError.message === 'Subrequest budget exhausted') { starterAborted = true; break }
+            if (rootError instanceof Error && /\((401|403)\)/.test(rootError.message)) throw rootError
+          }
+        }
         // One notes call per starter root post, shared by every branch of that
         // starter; skipped when the budget is spent.
         let activities: Awaited<ReturnType<typeof client.getThreadActivity>> = []
@@ -256,7 +298,7 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
         // activity only get a last_refresh_at stamp so the stalest-first
         // ordering reaches each thread across runs.
         const updatedBranchIds = new Set<string>()
-        await refreshStarterBranches({ workspaceId: target.workspaceId, starterId: starter.id, rootBlogIdentifier: root, ownBlogIdentifiers: ownBlogSet, branches: starter.branches, activities, now }, async (branch, activity, status) => {
+        await refreshStarterBranches({ workspaceId: target.workspaceId, starterId: starter.id, rootBlogIdentifier: root, rootAuthorIsUser, ownBlogIdentifiers: ownBlogSet, branches: starter.branches, activities, now }, async (branch, activity, status) => {
           updatedBranchIds.add(branch.id)
           const starterArchived = starter.archived === 1
           const branchArchived = Boolean(branch.archivedAt) || branch.status === 'archived'
@@ -337,20 +379,22 @@ export async function runRefreshBatch(env: Env, now: Date, limit: number, option
       failed++
     }
   }
-  // One summary push per workspace with anything to report. The push cost is
-  // 1 D1 read (subscription list) + 1 fetch per subscription, all counted
-  // against the budget before the fetches go out. sendWorkspacePush uses
-  // env.DB directly (not the counting wrapper) so the D1 read is accounted
-  // for here, not double-counted.
+  // Keep reply and activity alerts separate so each category preference is
+  // enforced at delivery and a disabled category's content is never bundled.
   for (const [workspaceId, counts] of summary) {
     if (rateLimited) break
     if (budget.remaining() <= FINAL_WRITE_HEADROOM) break
-    const subCount = (await env.DB.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE workspace_id=?').bind(workspaceId).first<{ n: number }>())?.n ?? 0
-    budget.consumeD1()
-    if (budget.remaining() - 1 < subCount) break // keep 1 for the scheduler batch
-    for (let i = 0; i < subCount; i++) budget.consume()
-    const body = [counts.replyCount ? `${counts.replyCount} replies waiting` : null, counts.tagCount ? `${counts.tagCount} new tags` : null].filter(Boolean).join(', ')
-    await sendWorkspacePush(env, workspaceId, { title: 'RP Thread Buddy', body, url: '/#dashboard' })
+    const categories: Array<{count:number;category:'replies'|'activity';body:string}> = [
+      { count: counts.replyCount, category: 'replies' as const, body: `${counts.replyCount} replies are waiting in your tracker.` },
+      { count: counts.tagCount, category: 'activity' as const, body: `${counts.tagCount} new Tumblr activity item${counts.tagCount === 1 ? '' : 's'} to review.` },
+    ].filter(item => item.count > 0)
+    for (const notification of categories) {
+      const subCount = (await env.DB.prepare('SELECT COUNT(*) AS n FROM push_subscriptions WHERE workspace_id=?').bind(workspaceId).first<{ n: number }>())?.n ?? 0
+      budget.consumeD1()
+      if (budget.remaining() - 1 < subCount) break
+      for (let i = 0; i < subCount; i++) budget.consume()
+      await sendWorkspacePush(env, workspaceId, { title: 'RP Thread Buddy', body: notification.body, url: notification.category === 'activity' ? '/#activity' : '/#dashboard' }, notification.category)
+    }
   }
   const used = budget.used()
   return { selected: selected.length, refreshed, failed, skipped, fetchesUsed: used.fetches, d1Used: used.d1, rateLimited }
