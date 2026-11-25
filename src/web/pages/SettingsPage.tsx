@@ -2,42 +2,21 @@ import { useEffect, useState } from 'react'
 import { api, clearApiCache } from '../lib/api'
 import ThemeMenu from '../components/ThemeMenu'
 import { openOnboardingTour } from '../components/OnboardingTour'
+import NotificationPreferences from '../components/NotificationPreferences'
+import ActivityRequirementsSettings from '../components/ActivityRequirementsSettings'
 
 export default function SettingsPage(){
- const [settings,setSettings]=useState<any>(null),[groups,setGroups]=useState<any[]>([]),[groupName,setGroupName]=useState(''),[password,setPassword]=useState(''),[pushEnabled,setPushEnabled]=useState(false),[message,setMessage]=useState(''),[testingPush,setTestingPush]=useState(false),[deleteConfirm,setDeleteConfirm]=useState(''),[deletingAccount,setDeletingAccount]=useState(false)
+ const [settings,setSettings]=useState<any>(null),[groups,setGroups]=useState<any[]>([]),[groupName,setGroupName]=useState(''),[password,setPassword]=useState(''),[message,setMessage]=useState(''),[deleteConfirm,setDeleteConfirm]=useState(''),[deletingAccount,setDeletingAccount]=useState(false)
  const load=()=>api('/settings').then(setSettings).catch(e=>setMessage(e.message))
- useEffect(()=>{load();api<any[]>('/rp-groups').then(setGroups).catch(()=>{});api<{enabled:boolean}>('/push/subscription').then(value=>setPushEnabled(value.enabled)).catch(()=>{})},[])
- async function togglePush(){
-  try{
-   setMessage('')
-   if(pushEnabled){await api('/push/subscription','DELETE');setPushEnabled(false);setMessage('Browser notifications turned off.');return}
-   if(!('serviceWorker'in navigator)||!('PushManager'in window)||!('Notification'in window))throw new Error('This browser does not support push notifications')
-   if(Notification.permission==='denied')throw new Error('Notifications are blocked for RP Thread Buddy in this browser. Allow them in browser site settings, then try again.')
-   const permission=Notification.permission==='granted'?'granted':await Notification.requestPermission()
-   if(permission!=='granted')throw new Error('Allow browser notifications to turn them on.')
-
-   // register() can resolve while a brand-new worker is still installing. PushManager
-   // requires an active worker, so wait for the browser's ready registration first.
-   await navigator.serviceWorker.register('/puffin-post-sw.js')
-   const registration=await navigator.serviceWorker.ready
-   if(!registration.active)throw new Error('The notification service is still starting. Wait a moment, then try again.')
-
-   const key=await api<{publicKey:string}>('/push/public-key')
-   const bytes=Uint8Array.from(atob(key.publicKey.replaceAll('-','+').replaceAll('_','/').padEnd(Math.ceil(key.publicKey.length/4)*4,'=')),x=>x.charCodeAt(0))
-   const subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes})
-   await api('/push/subscription','POST',{endpoint:subscription.endpoint})
-   setPushEnabled(true)
-   setMessage('Browser notifications are on. Send a test to confirm this device can show one.')
-  }catch(error){setMessage((error as Error).message)}
- }
- async function testPush(){try{setTestingPush(true);setMessage('');if(!('serviceWorker'in navigator)||Notification.permission!=='granted')throw new Error('Turn on browser notifications first.');const registration=await navigator.serviceWorker.ready;await registration.showNotification('RP Thread Buddy test',{body:'This browser can receive RP Thread Buddy notifications.',icon:'/favicon.svg',tag:'rp-thread-buddy-test',data:{url:'/#settings'}});setMessage('Test notification sent. It may appear in your system notification area.')}catch(error){setMessage((error as Error).message)}finally{setTestingPush(false)}}
+ useEffect(()=>{load();api<any[]>('/rp-groups').then(setGroups).catch(()=>{})},[])
  return <section aria-labelledby="settings-title"><h1 id="settings-title" className="page-heading">Settings</h1><p className="page-description">Manage your workspace, account, and reminders.</p>{message&&<p role="status" className="success-pulse">{message}</p>}
  <section className="settings-section appearance-settings"><h2>Appearance</h2><ThemeMenu/></section>
  <section className="tracking-card"><h2>Product walkthrough</h2><p>Take a short tour with example content. It does not create sample characters, threads, or RP records.</p><button type="button" className="secondary-button" onClick={openOnboardingTour}>Restart the walkthrough</button></section>
- <section className="tracking-card"><h2>Browser notifications</h2><p>Private nudges for replies and reminders. Notification text never includes RP content.</p><div className="actions"><button onClick={()=>void togglePush()}>{pushEnabled?'Turn off browser notifications':'Turn on browser notifications'}</button>{pushEnabled&&<button className="secondary-button" onClick={()=>void testPush()} disabled={testingPush}>{testingPush?'Sending test…':'Send a test'}</button>}</div></section>
+ <NotificationPreferences/>
  <section className="tracking-card"><h2>Password sign-in</h2><p>Use an 8+ character password alongside magic links.</p><form className="stack-form" onSubmit={async e=>{e.preventDefault();try{await api('/auth/password','POST',{password});setPassword('');setMessage('Password saved. You can now sign in with it.')}catch(error){setMessage((error as Error).message)}}}><label>Password<input value={password} onChange={e=>setPassword(e.target.value)} type="password" minLength={8} maxLength={200} autoComplete="new-password" required/></label><button>Save password</button></form></section>
  <section className="tracking-card"><h2>Discord DMs <small>Coming soon</small></h2><p>Discord will be an optional second delivery route after browser notifications. The bot connection and DM permission step will live here once the bot is online.</p><button className="secondary-button" disabled>Connect Discord — coming soon</button></section>
  <section className="tracking-card"><h2>RP sections</h2><p>Create a section here, then place characters from Characters.</p><form className="stack-form" onSubmit={async e=>{e.preventDefault();try{await api('/rp-groups','POST',{name:groupName});setGroupName('');setGroups(await api('/rp-groups'));setMessage('RP section added.')}catch(error){setMessage((error as Error).message)}}}><label>New RP section<input value={groupName} onChange={e=>setGroupName(e.target.value)} required/></label><button>Add section</button></form></section>
+ <ActivityRequirementsSettings/>
  <section className="tracking-card"><h2>Delete an RP section</h2><p>Threads remain, but become unsorted.</p>{groups.map(group=><button key={group.id} className="danger-button" onClick={async()=>{if(!window.confirm(`Delete ${group.name}? Threads will stay, but become unsorted.`))return;try{await api(`/rp-groups/${group.id}`,'DELETE');setGroups(await api('/rp-groups'));setMessage('RP section deleted.')}catch(error){setMessage((error as Error).message)}}}>Delete {group.name}</button>)}</section>
  <section className="tracking-card"><h2>Export your data</h2><p>Download starters and reply branches as a spreadsheet-safe CSV.</p><a className="button" href="/api/export.csv">Download CSV</a></section>
  <section className="tracking-card danger-section" aria-labelledby="delete-account-title"><h2 id="delete-account-title">Delete account</h2><p>Three different actions, in increasing order of permanence:</p><ul className="delete-account-help"><li><strong>Delete a thread</strong> — removes just that one thread. Everything else stays.</li><li><strong>Disconnect a Tumblr account</strong> — stops auto-updating. Your characters, threads and drafts are kept; reconnect later to pick up where you left off.</li><li><strong>Delete your account</strong> — removes every workspace you own, all characters, threads, drafts, connections and notifications. Cannot be undone.</li></ul>{settings&&settings.connections?.some((c:any)=>c.status!=='disconnected')&&<p className="field-help">Warning: you still have connected Tumblr accounts. Disconnect them first if you want to keep your data on Tumblr.</p>}<form className="stack-form delete-account-form" onSubmit={async e=>{e.preventDefault();if(deleteConfirm!=='DELETE')return;try{setDeletingAccount(true);await api('/settings/account','DELETE',{confirm:'DELETE'});clearApiCache();window.history.replaceState(null,'','/');window.location.reload()}catch(problem){setDeletingAccount(false);setMessage((problem as Error).message)}}}><label><span>Type <code>DELETE</code> to confirm</span><input value={deleteConfirm} onChange={e=>setDeleteConfirm(e.target.value)} autoComplete="off" placeholder="DELETE" required/></label><button className="danger-button" disabled={deleteConfirm!=='DELETE'||deletingAccount}>{deletingAccount?'Deleting…':'Delete account'}</button></form></section>

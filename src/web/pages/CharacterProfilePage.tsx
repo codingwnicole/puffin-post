@@ -156,6 +156,7 @@ export default function CharacterProfilePage({ id }: { id: string }) {
           <div className="profile-actions">
             <button type="button" className="secondary-button" onClick={() => setShowCard(true)}>View card</button>
             <button type="button" onClick={() => setEditingCard(true)}>Edit card</button>
+            <a className="button secondary-button" href={`#character-profile/${row.id}`}>Edit public profile</a>
             <button type="button" className="secondary-button" onClick={() => setSharing(true)}>Share</button>
             <a className="button secondary-button" href={'#dashboard?characterId=' + encodeURIComponent(row.id)}>View threads</a>
             <a href="#characters">Back to characters</a>

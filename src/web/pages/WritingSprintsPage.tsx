@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type TrackingOptions } from '../lib/api'
 import { acquireSprintLock, deleteLocalSprint, getLocalSprint, listLocalSprints, saveLocalSprint } from '../lib/sprint-drafts'
 import { countWords, creditedWordCount, makeReplySegment, sprintTotals, updateCreditMask, type LocalSprint, type ReplySegment, type SprintPhase, type SprintKind } from '../../shared/writing-sprints'
+import SprintStats from '../components/SprintStats'
 
 interface SprintHistory {
   id: string; title: string; kind: SprintKind; startedAt: string; endedAt: string
@@ -534,6 +535,7 @@ export default function WritingSprintsPage({ roomId = '', inviteToken = '' }: { 
     <h1 id="sprints-title" className="page-heading">Writing sprints</h1>
     <p className="page-description">Write several separate RP replies in one timed session. Each reply keeps its own draft and copy button; the sprint totals stay even after you clear finished text.</p>
     <p className="sprint-privacy-note">Reply text stays in this browser. Sprint history stores only totals. A room shares participant names, credited words, completed replies, and connection status—never reply text.</p>
+    {signedIn && <SprintStats />}
     <div className="sprint-entry-grid">
       <article className="tracking-card"><h2>Solo sprint</h2><p>Set a timer and work through as many replies as you want.</p><button type="button" onClick={() => setView('solo-setup')}>Set up a solo sprint</button></article>
       <article className="tracking-card"><h2>Private room</h2><p>Invite friends with a private link. Guests can join with a display name—no account required.</p><div className="actions"><button type="button" onClick={() => setView('room-setup')}>Create room</button><button type="button" className="secondary-button" onClick={() => { setRoomError(''); setView('join-room') }}>Join room</button></div></article>

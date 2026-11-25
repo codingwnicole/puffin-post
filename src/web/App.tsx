@@ -17,6 +17,7 @@ import { LegalPage } from './pages/LegalPage'
 import RoadmapPage from './pages/RoadmapPage'
 import WritingSprintsPage from './pages/WritingSprintsPage'
 import FocusPage from './pages/FocusPage'
+import CharacterProfileStudioPage from './pages/CharacterProfileStudioPage'
 
 const LEGAL_ROUTES = ['terms', 'privacy', 'cookies'] as const
 type LegalRoute = (typeof LEGAL_ROUTES)[number]
@@ -41,12 +42,13 @@ const PAGES: Partial<Record<AppPage, () => ReactNode>> = {
 function routeFor(hash: string): { page: AppPage; render: () => ReactNode } {
   const [path, query = ''] = hash.split('?')
   const param = (prefix: string) => path.startsWith(prefix) ? path.slice(prefix.length) : null
-  const shortcutId = param('character-shortcut/'), profileId = param('character/'), starterId = param('starter/')
+  const shortcutId = param('character-shortcut/'), studioId = param('character-profile/'), profileId = param('character/'), starterId = param('starter/')
   const sprintRoomId = param('sprint-room/')
   const queryParams = new URLSearchParams(query)
   if (sprintRoomId !== null) return { page: 'tools', render: () => <WritingSprintsPage roomId={sprintRoomId} inviteToken={queryParams.get('invite') ?? ''} /> }
   if (path === 'tools/focus') return { page: 'tools', render: () => <FocusPage /> }
   if (path === 'tools/sprints') return { page: 'tools', render: () => <WritingSprintsPage /> }
+  if (studioId !== null) return { page: 'characters', render: () => <CharacterProfileStudioPage key={studioId} id={studioId} /> }
   if (shortcutId !== null) return { page: 'dashboard', render: () => <CharacterShortcutPage key={shortcutId} id={shortcutId} /> }
   if (profileId !== null) return { page: 'characters', render: () => <CharacterProfilePage key={profileId} id={profileId} /> }
   if (starterId !== null) return { page: 'starter', render: () => <StarterPage key={starterId} id={starterId} /> }
